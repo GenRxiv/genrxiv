@@ -1,0 +1,29 @@
+# Secrets — NEVER commit these
+.env
+*.env
+!.env.example
+*.pem
+*.key
+credentials.json
+cloudflared-*.json
+
+# OJS runtime data
+files/
+public/
+config.inc.php
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build output
+*.pdf
+!docs/**/*.pdf
+node_modules/
+dist/

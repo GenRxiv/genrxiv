@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96" role="img" aria-label="GenRxiv">
+  <title>GenRxiv</title>
+  <!-- Enclosed "seal" variant. The frame gives it more institutional weight —
+       use where the mark sits on a busy or photographic background. -->
+  <rect x="2.5" y="2.5" width="91" height="91" rx="14" fill="#EDEAE2" stroke="#1B1E27" stroke-width="2.5"/>
+  <g stroke-linecap="round" fill="none" stroke-width="4.5">
+    <line x1="24" y1="30" x2="72" y2="30" stroke="#1B1E27"/>
+    <line x1="24" y1="44" x2="62" y2="44" stroke="#1B1E27"/>
+    <line x1="24" y1="58" x2="69" y2="58" stroke="#2F5CFF" stroke-dasharray="9 6"/>
+    <line x1="24" y1="72" x2="45" y2="72" stroke="#2F5CFF" stroke-dasharray="2.5 6"/>
+  </g>
+</svg>

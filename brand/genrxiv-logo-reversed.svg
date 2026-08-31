@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="272" height="72" viewBox="0 0 272 72" role="img" aria-label="GenRxiv">
+  <title>GenRxiv</title>
+  <!-- Reversed lockup for dark backgrounds. Cobalt lifted to #6C8CFF so it
+       holds contrast against ink; paper #EDEAE2 replaces the ink strokes. -->
+  <g stroke-linecap="round" fill="none">
+    <line x1="8" y1="18" x2="66" y2="18" stroke="#EDEAE2" stroke-width="4"/>
+    <line x1="8" y1="33" x2="55" y2="33" stroke="#EDEAE2" stroke-width="4"/>
+    <line x1="8" y1="48" x2="63" y2="48" stroke="#6C8CFF" stroke-width="4" stroke-dasharray="9 6"/>
+    <line x1="8" y1="63" x2="40" y2="63" stroke="#6C8CFF" stroke-width="4" stroke-dasharray="2.5 6"/>
+  </g>
+  <text x="94" y="53" font-family="Fraunces, Georgia, 'Times New Roman', serif" font-size="40" font-weight="500" fill="#EDEAE2" letter-spacing="-0.5">GenRxiv</text>
+</svg>

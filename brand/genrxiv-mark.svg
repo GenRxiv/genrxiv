@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="GenRxiv">
+  <title>GenRxiv</title>
+  <!-- Icon only. Optimised for small sizes: heavier stroke, coarser dashes
+       than the lockup so it survives down to 16px. -->
+  <g stroke-linecap="round" fill="none" stroke-width="5">
+    <line x1="6" y1="12" x2="58" y2="12" stroke="#1B1E27"/>
+    <line x1="6" y1="27" x2="46" y2="27" stroke="#1B1E27"/>
+    <line x1="6" y1="42" x2="54" y2="42" stroke="#2F5CFF" stroke-dasharray="10 7"/>
+    <line x1="6" y1="57" x2="30" y2="57" stroke="#2F5CFF" stroke-dasharray="3 7"/>
+  </g>
+</svg>
