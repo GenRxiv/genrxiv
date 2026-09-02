@@ -10,6 +10,9 @@ ojs-config-patch.sh
 # Patch the template manager (fixes OJS 3.5.0.5 bug with undefined $site)
 sh /usr/local/bin/ojs-template-manager-patch.sh
 
+# Patch ORCID redirect URI to match what's registered at ORCID
+sh /usr/local/bin/ojs-orcid-redirect-patch.sh
+
 # Create usageStats directory with correct permissions
 mkdir -p /var/www/html/files/usageStats/usageEventLogs
 chown -R www-data:www-data /var/www/html/files/usageStats
