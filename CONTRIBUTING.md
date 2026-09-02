@@ -38,6 +38,29 @@ organisation profile.
    part of the test surface, not an edge case.
 4. Describe what you changed and why. Screenshots help for anything visual.
 
+### Secret scanning
+
+A pre-commit hook blocks credentials from entering git history. To set it
+up after cloning:
+
+```bash
+# Option A: lightweight (no dependencies)
+cp scripts/pre-commit.sh .git/hooks/pre-commit
+chmod +x .git/hooks/pre-commit
+
+# Option B: thorough (installs gitleaks + checks)
+pip install pre-commit
+pre-commit install
+```
+
+Option B gives you [gitleaks](https://github.com/gitleaks/gitleaks) for
+proper entropy-based secret detection, plus YAML validation, large-file
+checks, and whitespace trimming. Option A is a grep-based check with zero
+dependencies — better than nothing, but not as thorough.
+
+Never commit `.env`, private keys, tokens, or passwords. The `.gitignore`
+excludes these, but the hook is a second line of defense.
+
 ## Disclosing AI assistance in contributions
 
 If you used AI to write a contribution, say so in the pull request. Not because

@@ -1,0 +1,33 @@
+# GenRxiv pre-commit configuration
+#
+# Install the pre-commit framework:
+#   pip install pre-commit
+#   pre-commit install
+#
+# This gives you gitleaks (secret scanning) and basic checks on every commit.
+# If you don't install this, the lightweight hook in scripts/pre-commit.sh
+# provides a basic grep-based check. See CONTRIBUTING.md for setup.
+
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks
+        name: Detect secrets in staged files
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-yaml
+        name: Validate YAML files
+      - id: check-merge-conflict
+        name: Check for merge conflict markers
+      - id: check-added-large-files
+        name: Check for large files (>500KB)
+        args: ['--maxkb=500']
+      - id: end-of-file-fixer
+        name: Ensure files end with a newline
+        exclude: '\.svg$|\.png$|\.pdf$'
+      - id: trailing-whitespace
+        name: Trim trailing whitespace
+        exclude: '\.md$'

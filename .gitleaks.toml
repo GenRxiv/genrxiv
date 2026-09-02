@@ -1,0 +1,18 @@
+title = "GenRxiv Secret Scanning"
+
+[allowlist]
+description = "Known safe paths and patterns"
+paths = [
+  '''deploy/.env.example''',
+  '''docs/SETUP.md''',
+  '''README.md''',
+  '''CONTRIBUTING.md''',
+  '''SECURITY.md''',
+]
+regexes = [
+  '''changeme_long_random_string''',
+  '''paste_token_from_cloudflare''',
+  '''APP-YOUR-ORCID-CLIENT-ID''',
+  '''your-orcid-client-secret''',
+  '''base64:.*random_bytes''',
+]
