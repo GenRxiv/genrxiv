@@ -26,6 +26,16 @@ $c = preg_replace('/^allowed_hosts = .*/m', "allowed_hosts = '[\"genrxiv.org\", 
 // Base URL — OJS is served under /app via nginx
 $c = preg_replace('#^base_url = .*#m', 'base_url = "https://genrxiv.org/app"', $c);
 
+// Journal-specific base URL
+if (!preg_match('/^base_url\[genrxiv\]/m', $c)) {
+    $c = preg_replace('/^(base_url = .*$)/m', "$1\nbase_url[genrxiv] = https://genrxiv.org/app/genrxiv", $c);
+} else {
+    $c = preg_replace('/^base_url\[genrxiv\] = .*$/m', 'base_url[genrxiv] = https://genrxiv.org/app/genrxiv', $c);
+}
+
+// Trust X-Forwarded-For from nginx
+$c = preg_replace('/^trust_x_forwarded_for = .*/m', 'trust_x_forwarded_for = On', $c);
+
 // App key — generate if empty
 if (preg_match('/^app_key =\s*$/m', $c)) {
     $key = 'base64:' . base64_encode(random_bytes(32));

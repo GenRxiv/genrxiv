@@ -25,18 +25,21 @@ $clientSecret = getenv('ORCID_CLIENT_SECRET') ?: '';
 
 // Enable ORCID globally
 $site->setData('orcidEnabled', true);
+// Set API type to public production (not sandbox)
+$site->setData('orcidApiType', 'publicProduction');
 $siteDao->updateObject($site);
-echo "[ORCID Config] Enabled ORCID at site level\n";
+echo "[ORCID Config] Enabled ORCID at site level (production API)\n";
 
-// Set client credentials at journal level if provided
+// Set client credentials at site level (globally configured)
 if ($clientId) {
-    $journal->setData('orcidClientId', $clientId);
+    $site->setData('orcidClientId', $clientId);
     echo "[ORCID Config] Set ORCID client ID\n";
 }
 if ($clientSecret) {
-    $journal->setData('orcidClientSecret', $clientSecret);
+    $site->setData('orcidClientSecret', $clientSecret);
     echo "[ORCID Config] Set ORCID client secret\n";
 }
+$siteDao->updateObject($site);
 
 $journalDao->updateObject($journal);
 

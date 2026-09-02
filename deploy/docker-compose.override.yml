@@ -10,6 +10,8 @@ services:
       PKP_ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       PKP_ADMIN_EMAIL: ${ADMIN_EMAIL}
       PKP_BASE_URL: https://genrxiv.org
+      ORCID_CLIENT_ID: ${ORCID_CLIENT_ID}
+      ORCID_CLIENT_SECRET: ${ORCID_CLIENT_SECRET}
     volumes:
       - ./deploy/ojs-config-patch.sh:/usr/local/bin/ojs-config-patch.sh:ro
       - ./deploy/ojs-config-patch.php:/usr/local/bin/ojs-config-patch.php:ro
