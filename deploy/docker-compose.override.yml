@@ -1,0 +1,20 @@
+services:
+  ojs:
+    environment:
+      PKP_CLI_INSTALL: 1
+      PKP_DB_HOST: db
+      PKP_DB_NAME: ojs
+      PKP_DB_USER: ojs
+      PKP_DB_PASSWORD: ${DB_PASSWORD}
+      PKP_ADMIN_USER: ${ADMIN_USER}
+      PKP_ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      PKP_ADMIN_EMAIL: ${ADMIN_EMAIL}
+      PKP_BASE_URL: https://genrxiv.org
+    volumes:
+      - ./deploy/ojs-config-patch.sh:/usr/local/bin/ojs-config-patch.sh:ro
+      - ./deploy/ojs-config-patch.php:/usr/local/bin/ojs-config-patch.php:ro
+      - ./deploy/ojs-cli-install-patch.sh:/usr/local/bin/pkp-cli-install:ro
+      - ./deploy/ojs-entrypoint.sh:/usr/local/bin/ojs-entrypoint.sh:ro
+    entrypoint: ["/bin/sh", "/usr/local/bin/ojs-entrypoint.sh"]
+  cloudflared:
+    command: "tunnel --no-autoupdate --protocol http2 run --token ${CF_TUNNEL_TOKEN}"
