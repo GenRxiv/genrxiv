@@ -11,15 +11,63 @@ job directory).
 """
 import asyncio
 import shutil
+import sqlite3
 import tempfile
 import uuid
 import zipfile
+from datetime import datetime, timezone
 from pathlib import Path
+from pydantic import BaseModel, EmailStr
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
 app = FastAPI(title="GenRxiv Conversion Service")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://genrxiv.org", "http://localhost:8080"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"],
+)
+
+DB_PATH = Path("/data/signups.db")
+
+def _init_db():
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS signups (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT UNIQUE NOT NULL,
+            notify_launch INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+_init_db()
+
+
+class SignupRequest(BaseModel):
+    email: EmailStr
+    notify_on_launch: bool = False
+
+
+@app.post("/signup")
+async def signup(req: SignupRequest):
+    conn = sqlite3.connect(str(DB_PATH))
+    try:
+        conn.execute(
+            "INSERT OR IGNORE INTO signups (email, notify_launch, created_at) VALUES (?, ?, ?)",
+            (req.email, int(req.notify_on_launch), datetime.now(timezone.utc).isoformat()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return {"status": "ok", "email": req.email}
 
 COMPILE_TIMEOUT_SECONDS = 60
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # 25MB — plenty for source + figures

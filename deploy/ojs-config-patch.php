@@ -23,5 +23,11 @@ if (getenv('PKP_DB_USER')) {
 // Allowed hosts
 $c = preg_replace('/^allowed_hosts = .*/m', "allowed_hosts = '[\"genrxiv.org\", \"localhost\"]'", $c);
 
+// App key — generate if empty
+if (preg_match('/^app_key =\s*$/m', $c)) {
+    $key = 'base64:' . base64_encode(random_bytes(32));
+    $c = preg_replace('/^app_key =\s*$/m', "app_key = $key", $c);
+}
+
 file_put_contents($conf, $c);
 echo "[OJS Config Patch] Applied database and host settings to $conf\n";

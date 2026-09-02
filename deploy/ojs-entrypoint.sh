@@ -1,5 +1,5 @@
 #!/bin/sh
-# Custom OJS entrypoint: runs pre-start, patches config, starts Apache, installs, then patches again.
+# Custom OJS entrypoint: runs pre-start, patches config, starts Apache, then installs.
 
 # Run the pre-start (certs, apache config) but skip the CLI install
 PKP_CLI_INSTALL=0 /usr/local/bin/pkp-pre-start
@@ -27,6 +27,24 @@ if grep -q 'installed = Off' /var/www/html/config.inc.php; then
     /usr/local/bin/pkp-cli-install
     # Patch AGAIN after install (install resets allowed_hosts)
     ojs-config-patch.sh
+
+    # Check if install actually succeeded by looking for tables
+    TABLES=$(php -r "
+        \$conf = parse_ini_file('/var/www/html/config.inc.php', true);
+        \$dsn = 'pgsql:host=' . \$conf['database']['host'] . ';dbname=' . \$conf['database']['name'];
+        try {
+            \$pdo = new PDO(\$dsn, \$conf['database']['username'], \$conf['database']['password']);
+            \$count = \$pdo->query(\"SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'\")->fetchColumn();
+            echo \$count;
+        } catch (Exception \$e) {
+            echo '0';
+        }
+    " 2>/dev/null)
+
+    if [ "$TABLES" -gt "0" ] 2>/dev/null; then
+        echo "[OJS Entrypoint] Database has $TABLES tables — marking as installed"
+        sed -i 's/^installed = Off/installed = On/' /var/www/html/config.inc.php
+    fi
 fi
 
 # Wait for Apache in the foreground

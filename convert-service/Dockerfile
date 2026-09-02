@@ -16,6 +16,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app.py .
 
+RUN mkdir -p /data && chown convertor:convertor /data
+
 USER convertor
 
 # No inbound ports other than the API; the compose network should NOT give
