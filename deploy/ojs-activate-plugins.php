@@ -73,6 +73,34 @@ try {
         echo "[Plugins] Enabled latexCompiler plugin for journal\n";
     }
 
+    // --- Submission Policy plugin ---
+    $stmt = $pdo->prepare("SELECT count(*) FROM versions WHERE product_type = 'plugins.generic' AND product = 'submissionPolicy'");
+    $stmt->execute();
+    $exists = $stmt->fetchColumn();
+
+    if (!$exists) {
+        $pdo->exec("INSERT INTO versions (major, minor, revision, build, date_installed, current, product_type, product, product_class_name, lazy_load, sitewide) VALUES (1, 0, 0, 0, NOW(), 1, 'plugins.generic', 'submissionPolicy', 'SubmissionPolicyPlugin', 1, 0)");
+        echo "[Plugins] Registered submissionPolicy plugin in versions table\n";
+    }
+
+    $stmt = $pdo->prepare("SELECT count(*) FROM plugin_settings WHERE plugin_name = 'submissionpolicyplugin' AND setting_name = 'enabled' AND context_id IS NULL");
+    $stmt->execute();
+    $enabled = $stmt->fetchColumn();
+
+    if (!$enabled) {
+        $pdo->exec("INSERT INTO plugin_settings (plugin_name, context_id, setting_name, setting_value, setting_type) VALUES ('submissionpolicyplugin', NULL, 'enabled', '1', 'bool')");
+        echo "[Plugins] Enabled submissionPolicy plugin (site)\n";
+    }
+
+    $stmt = $pdo->prepare("SELECT count(*) FROM plugin_settings WHERE plugin_name = 'submissionpolicyplugin' AND setting_name = 'enabled' AND context_id = 1");
+    $stmt->execute();
+    $journalEnabled = $stmt->fetchColumn();
+
+    if (!$journalEnabled) {
+        $pdo->exec("INSERT INTO plugin_settings (plugin_name, context_id, setting_name, setting_value, setting_type) VALUES ('submissionpolicyplugin', 1, 'enabled', '1', 'bool')");
+        echo "[Plugins] Enabled submissionPolicy plugin (journal)\n";
+    }
+
 } catch (Exception $e) {
     echo "[Plugins] Error: " . $e->getMessage() . "\n";
 }

@@ -1,0 +1,11 @@
+msgid "plugins.generic.submissionPolicy.name"
+msgstr "GenRxiv Submission Policy"
+
+msgid "plugins.generic.submissionPolicy.description"
+msgstr "Enforces GenRxiv submission policies: ORCID required, rate limiting (max 2 per week)."
+
+msgid "plugins.generic.submissionPolicy.orcidRequired"
+msgstr "A verified ORCID iD is required to submit to GenRxiv. Please connect your ORCID iD in your profile before submitting."
+
+msgid "plugins.generic.submissionPolicy.rateLimitExceeded"
+msgstr "You have reached the submission limit of 2 preprints per 7 days. Please try again later."
