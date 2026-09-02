@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<version>
+	<application>genrxiv</application>
+	<type>plugins.themes</type>
+	<release>1.0.0.0</release>
+	<date>2026-09-02</date>
+	<lazy-load>1</lazy-load>
+	<class>GenrxivPlugin</class>
+</version>

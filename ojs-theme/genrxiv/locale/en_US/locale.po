@@ -1,0 +1,5 @@
+msgid "plugins.themes.genrxiv.name"
+msgstr "GenRxiv"
+
+msgid "plugins.themes.genrxiv.description"
+msgstr "GenRxiv custom theme. Paper background, ink text, cobalt accent, Fraunces serif headings, and IBM Plex Sans body text."

@@ -15,6 +15,9 @@ services:
       - ./deploy/ojs-config-patch.php:/usr/local/bin/ojs-config-patch.php:ro
       - ./deploy/ojs-cli-install-patch.sh:/usr/local/bin/pkp-cli-install:ro
       - ./deploy/ojs-entrypoint.sh:/usr/local/bin/ojs-entrypoint.sh:ro
+      - ./deploy/ojs-check-tables.php:/usr/local/bin/ojs-check-tables.php:ro
+      - ./deploy/ojs-activate-theme.php:/usr/local/bin/ojs-activate-theme.php:ro
+      - ./ojs-theme/genrxiv:/var/www/html/plugins/themes/genrxiv:ro
     entrypoint: ["/bin/sh", "/usr/local/bin/ojs-entrypoint.sh"]
     ports: !reset []
 

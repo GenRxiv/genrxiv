@@ -23,29 +23,30 @@ done
 
 # Run the CLI install if OJS is not yet installed
 if grep -q 'installed = Off' /var/www/html/config.inc.php; then
-    echo "[OJS Entrypoint] Running OJS CLI install..."
-    /usr/local/bin/pkp-cli-install
-    # Patch AGAIN after install (install resets allowed_hosts)
-    ojs-config-patch.sh
-
-    # Check if install actually succeeded by looking for tables
-    TABLES=$(php -r "
-        \$conf = parse_ini_file('/var/www/html/config.inc.php', true);
-        \$dsn = 'pgsql:host=' . \$conf['database']['host'] . ';dbname=' . \$conf['database']['name'];
-        try {
-            \$pdo = new PDO(\$dsn, \$conf['database']['username'], \$conf['database']['password']);
-            \$count = \$pdo->query(\"SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'\")->fetchColumn();
-            echo \$count;
-        } catch (Exception \$e) {
-            echo '0';
-        }
-    " 2>/dev/null)
+    # Check if tables already exist (database was persisted)
+    TABLES=$(php /usr/local/bin/ojs-check-tables.php 2>/dev/null)
+    echo "[OJS Entrypoint] Existing tables: $TABLES"
 
     if [ "$TABLES" -gt "0" ] 2>/dev/null; then
-        echo "[OJS Entrypoint] Database has $TABLES tables — marking as installed"
+        echo "[OJS Entrypoint] Database already has $TABLES tables — marking as installed"
         sed -i 's/^installed = Off/installed = On/' /var/www/html/config.inc.php
+    else
+        echo "[OJS Entrypoint] Running OJS CLI install..."
+        /usr/local/bin/pkp-cli-install
+        # Patch AGAIN after install (install resets allowed_hosts and app_key)
+        ojs-config-patch.sh
+
+        # Recheck tables after install
+        TABLES=$(php /usr/local/bin/ojs-check-tables.php 2>/dev/null)
+        if [ "$TABLES" -gt "0" ] 2>/dev/null; then
+            echo "[OJS Entrypoint] Install created $TABLES tables — marking as installed"
+            sed -i 's/^installed = Off/installed = On/' /var/www/html/config.inc.php
+        fi
     fi
 fi
+
+# Activate the GenRxiv theme
+php /usr/local/bin/ojs-activate-theme.php 2>/dev/null
 
 # Wait for Apache in the foreground
 wait $APACHE_PID

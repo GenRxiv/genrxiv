@@ -23,6 +23,9 @@ if (getenv('PKP_DB_USER')) {
 // Allowed hosts
 $c = preg_replace('/^allowed_hosts = .*/m', "allowed_hosts = '[\"genrxiv.org\", \"localhost\"]'", $c);
 
+// Base URL — OJS is served under /app via nginx
+$c = preg_replace('#^base_url = .*#m', 'base_url = "https://genrxiv.org/app"', $c);
+
 // App key — generate if empty
 if (preg_match('/^app_key =\s*$/m', $c)) {
     $key = 'base64:' . base64_encode(random_bytes(32));
