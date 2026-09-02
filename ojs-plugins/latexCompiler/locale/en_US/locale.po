@@ -1,0 +1,14 @@
+msgid "plugins.generic.latexCompiler.name"
+msgstr "LaTeX/Markdown Compiler"
+
+msgid "plugins.generic.latexCompiler.description"
+msgstr "Automatically compiles LaTeX and Markdown submission files to PDF using the GenRxiv convert-service."
+
+msgid "plugins.generic.latexCompiler.compiling"
+msgstr "Compiling LaTeX/Markdown to PDF..."
+
+msgid "plugins.generic.latexCompiler.success"
+msgstr "PDF generated and attached to submission."
+
+msgid "plugins.generic.latexCompiler.error"
+msgstr "Failed to compile LaTeX/Markdown: "

@@ -17,7 +17,13 @@ services:
       - ./deploy/ojs-entrypoint.sh:/usr/local/bin/ojs-entrypoint.sh:ro
       - ./deploy/ojs-check-tables.php:/usr/local/bin/ojs-check-tables.php:ro
       - ./deploy/ojs-activate-theme.php:/usr/local/bin/ojs-activate-theme.php:ro
+      - ./deploy/ojs-create-journal.php:/usr/local/bin/ojs-create-journal.php:ro
+      - ./deploy/ojs-configure-orcid.php:/usr/local/bin/ojs-configure-orcid.php:ro
+      - ./deploy/ojs-activate-plugins.php:/usr/local/bin/ojs-activate-plugins.php:ro
+      - ./deploy/ojs-template-manager-patch.sh:/usr/local/bin/ojs-template-manager-patch.sh:ro
       - ./ojs-theme/genrxiv:/var/www/html/plugins/themes/genrxiv:ro
+      - ./ojs-plugins/aiDisclosure:/var/www/html/plugins/generic/aiDisclosure:ro
+      - ./ojs-plugins/latexCompiler:/var/www/html/plugins/generic/latexCompiler:ro
     entrypoint: ["/bin/sh", "/usr/local/bin/ojs-entrypoint.sh"]
     ports: !reset []
 

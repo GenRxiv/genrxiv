@@ -1,0 +1,59 @@
+msgid "plugins.generic.aiDisclosure.name"
+msgstr "AI Disclosure"
+
+msgid "plugins.generic.aiDisclosure.description"
+msgstr "Adds AI involvement disclosure fields to submissions: models used, level of involvement, and a disclosure statement. Required for GenRxiv submissions."
+
+msgid "plugins.generic.aiDisclosure.field.aiInvolvementLevel"
+msgstr "Level of AI Involvement"
+
+msgid "plugins.generic.aiDisclosure.field.aiInvolvementLevel.description"
+msgstr "Select the level of AI involvement in this research."
+
+msgid "plugins.generic.aiDisclosure.field.aiInvolvementLevel.assisted"
+msgstr "Assisted — AI tools were used for editing, formatting, or reference checking"
+
+msgid "plugins.generic.aiDisclosure.field.aiInvolvementLevel.coGenerated"
+msgstr "Co-generated — AI contributed substantively to the research content"
+
+msgid "plugins.generic.aiDisclosure.field.aiInvolvementLevel.fullyGenerated"
+msgstr "Fully generated — AI generated the research with human oversight"
+
+msgid "plugins.generic.aiDisclosure.field.aiModelsUsed"
+msgstr "AI Models Used"
+
+msgid "plugins.generic.aiDisclosure.field.aiModelsUsed.description"
+msgstr "List the AI models used and their roles (e.g., 'Claude 3.5 — drafting and analysis; GPT-4 — code generation')."
+
+msgid "plugins.generic.aiDisclosure.field.aiDisclosureStatement"
+msgstr "AI Disclosure Statement"
+
+msgid "plugins.generic.aiDisclosure.field.aiDisclosureStatement.description"
+msgstr "A plain-language statement describing what was AI-generated and how the human authors verified the results."
+
+msgid "plugins.generic.aiDisclosure.field.citationsVerified"
+msgstr "Citations Verified"
+
+msgid "plugins.generic.aiDisclosure.field.citationsVerified.description"
+msgstr "Confirm that every citation and numerical claim has been verified by a human author."
+
+msgid "plugins.generic.aiDisclosure.display.title"
+msgstr "AI Involvement Disclosure"
+
+msgid "plugins.generic.aiDisclosure.display.aiInvolvementLevel"
+msgstr "Level of AI Involvement"
+
+msgid "plugins.generic.aiDisclosure.display.aiModelsUsed"
+msgstr "AI Models Used"
+
+msgid "plugins.generic.aiDisclosure.display.aiDisclosureStatement"
+msgstr "Disclosure Statement"
+
+msgid "plugins.generic.aiDisclosure.display.citationsVerified"
+msgstr "Citations Verified"
+
+msgid "plugins.generic.aiDisclosure.display.citationsVerified.yes"
+msgstr "Yes — all citations and numerical claims have been verified by human authors"
+
+msgid "plugins.generic.aiDisclosure.display.citationsVerified.no"
+msgstr "Not verified"

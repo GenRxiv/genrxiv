@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+Disallow: /app/$$$call$$$
+Disallow: /app/index/admin
+Disallow: /app/index/$$$call$$$
+Disallow: /app/index/user/profile
+Disallow: /app/index/login
+Disallow: /app/index/submissions
+
+Sitemap: https://genrxiv.org/app/genrxiv/sitemap
