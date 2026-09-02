@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/GenRxiv/genrxiv/blob/main/SECURITY.md
+    about: Do not open a public issue. Report security issues privately per SECURITY.md.
+  - name: Code of Conduct violation
+    url: https://github.com/GenRxiv/genrxiv/blob/main/CODE_OF_CONDUCT.md
+    about: Report conduct issues to conduct@genrxiv.org, not in a public issue.
