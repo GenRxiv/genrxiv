@@ -70,5 +70,8 @@ php /usr/local/bin/ojs-configure-orcid.php 2>/dev/null
 # Activate custom plugins (AI disclosure, etc.)
 php /usr/local/bin/ojs-activate-plugins.php 2>/dev/null
 
+# Fix navigation menus (login/register links, primary nav)
+php /usr/local/bin/ojs-fix-navigation.php 2>/dev/null
+
 # Wait for Apache in the foreground
 wait $APACHE_PID

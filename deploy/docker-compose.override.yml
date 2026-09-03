@@ -29,6 +29,7 @@ services:
       - ./deploy/ojs-configure-orcid.php:/usr/local/bin/ojs-configure-orcid.php:ro
       - ./deploy/ojs-create-sections.php:/usr/local/bin/ojs-create-sections.php:ro
       - ./deploy/ojs-activate-plugins.php:/usr/local/bin/ojs-activate-plugins.php:ro
+      - ./deploy/ojs-fix-navigation.php:/usr/local/bin/ojs-fix-navigation.php:ro
       - ./deploy/ojs-template-manager-patch.sh:/usr/local/bin/ojs-template-manager-patch.sh:ro
       - ./deploy/ojs-orcid-redirect-patch.sh:/usr/local/bin/ojs-orcid-redirect-patch.sh:ro
       - ./ojs-theme/genrxiv:/var/www/html/plugins/themes/genrxiv:ro
