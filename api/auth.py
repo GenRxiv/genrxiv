@@ -17,13 +17,9 @@ import httpx2 as httpx
 from fastapi import APIRouter, Request, HTTPException, Depends
 from fastapi.responses import RedirectResponse, JSONResponse
 from pydantic import BaseModel
-from slowapi import Limiter
-from slowapi.util import get_remote_address
-
 from config import config
 from db import get_conn
-
-limiter = Limiter(key_func=get_remote_address)
+from ratelimit import limiter
 
 router = APIRouter(prefix="/auth")
 

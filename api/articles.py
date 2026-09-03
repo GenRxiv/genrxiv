@@ -13,15 +13,12 @@ import httpx2 as httpx
 from fastapi import APIRouter, Request, HTTPException, Depends, UploadFile, File, Form, Query
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse, RedirectResponse, Response
 from pydantic import BaseModel, field_validator
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 
 from config import config
 from db import get_conn
 from auth import get_current_author, require_author, require_admin
 from notifications import notify_approved, notify_rejected
-
-limiter = Limiter(key_func=get_remote_address)
+from ratelimit import limiter
 
 router = APIRouter()
 
@@ -36,12 +33,6 @@ MAX_AUTHORS = 50
 MAX_MARKDOWN_SIZE = 25 * 1024 * 1024  # 25 MB
 ALLOWED_EXTENSIONS = {".md", ".markdown"}
 ALLOWED_LICENSES = {
-    "CC-BY-4.0": "https://creativecommons.org/licenses/by/4.0/",
-    "CC-BY-SA-4.0": "https://creativecommons.org/licenses/by-sa/4.0/",
-    "CC-BY-ND-4.0": "https://creativecommons.org/licenses/by-nd/4.0/",
-    "CC-BY-NC-4.0": "https://creativecommons.org/licenses/by-nc/4.0/",
-    "CC-BY-NC-SA-4.0": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
-    "CC-BY-NC-ND-4.0": "https://creativecommons.org/licenses/by-nc-nd/4.0/",
     "CC0": "https://creativecommons.org/publicdomain/zero/1.0/",
 }
 
@@ -263,8 +254,8 @@ async def submit(
     authors: str = Form(...),
     ai_disclosure: str = Form(...),
     abstract: str = Form(""),
-    license: str = Form("CC-BY-4.0"),
-    license_url: str = Form("https://creativecommons.org/licenses/by/4.0/"),
+    license: str = Form("CC0"),
+    license_url: str = Form("https://creativecommons.org/publicdomain/zero/1.0/"),
     keywords: str = Form(""),
     supersedes_id: int | None = Form(None),
     _author: dict = Depends(require_author),

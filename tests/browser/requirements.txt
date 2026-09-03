@@ -1,0 +1,5 @@
+# Browser tests for GenRxiv submit form
+
+-r ../api/requirements.txt
+-r ../api/requirements-dev.txt
+playwright>=1.40.0

@@ -46,6 +46,8 @@ os.environ.setdefault("SESSION_SECRET", "test-session-secret")
 os.environ["SMTP_HOST"] = ""
 os.environ["SMTP_USERNAME"] = ""
 os.environ["SMTP_PASSWORD"] = ""
+# Disable rate limiting in tests so we can make many requests
+os.environ["RATE_LIMIT_ENABLED"] = "false"
 
 # A throwaway files directory so rendered article artefacts never touch /app/files.
 _FILES_TMP = tempfile.mkdtemp(prefix="genrxiv_test_files_")
