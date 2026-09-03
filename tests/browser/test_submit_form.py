@@ -138,14 +138,15 @@ def test_splash_page_loads(page: Page):
 
 def test_nav_links_present_on_all_pages(page: Page):
     """Navigation should be consistent across pages."""
-    for path in ["/", "/browse", "/keywords", "/stats"]:
+    for path in ["/", "/browse", "/subjects", "/stats"]:
         page.goto(f"{BASE_URL}{path}")
         nav = page.locator("nav")
         expect(nav).to_be_visible()
         # Should have links or disabled spans for main sections
         # (current page's nav item is a span, not an anchor)
         assert page.locator("nav :has-text('Browse')").count() >= 1
-        assert page.locator("nav a:has-text('Feed')").count() >= 1
+        # "Subjects" may be a link or a disabled span depending on the page
+        assert page.locator("nav :has-text('Subjects')").count() >= 1
 
 
 def test_nav_disables_current_page_link(page: Page):

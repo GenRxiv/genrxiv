@@ -59,9 +59,10 @@ We follow coordinated disclosure:
   parameterized queries. No string interpolation in SQL.
 - **Input validation:** ORCID iD format validation (regex), title
   length limits (500 chars), abstract (5000), AI disclosure (2000),
-  keyword count (20) and length (100) limits, author count (50),
-  license whitelist (Creative Commons only), file extension whitelist
-  (.md, .markdown), file size limit (25 MB).
+  subject classification count (exactly 3 OECD FOS required) and
+  length (100) limits, author count (50), license whitelist (CC0
+  only), file extension whitelist (.md, .markdown), file size limit
+  (25 MB).
 - **Path traversal protection:** All file-serving endpoints use
   `safe_resolve_file()` which resolves the path and verifies it stays
   under the files directory.
@@ -80,6 +81,12 @@ We follow coordinated disclosure:
 - **API docs not at default path:** Swagger UI at `/api/docs` (not
   `/docs`), OpenAPI schema at `/api/openapi.json` (not
   `/openapi.json`).
+- **Maintenance mode:** Database-flag-controlled maintenance mode
+  can take the site offline for scheduled downtime. Admin endpoints
+  (/admin/maintenance, /health, /auth/me) remain accessible for
+  recovery.
+- **Rate limiting toggle:** Rate limiting can be disabled via the
+  `RATE_LIMIT_ENABLED=false` environment variable (used in tests).
 - **Upload size limit:** Nginx `client_max_body_size 26m` matches API
   validation (25 MB + overhead).
 

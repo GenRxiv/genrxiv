@@ -84,8 +84,8 @@ def _dc_record(article: dict, authors: list[dict]) -> str:
     lines.append(f"  <dc:title>{escape(article['title'])}</dc:title>")
     for a in authors:
         lines.append(f"  <dc:creator>{escape(a['name'])}</dc:creator>")
-    for kw in article.get("keywords", []):
-        lines.append(f"  <dc:subject>{escape(kw)}</dc:subject>")
+    for subj in article.get("subjects", []):
+        lines.append(f"  <dc:subject>{escape(subj)}</dc:subject>")
     if article.get("abstract"):
         lines.append(f"  <dc:description>{escape(article['abstract'])}</dc:description>")
     if article.get("published_at"):

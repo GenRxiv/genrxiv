@@ -49,7 +49,7 @@ app = FastAPI(
         "- `abstract`: Article abstract\n"
         "- `authors`: JSON array of `{orcid, name}` objects\n"
         "- `ai_disclosure`: AI involvement disclosure\n"
-        "- `keywords`: Comma-separated OECD FOS classifications (exactly 3)\n"
+        "- `subjects`: Comma-separated OECD FOS classifications (exactly 3)\n"
         "- `license`: `CC0`\n"
         "- `license_url`: CC0 URL\n\n"
         "Submissions enter `pending` status and require moderator approval "
@@ -362,7 +362,7 @@ Required fields:
   abstract       - Article abstract (string)
   authors        - JSON array of {{"orcid": "0000-0000-0000-0000", "name": "Author Name"}}
   ai_disclosure  - Description of AI involvement (string)
-  keywords       - Comma-separated OECD FOS classifications (exactly 3 required)
+  subjects       - Comma-separated OECD FOS classifications (exactly 3 required)
                    Format: "Category > Field", e.g. "Natural sciences > Computer and information sciences"
   license        - License identifier ("CC0")
   license_url    - License URL (CC0 URL: https://creativecommons.org/publicdomain/zero/1.0/)
@@ -419,7 +419,7 @@ Top-level domains:
   - Humanities and the arts
 
 Each domain has subdomains. Pass as comma-separated "Domain > Subdomain" values
-in the keywords field.
+in the subjects field.
 
 LICENSE
 -------

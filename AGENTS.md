@@ -222,8 +222,8 @@ API container, and runs all 91 API tests. Exits 0 if all pass.
 ## Security notes
 
 - ORCID is the only login mechanism — no email/password registration
-- Input validation: ORCID format, title/abstract/keyword length limits,
-  license whitelist, file extension whitelist
+- Input validation: ORCID format, title/abstract/subject length limits,
+  CC0-only license, file extension whitelist
 - Path traversal protection on all file-serving endpoints
 - Security headers at both nginx and FastAPI levels
 - API docs at `/api/docs` (not default `/docs`)

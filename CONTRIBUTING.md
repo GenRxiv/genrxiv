@@ -25,7 +25,7 @@ nginx config, the splash page. See the issues list.
 ## Reporting a security issue
 
 Don't open a public issue. The conversion service runs untrusted
-author-submitted LaTeX, so sandbox escapes are the sharpest class of bug here
+author-submitted Markdown, so sandbox escapes are the sharpest class of bug here
 and we'd rather hear about them privately first. Email the address on the
 organisation profile.
 
@@ -34,9 +34,52 @@ organisation profile.
 1. Fork and branch from `main`.
 2. Keep pull requests focused — one concern per PR.
 3. If you're changing the conversion service, say in the PR what you did to
-   check the sandboxing still holds. Malformed and hostile `.tex` inputs are
+   check the sandboxing still holds. Malformed and hostile `.md` inputs are
    part of the test surface, not an edge case.
 4. Describe what you changed and why. Screenshots help for anything visual.
+
+### Running tests
+
+```bash
+# API tests (91 tests, requires PostgreSQL):
+cd api && pip install -r requirements-dev.txt
+export DATABASE_URL_TEST="postgresql://user:pass@localhost:5432/genrxiv_test"
+pytest test_api.py -v
+
+# Browser tests (13 Playwright tests, requires running API):
+cd tests/browser && pip install -r requirements.txt
+playwright install chromium
+pytest test_submit_form.py -v
+
+# Conversion service tests (requires pandoc + tectonic):
+cd convert-service && pip install -r requirements-dev.txt
+pytest test_app.py -v
+```
+
+Set `RATE_LIMIT_ENABLED=false` when running API tests to avoid
+rate-limit interference.
+
+### Database migrations
+
+Schema changes go in numbered SQL files in `api/migrations/`. To apply:
+
+```bash
+docker exec -w /app deploy-api-1 python -m migrate
+docker exec -w /app deploy-api-1 python -m migrate --status
+```
+
+### Deployment workflow
+
+For scheduled downtime (patches, migrations, hosting changes):
+
+```bash
+scripts/deploy-downtime.sh          # full workflow
+scripts/deploy-downtime.sh --dry-run # preview
+```
+
+This enables maintenance mode, backs up, applies changes, runs
+migrations, tests, and reopens the site if tests pass. See
+`AGENTS.md` for the full documentation.
 
 ### Secret scanning
 

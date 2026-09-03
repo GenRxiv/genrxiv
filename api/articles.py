@@ -27,8 +27,8 @@ router = APIRouter()
 MAX_TITLE_LENGTH = 500
 MAX_ABSTRACT_LENGTH = 5000
 MAX_AI_DISCLOSURE_LENGTH = 2000
-MAX_KEYWORDS = 20
-MAX_KEYWORD_LENGTH = 100
+MAX_SUBJECTS = 20
+MAX_SUBJECT_LENGTH = 100
 MAX_AUTHORS = 50
 MAX_MARKDOWN_SIZE = 25 * 1024 * 1024  # 25 MB
 ALLOWED_EXTENSIONS = {".md", ".markdown"}
@@ -76,18 +76,18 @@ def validate_title(title: str) -> str:
     return title
 
 
-def validate_keywords(keywords: list[str]) -> list[str]:
-    """Validate keyword list."""
-    if len(keywords) > MAX_KEYWORDS:
-        raise HTTPException(400, f"Too many keywords (max {MAX_KEYWORDS})")
+def validate_subjects(subjects: list[str]) -> list[str]:
+    """Validate subject classification list."""
+    if len(subjects) > MAX_SUBJECTS:
+        raise HTTPException(400, f"Too many subjects (max {MAX_SUBJECTS})")
     cleaned = []
-    for kw in keywords:
-        kw = kw.strip()
-        if not kw:
+    for subj in subjects:
+        subj = subj.strip()
+        if not subj:
             continue
-        if len(kw) > MAX_KEYWORD_LENGTH:
-            raise HTTPException(400, f"Keyword too long (max {MAX_KEYWORD_LENGTH} chars): {kw[:50]}")
-        cleaned.append(kw)
+        if len(subj) > MAX_SUBJECT_LENGTH:
+            raise HTTPException(400, f"Subject too long (max {MAX_SUBJECT_LENGTH} chars): {subj[:50]}")
+        cleaned.append(subj)
     return cleaned
 
 
@@ -226,8 +226,8 @@ def build_jsonld(article: dict, authors: list[dict]) -> dict:
         jsonld["datePublished"] = article["published_at"].strftime("%Y-%m-%d")
     if article.get("license_url"):
         jsonld["license"] = article["license_url"]
-    if article.get("keywords"):
-        jsonld["keywords"] = ", ".join(article["keywords"])
+    if article.get("subjects"):
+        jsonld["keywords"] = ", ".join(article["subjects"])
     jsonld["inLanguage"] = "en"
     jsonld["isPartOf"] = {
         "@type": "PublicationVolume",
@@ -256,7 +256,7 @@ async def submit(
     abstract: str = Form(""),
     license: str = Form("CC0"),
     license_url: str = Form("https://creativecommons.org/publicdomain/zero/1.0/"),
-    keywords: str = Form(""),
+    subjects: str = Form(""),
     supersedes_id: int | None = Form(None),
     _author: dict = Depends(require_author),
 ):
@@ -309,11 +309,11 @@ async def submit(
         if a.get("affiliation"):
             a["affiliation"] = a["affiliation"].strip()[:300]
 
-    # Parse and validate keywords (exactly 3 OECD FOS classifications required)
-    kw_list = validate_keywords(
-        [k.strip() for k in keywords.split(",") if k.strip()] if keywords else []
+    # Parse and validate subjects (exactly 3 OECD FOS classifications required)
+    subj_list = validate_subjects(
+        [s.strip() for s in subjects.split(",") if s.strip()] if subjects else []
     )
-    if len(kw_list) != 3:
+    if len(subj_list) != 3:
         raise HTTPException(400, "Exactly 3 subject classifications are required")
 
     # Insert article
@@ -340,10 +340,10 @@ async def submit(
                 version = latest["version"] + 1
 
         row = conn.execute(
-            """INSERT INTO articles (title, abstract, ai_disclosure, license, license_url, keywords, source_markdown, submitted_by, status, version, supersedes_id)
+            """INSERT INTO articles (title, abstract, ai_disclosure, license, license_url, subjects, source_markdown, submitted_by, status, version, supersedes_id)
                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'pending', %s, %s)
                RETURNING id, ark, status, submitted_at""",
-            (title, abstract or None, ai_disclosure, license, license_url, kw_list, md_text, _author["id"], version, supersedes_id),
+            (title, abstract or None, ai_disclosure, license, license_url, subj_list, md_text, _author["id"], version, supersedes_id),
         ).fetchone()
         article_id = row["id"]
 
@@ -423,7 +423,7 @@ def list_articles(
     with get_conn().connection() as conn:
         if q:
             rows = conn.execute(
-                """SELECT id, ark, title, abstract, keywords, published_at, license
+                """SELECT id, ark, title, abstract, subjects, published_at, license
                    FROM articles
                    WHERE status = 'published'
                      AND (title ILIKE %s OR abstract ILIKE %s)
@@ -438,7 +438,7 @@ def list_articles(
             ).fetchone()["c"]
         else:
             rows = conn.execute(
-                """SELECT id, ark, title, abstract, keywords, published_at, license
+                """SELECT id, ark, title, abstract, subjects, published_at, license
                    FROM articles WHERE status = 'published'
                    ORDER BY published_at DESC LIMIT %s OFFSET %s""",
                 (per_page, offset),
@@ -461,7 +461,7 @@ def list_articles(
                 "ark": r["ark"],
                 "title": r["title"],
                 "abstract": r["abstract"],
-                "keywords": r["keywords"],
+                "subjects": r["subjects"],
                 "published_at": r["published_at"].isoformat() if r["published_at"] else None,
                 "license": r["license"],
             }
@@ -493,7 +493,7 @@ def get_article_meta(article_id: int, format: str = Query("json")):
         "ai_disclosure": row["ai_disclosure"],
         "license": row["license"],
         "license_url": row["license_url"],
-        "keywords": row["keywords"],
+        "subjects": row["subjects"],
         "version": row["version"],
         "authors": authors,
         "published_at": row["published_at"].isoformat() if row["published_at"] else None,
@@ -922,7 +922,7 @@ def author_profile(orcid: str):
         if not author:
             raise HTTPException(404, "Author not found")
         articles = conn.execute(
-            """SELECT a.id, a.ark, a.title, a.abstract, a.keywords, a.published_at
+            """SELECT a.id, a.ark, a.title, a.abstract, a.subjects, a.published_at
                FROM articles a
                JOIN article_authors aa ON a.id = aa.article_id
                WHERE aa.author_id = %s AND a.status = 'published'
@@ -942,43 +942,43 @@ def author_profile(orcid: str):
     }
 
 
-# ─── Keyword browsing ──────────────────────────────────────────────────────
+# ─── Subject browsing ──────────────────────────────────────────────────────
 
-@router.get("/api/keywords")
-def list_keywords():
-    """List all keywords with article counts."""
+@router.get("/api/subjects")
+def list_subjects():
+    """List all subject classifications with article counts."""
     with get_conn().connection() as conn:
         rows = conn.execute(
-            """SELECT keyword, COUNT(*) as count
-               FROM articles, unnest(keywords) AS keyword
+            """SELECT subject, COUNT(*) as count
+               FROM articles, unnest(subjects) AS subject
                WHERE status = 'published'
-               GROUP BY keyword
-               ORDER BY count DESC, keyword ASC""",
+               GROUP BY subject
+               ORDER BY count DESC, subject ASC""",
         ).fetchall()
-    return {"keywords": rows}
+    return {"subjects": rows}
 
 
-@router.get("/api/keywords/{keyword:path}/articles")
-def articles_by_keyword(keyword: str, page: int = Query(1, ge=1), per_page: int = Query(20, ge=1, le=100)):
-    """List published articles by keyword."""
+@router.get("/api/subjects/{subject:path}/articles")
+def articles_by_subject(subject: str, page: int = Query(1, ge=1), per_page: int = Query(20, ge=1, le=100)):
+    """List published articles by subject classification."""
     from urllib.parse import unquote
-    keyword = unquote(keyword)
+    subject = unquote(subject)
     offset = (page - 1) * per_page
     with get_conn().connection() as conn:
         rows = conn.execute(
-            """SELECT id, ark, title, abstract, keywords, published_at
+            """SELECT id, ark, title, abstract, subjects, published_at
                FROM articles
-               WHERE status = 'published' AND %s = ANY(keywords)
+               WHERE status = 'published' AND %s = ANY(subjects)
                ORDER BY published_at DESC LIMIT %s OFFSET %s""",
-            (keyword, per_page, offset),
+            (subject, per_page, offset),
         ).fetchall()
         total = conn.execute(
             """SELECT COUNT(*) as c FROM articles
-               WHERE status = 'published' AND %s = ANY(keywords)""",
-            (keyword,),
+               WHERE status = 'published' AND %s = ANY(subjects)""",
+            (subject,),
         ).fetchone()["c"]
     return {
-        "keyword": keyword,
+        "subject": subject,
         "items": rows,
         "total": total,
         "page": page,

@@ -7,7 +7,7 @@ Simple server-rendered pages using Jinja2 templates:
 - /admin — moderation queue and stats
 - /browse — article listing
 - /author/{orcid} — author profile page
-- /keywords — keyword cloud
+- /subjects — subject cloud
 """
 from datetime import datetime
 from urllib.parse import quote
@@ -76,7 +76,7 @@ def _oecd_select_html(selected: list[str] = None) -> str:
             is_selected = " selected" if value in selected else ""
             options += f'<option value="{value}"{is_selected}>{field}</option>\n'
         options += "</optgroup>\n"
-    return f'<select name="keywords" multiple size="10" required style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:4px;font-size:1rem;font-family:inherit">{options}</select>'
+    return f'<select name="subjects" multiple size="10" required style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:4px;font-size:1rem;font-family:inherit">{options}</select>'
 
 
 # ─── Shared template helpers ───────────────────────────────────────────────
@@ -139,8 +139,8 @@ h1, h2, h3, h4 { font-family: 'Fraunces', Georgia, serif; line-height: 1.3; }
 .card h2 a:hover { color: var(--cobalt); }
 .card .meta { font-size: 0.85rem; color: #888; margin-top: 0.5rem; }
 .card .abstract { font-size: 0.95rem; color: #555; margin-top: 0.5rem; }
-.card .keywords { margin-top: 0.5rem; }
-.card .keywords a {
+.card .subjects { margin-top: 0.5rem; }
+.card .subjects a {
     font-size: 0.8rem;
     background: var(--muted);
     padding: 0.15rem 0.5rem;
@@ -176,15 +176,15 @@ h1, h2, h3, h4 { font-family: 'Fraunces', Georgia, serif; line-height: 1.3; }
 .stat-card { background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 1.2rem; text-align: center; }
 .stat-card .num { font-size: 2rem; font-family: 'Fraunces', Georgia, serif; font-weight: 700; }
 .stat-card .label { font-size: 0.85rem; color: #888; margin-top: 0.3rem; }
-.keyword-cloud { display: flex; flex-wrap: wrap; gap: 0.5rem; }
-.keyword-cloud a {
+.subject-cloud { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.subject-cloud a {
     background: #fff;
     border: 1px solid var(--border);
     padding: 0.3rem 0.8rem;
     border-radius: 4px;
     color: var(--ink);
 }
-.keyword-cloud a:hover { border-color: var(--cobalt); color: var(--cobalt); }
+.subject-cloud a:hover { border-color: var(--cobalt); color: var(--cobalt); }
 .empty { text-align: center; padding: 3rem; color: #888; }
 .empty h3 { font-size: 1.2rem; margin-bottom: 0.5rem; }
 .error { background: #f8d7da; color: #721c24; padding: 0.8rem 1rem; border-radius: 4px; margin-bottom: 1rem; }
@@ -242,7 +242,7 @@ def _header_html(author: dict | None, current_path: str = "") -> str:
 <div style="display:flex;gap:1.2rem;align-items:center">
 <a href="/" style="font-weight:600;color:var(--accent);text-decoration:none">{config.site_name}</a>
 {nav_link("/browse", "Browse")}
-{nav_link("/keywords", "Keywords")}
+{nav_link("/subjects", "Subjects")}
 {nav_link("/stats", "Stats")}
 <a href="/feed.xml" style="color:var(--ink);text-decoration:none">Feed</a>
 </div>
@@ -309,11 +309,11 @@ def _article_card(article: dict, show_endorsements: bool = False) -> str:
     ark = article.get("ark", "")
     title = article.get("title", "Untitled")
     abstract = article.get("abstract") or ""
-    keywords = article.get("keywords", [])
+    subjects = article.get("subjects", [])
     published = _format_date(article.get("published_at"))
-    kw_html = " ".join(
-        f'<a href="/keywords/{quote(k)}">{k}</a>' for k in keywords
-    ) if keywords else ""
+    subj_html = " ".join(
+        f'<a href="/subjects/{quote(s)}">{s}</a>' for s in subjects
+    ) if subjects else ""
     authors_html = ""
     if "authors" in article and article["authors"]:
         authors_html = "<div class='meta'>" + ", ".join(
@@ -325,7 +325,7 @@ def _article_card(article: dict, show_endorsements: bool = False) -> str:
 <h2><a href="/article/{ark}">{title}</a></h2>
 {authors_html}
 {f'<div class="abstract">{abstract}</div>' if abstract else ''}
-{f'<div class="keywords">{kw_html}</div>' if kw_html else ''}
+{f'<div class="subjects">{subj_html}</div>' if subj_html else ''}
 <div class="meta">Published {published} &middot; ARK: {ark}</div>
 </div>"""
 
@@ -644,7 +644,7 @@ def browse_page(
     with get_conn().connection() as conn:
         if q:
             rows = conn.execute(
-                f"""SELECT a.id, a.ark, a.title, a.abstract, a.keywords, a.published_at,
+                f"""SELECT a.id, a.ark, a.title, a.abstract, a.subjects, a.published_at,
                           string_agg(au.name, ', ' ORDER BY aa."order") as author_names,
                           COALESCE(MAX(au.orcid_works_count), 0) as max_works
                    FROM articles a
@@ -664,7 +664,7 @@ def browse_page(
             ).fetchone()["c"]
         else:
             rows = conn.execute(
-                f"""SELECT a.id, a.ark, a.title, a.abstract, a.keywords, a.published_at,
+                f"""SELECT a.id, a.ark, a.title, a.abstract, a.subjects, a.published_at,
                           string_agg(au.name, ', ' ORDER BY aa."order") as author_names,
                           COALESCE(MAX(au.orcid_works_count), 0) as max_works
                    FROM articles a
@@ -723,23 +723,23 @@ def browse_page(
     return _page("Browse", body, author, current_path="/browse")
 
 
-# ─── Keywords page ─────────────────────────────────────────────────────────
+# ─── Subjects page ─────────────────────────────────────────────────────────
 
-@router.get("/keywords", response_class=HTMLResponse)
-def keywords_page(request: Request):
-    """Keyword cloud."""
+@router.get("/subjects", response_class=HTMLResponse)
+def subjects_page(request: Request):
+    """Subject cloud."""
     author = get_current_author(request)
     with get_conn().connection() as conn:
         rows = conn.execute(
-            """SELECT keyword, COUNT(*) as count
-               FROM articles, unnest(keywords) AS keyword
+            """SELECT subject, COUNT(*) as count
+               FROM articles, unnest(subjects) AS subject
                WHERE status = 'published'
-               GROUP BY keyword
-               ORDER BY count DESC, keyword ASC""",
+               GROUP BY subject
+               ORDER BY count DESC, subject ASC""",
         ).fetchall()
 
     if not rows:
-        body = '<div class="empty"><h3>No keywords yet</h3><p>Keywords appear once articles are published.</p></div>'
+        body = '<div class="empty"><h3>No subjects yet</h3><p>Subjects appear once articles are published.</p></div>'
     else:
         # Scale font sizes by count
         max_count = max(r["count"] for r in rows)
@@ -747,14 +747,14 @@ def keywords_page(request: Request):
         for r in rows:
             size = 0.85 + (r["count"] / max_count) * 0.8
             links.append(
-                f'<a href="/keywords/{quote(r["keyword"])}/articles" style="font-size:{size:.1f}rem">{r["keyword"]} <span style="color:#888">({r["count"]})</span></a>'
+                f'<a href="/subjects/{quote(r["subject"])}/articles" style="font-size:{size:.1f}rem">{r["subject"]} <span style="color:#888">({r["count"]})</span></a>'
             )
         body = f"""
-        <h1>Keywords</h1>
-        <p style="color:#888;margin-bottom:1.5rem">{len(rows)} keyword{'s' if len(rows) != 1 else ''} across published articles</p>
-        <div class="keyword-cloud">{''.join(links)}</div>
+        <h1>Subjects</h1>
+        <p style="color:#888;margin-bottom:1.5rem">{len(rows)} subject{'s' if len(rows) != 1 else ''} across published articles</p>
+        <div class="subject-cloud">{''.join(links)}</div>
         """
-    return _page("Keywords", body, author, current_path="/keywords")
+    return _page("Subjects", body, author, current_path="/subjects")
 
 
 @router.get("/stats", response_class=HTMLResponse)
@@ -835,44 +835,44 @@ def stats_page(request: Request):
     return _page("Statistics", body, author, current_path="/stats")
 
 
-# ─── Keyword articles page ─────────────────────────────────────────────────
+# ─── Subject articles page ─────────────────────────────────────────────────
 
-@router.get("/keywords/{keyword:path}/articles", response_class=HTMLResponse)
-def keyword_articles(keyword: str, request: Request, page: int = 1, per_page: int = 20):
-    """Articles by keyword."""
+@router.get("/subjects/{subject:path}/articles", response_class=HTMLResponse)
+def subject_articles(subject: str, request: Request, page: int = 1, per_page: int = 20):
+    """Articles by subject."""
     from urllib.parse import unquote
-    keyword = unquote(keyword)
+    subject = unquote(subject)
     author = get_current_author(request)
     offset = (page - 1) * per_page
     with get_conn().connection() as conn:
         rows = conn.execute(
-            """SELECT a.id, a.ark, a.title, a.abstract, a.keywords, a.published_at,
+            """SELECT a.id, a.ark, a.title, a.abstract, a.subjects, a.published_at,
                       string_agg(au.name, ', ' ORDER BY aa."order") as author_names
                FROM articles a
                LEFT JOIN article_authors aa ON a.id = aa.article_id
                LEFT JOIN authors au ON aa.author_id = au.id
-               WHERE a.status = 'published' AND %s = ANY(a.keywords)
+               WHERE a.status = 'published' AND %s = ANY(a.subjects)
                GROUP BY a.id
                ORDER BY a.published_at DESC LIMIT %s OFFSET %s""",
-            (keyword, per_page, offset),
+            (subject, per_page, offset),
         ).fetchall()
         total = conn.execute(
             """SELECT COUNT(*) as c FROM articles
-               WHERE status = 'published' AND %s = ANY(keywords)""",
-            (keyword,),
+               WHERE status = 'published' AND %s = ANY(subjects)""",
+            (subject,),
         ).fetchone()["c"]
 
     cards = "".join(_article_card(r) for r in rows) if rows else ""
     if not cards:
-        cards = '<div class="empty"><h3>No articles with this keyword</h3></div>'
+        cards = '<div class="empty"><h3>No articles with this subject</h3></div>'
 
     body = f"""
-    <h1>Keyword: {keyword}</h1>
+    <h1>Subject: {subject}</h1>
     <p style="color:#888;margin-bottom:1.5rem">{total} article{'s' if total != 1 else ''}</p>
     {cards}
-    <div style="margin-top:1.5rem"><a href="/keywords">&larr; All keywords</a></div>
+    <div style="margin-top:1.5rem"><a href="/subjects">&larr; All subjects</a></div>
     """
-    return _page(f"Keyword: {keyword}", body, author)
+    return _page(f"Subject: {subject}", body, author)
 
 
 # ─── Author profile page ───────────────────────────────────────────────────
@@ -891,7 +891,7 @@ def author_page(orcid: str, request: Request):
         if not author:
             raise HTTPException(404, "Author not found")
         articles = conn.execute(
-            """SELECT a.id, a.ark, a.title, a.abstract, a.keywords, a.published_at,
+            """SELECT a.id, a.ark, a.title, a.abstract, a.subjects, a.published_at,
                       string_agg(au.name, ', ' ORDER BY aa2."order") as author_names
                FROM articles a
                JOIN article_authors aa ON a.id = aa.article_id
@@ -1176,7 +1176,7 @@ function showPreview(e) {
     var submitterOrcid = document.querySelector('[name="submitter_orcid"]').value;
     var submitterName = document.querySelector('[name="submitter_name"]').value;
     var coAuthorInputs = document.querySelectorAll('[name="co_author_orcids"]');
-    var keywords = getSelectedClassifications();
+    var subjects = getSelectedClassifications();
 
     // Gather all authors
     var authors = [{orcid: submitterOrcid, name: submitterName}];
@@ -1194,12 +1194,12 @@ function showPreview(e) {
     var authorsHtml = authors.map(function(a) {
         return '<div class="author-line">' + a.name + ' <span class="orcid">' + a.orcid + '</span></div>';
     }).join('');
-    var kwHtml = keywords.map(function(k) { return '<span class="subject-tag">' + k + '</span>'; }).join(' ');
+    var subjHtml = subjects.map(function(k) { return '<span class="subject-tag">' + k + '</span>'; }).join(' ');
 
     document.getElementById('preview-title').textContent = title;
     document.getElementById('preview-abstract').textContent = abstract;
     document.getElementById('preview-authors').innerHTML = authorsHtml;
-    document.getElementById('preview-keywords').innerHTML = kwHtml;
+    document.getElementById('preview-subjects').innerHTML = subjHtml;
     document.getElementById('preview-file').textContent = mdFile.name + ' (' + (mdFile.size / 1024).toFixed(1) + ' KB)';
 
     // Store authors JSON for final submission
@@ -1209,7 +1209,7 @@ function showPreview(e) {
     document.getElementById('confirm-title').value = title;
     document.getElementById('confirm-abstract').value = abstract;
     document.getElementById('confirm-authors').value = JSON.stringify(authors);
-    document.getElementById('confirm-keywords').value = keywords.join(', ');
+    document.getElementById('confirm-subjects').value = subjects.join(', ');
     // Copy the file to the confirm form's file input
     var confirmFile = document.getElementById('confirm-markdown');
     confirmFile.files = mdFile;
@@ -1410,7 +1410,7 @@ def submit_page(request: Request):
             <h2 id="preview-title"></h2>
             <div class="meta"><strong>Abstract:</strong> <span id="preview-abstract"></span></div>
             <div class="authors-list" id="preview-authors"></div>
-            <div class="meta"><strong>Subjects:</strong> <span id="preview-keywords"></span></div>
+            <div class="meta"><strong>Subjects:</strong> <span id="preview-subjects"></span></div>
             <div class="meta"><strong>File:</strong> <span id="preview-file"></span></div>
             <div class="meta"><strong>License:</strong> CC0 (Public Domain)</div>
             <div class="meta"><strong>AI disclosure:</strong> AI-generated content, reviewed and verified by the authors.</div>
@@ -1426,7 +1426,7 @@ def submit_page(request: Request):
             <input type="hidden" name="license" value="CC0">
             <input type="hidden" name="license_url" value="https://creativecommons.org/publicdomain/zero/1.0/">
             <input type="hidden" name="ai_disclosure" value="AI-generated content, reviewed and verified by the authors.">
-            <input type="hidden" name="keywords" id="confirm-keywords">
+            <input type="hidden" name="subjects" id="confirm-subjects">
             <!-- File needs to be re-attached — we'll use JS to copy it -->
             <input type="file" name="markdown" id="confirm-markdown" style="display:none">
             <button type="submit" class="btn btn-primary">Confirm and submit</button>
@@ -1500,8 +1500,8 @@ def submit_version_page(article_id: int, request: Request):
             <textarea name="abstract" placeholder="Brief abstract..."></textarea>
         </div>
         <div class="form-group">
-            <label>Keywords (comma-separated, optional)</label>
-            <input type="text" name="keywords" placeholder="AI, machine learning, ...">
+            <label>Subjects (comma-separated, optional)</label>
+            <input type="text" name="subjects" placeholder="AI, machine learning, ...">
         </div>
         <div class="form-group">
             <label>License</label>
@@ -1889,7 +1889,7 @@ def admin_submission_detail(article_id: int, request: Request):
 
     {f'<div class="card"><h3>Abstract</h3><p>{article["abstract"]}</p></div>' if article.get('abstract') else ''}
 
-    {f'<div class="card"><h3>Keywords</h3><p>{", ".join(article["keywords"])}</p></div>' if article.get('keywords') else ''}
+    {f'<div class="card"><h3>Subjects</h3><p>{", ".join(article["subjects"])}</p></div>' if article.get('subjects') else ''}
 
     <div class="card">
         <h3>Markdown Preview</h3>

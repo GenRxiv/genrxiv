@@ -32,10 +32,11 @@ is the signal layer, not editorial gatekeeping.
 |---|---|
 | **Submissions** | Markdown only — rendered to HTML (primary) with PDF on demand |
 | **Author identity** | ORCID iD, so attribution is verifiable |
-| **Disclosure** | One rule: state plainly what the AI did |
-| **Machine access** | OAI-PMH metadata endpoint, sitemap, Atom feed, schema.org JSON-LD, public stats API |
-| **Licensing** | Open access, Creative Commons (author's choice) |
-| **Discovery** | Browse, search, keyword pages, author pages |
+| **Disclosure** | Authors confirm they reviewed and verified AI-generated content |
+| **Classification** | Exactly 3 OECD Fields of Science subject classifications per paper |
+| **Machine access** | OAI-PMH metadata endpoint, sitemap, Atom feed, schema.org JSON-LD, public stats API, agent discovery manifest |
+| **Licensing** | CC0 (Public Domain Dedication) — all submissions |
+| **Discovery** | Browse, search, subject pages, author pages |
 | **Endorsements** | ORCID-identified authors can endorse papers (community signal) |
 | **Versioning** | Authors can submit revised versions; ARK persists across versions |
 | **Notifications** | Authors notified by email when submissions are approved or rejected |
@@ -76,17 +77,17 @@ simple: submit, moderate, publish.
                            |
         +------------------+------------------+
         |                  |                  |
-    FastAPI API    Conversion Service    Static splash page
-    (submission,   (Markdown → HTML/PDF   (site/index.html)
-     moderation,    via Pandoc + Tectonic)
-     articles,      No published ports
-     OAI-PMH,
-     auth, stats)
+    FastAPI API    Conversion Service    PostgreSQL
+    (submission,   (Markdown → HTML/PDF   (articles, authors,
+     moderation,    via Pandoc + Tectonic)  downloads, sessions,
+     articles,      No published ports      endorsements, settings,
+     OAI-PMH,                               schema_migrations)
+     auth, stats,
+     agent discovery,
+     maintenance mode)
         |
-     PostgreSQL
-     (articles, authors,
-      downloads, sessions,
-      endorsements)
+     Article files
+     (HTML, PDF renders)
 ```
 
 The conversion service runs untrusted author-submitted Markdown, so it is
@@ -98,8 +99,8 @@ restricts file system access.
 ### Security
 
 - All queries use parameterized SQL (psycopg3) — no string interpolation
-- Input validation: ORCID format, title/abstract/keyword length limits,
-  license whitelist, file extension whitelist, file size limits
+- Input validation: ORCID format, title/abstract/subject length limits,
+  CC0-only license, file extension whitelist, file size limits
 - Path traversal protection on all file-serving endpoints
 - Rate limiting: API-level (SlowAPI) and nginx-level (limit_req)
 - Security headers: X-Content-Type-Options, X-Frame-Options, HSTS,
@@ -118,11 +119,13 @@ See [SECURITY.md](SECURITY.md) for the full policy.
 
 ```
 api/              FastAPI application (submission, moderation, articles, OAI-PMH)
+  migrations/     Numbered SQL migration files
 convert-service/  Markdown to HTML/PDF conversion sidecar (Pandoc + Tectonic)
 deploy/           docker-compose stack, nginx config, .env.example
-site/             the public splash page
+tests/browser/    Playwright browser tests
+scripts/          backup, restore, maintenance, deployment scripts
 brand/            logos and brand assets
-docs/             migration plan, setup guide, author prompt
+docs/             setup guide, author prompt
 test-paper.md     sample submission for testing
 ```
 
@@ -135,8 +138,8 @@ test-paper.md     sample submission for testing
 | GET | `/health` | Service health check |
 | GET | `/api/articles` | List published articles (paginated, searchable) |
 | GET | `/api/articles/{id}` | Article metadata (JSON or JSON-LD) |
-| GET | `/api/keywords` | All keywords with article counts |
-| GET | `/api/keywords/{keyword}/articles` | Articles by keyword |
+| GET | `/api/subjects` | All subject classifications with article counts |
+| GET | `/api/subjects/{subject}/articles` | Articles by subject classification |
 | GET | `/api/authors/{orcid}` | Author profile and articles |
 | GET | `/api/stats` | Public stats (no auth, agent-readable) |
 | GET | `/api/articles/{id}/endorsements` | Endorsement count and list |
@@ -148,13 +151,16 @@ test-paper.md     sample submission for testing
 | GET | `/sitemap.xml` | XML sitemap |
 | GET | `/feed.xml` | Atom 1.0 feed (20 most recent articles) |
 | GET | `/robots.txt` | Robots file |
+| GET | `/.well-known/ai-plugin.json` | AI plugin manifest for agent discovery |
+| GET | `/api/agent-guide` | Plain-text agent guide with submission instructions |
+| GET | `/api/fos` | OECD Fields of Science taxonomy (JSON) |
 
 ### Web UI
 
 | Method | Path | Description |
 |---|---|---|
 | GET | `/browse` | Browse articles (search, pagination) |
-| GET | `/keywords` | Keyword cloud |
+| GET | `/subjects` | Subject classification cloud |
 | GET | `/author/{orcid}` | Author profile page |
 | GET | `/submit` | Submission form (requires ORCID) |
 | GET | `/dashboard` | Author's submissions |
@@ -189,6 +195,8 @@ test-paper.md     sample submission for testing
 | POST | `/admin/articles/{id}` | Approve/reject (form-based) |
 | PATCH | `/admin/articles/{id}` | Approve/reject (JSON API) |
 | GET | `/admin/stats` | Aggregate stats |
+| GET | `/admin/maintenance` | Maintenance mode status |
+| POST | `/admin/maintenance` | Toggle maintenance mode |
 
 ### API documentation
 
@@ -214,19 +222,26 @@ Cloudflare Tunnel, ORCID registration, and backups.
 ## Tests
 
 ```bash
+# API tests (91 tests, requires PostgreSQL)
+cd api
+pip install -r requirements-dev.txt
+export DATABASE_URL_TEST=postgresql://user:pass@localhost/genrxiv_test
+export RATE_LIMIT_ENABLED=false
+pytest test_api.py -v
+
+# Browser tests (13 Playwright tests, requires running API)
+cd tests/browser
+pip install -r requirements.txt
+playwright install chromium
+pytest test_submit_form.py -v
+
 # Conversion service tests (requires pandoc + tectonic)
 cd convert-service
 pip install -r requirements-dev.txt
 pytest test_app.py -v
-
-# API tests (requires PostgreSQL)
-cd api
-pip install -r requirements-dev.txt
-export DATABASE_URL_TEST=postgresql://user:pass@localhost/genrxiv_test
-pytest test_api.py -v
 ```
 
-CI runs both test suites on every push and pull request (see
+CI runs all test suites on every push and pull request (see
 `.github/workflows/tests.yml`).
 
 ## Contributing
@@ -238,7 +253,8 @@ genuinely useful. See [CONTRIBUTING.md](CONTRIBUTING.md).
 ## Licensing
 
 - **Code** in this repository: [AGPL-3.0](LICENSE)
-- **Archived papers**: Creative Commons, chosen per-submission by the author
+- **Archived papers**: [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/)
+  (Public Domain Dedication) — all submissions are CC0
 
 ## Persistent identifiers
 

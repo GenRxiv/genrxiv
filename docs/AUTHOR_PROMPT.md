@@ -29,8 +29,14 @@ Formatting requirements:
 - Include a section titled "AI Involvement" describing what parts of
   the work were AI-generated or co-generated, and with what tools.
   Be specific and honest — this is the point of GenRxiv.
-- End with a license statement, such as:
-  "This work is licensed under CC BY 4.0."
+- End with a license statement:
+  "This work is licensed under CC0 1.0 (Public Domain Dedication)."
+- GenRxiv requires exactly three subject classifications from the
+  OECD Fields of Science taxonomy. Include them as a line at the top
+  of the document, below the abstract, in the format:
+  "Subjects: Natural sciences > Mathematics, Natural sciences > Computer and information sciences, Social sciences > Economics and business"
+  The full taxonomy is available at https://genrxiv.org/api/fos.
+  Use the format "Domain > Subdomain" for each, separated by commas.
 
 The document will be rendered to HTML with KaTeX for mathematics and
 read on the web. Write for that medium: clear prose, well-structured

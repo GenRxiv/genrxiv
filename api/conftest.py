@@ -157,7 +157,7 @@ def db(tmp_path):
         article_row = conn.execute(
             """INSERT INTO articles
                    (ark, title, abstract, ai_disclosure, license, license_url,
-                    keywords, source_markdown, html_path, pdf_path, status,
+                    subjects, source_markdown, html_path, pdf_path, status,
                     submitted_by, submitted_at, published_at)
                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'published',
                        %s, %s, %s)

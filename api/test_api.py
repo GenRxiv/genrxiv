@@ -181,7 +181,7 @@ class TestOAI:
         assert "cannotDisseminateFormat" in r.text
 
 
-# ─── 9-11, 16-17. Articles / endorsements / keywords API ────────────────────
+# ─── 9-11, 16-17. Articles / endorsements / subjects API ────────────────────
 
 class TestArticlesAPI:
     @requires_db
@@ -231,15 +231,15 @@ class TestArticlesAPI:
         assert r2.status_code == 409
 
 
-class TestKeywordsAPI:
+class TestSubjectsAPI:
     @requires_db
-    def test_list_keywords_returns_keyword_list(self, client):
-        r = client.get("/api/keywords")
+    def test_list_subjects_returns_subject_list(self, client):
+        r = client.get("/api/subjects")
         assert r.status_code == 200
         body = r.json()
-        assert "keywords" in body
-        keywords = {row["keyword"] for row in body["keywords"]}
-        assert "AI" in keywords
+        assert "subjects" in body
+        subjects = {row["subject"] for row in body["subjects"]}
+        assert "AI" in subjects
 
 
 # ─── 12. Public stats ───────────────────────────────────────────────────────
@@ -277,11 +277,11 @@ class TestWebPages:
         assert "A Test Paper" in r.text
 
     @requires_db
-    def test_keywords_page_returns_html(self, client):
-        r = client.get("/keywords")
+    def test_subjects_page_returns_html(self, client):
+        r = client.get("/subjects")
         assert r.status_code == 200
         assert "text/html" in r.headers["content-type"]
-        assert "Keywords" in r.text
+        assert "Subjects" in r.text
 
     @requires_db
     def test_submit_page_shows_signin_prompt_when_unauthenticated(self, client):
@@ -337,7 +337,7 @@ class TestSubmissionValidation:
             "authors": _json.dumps([{"orcid": "0000-0000-0000-0000", "name": "Test Author"}]),
             "ai_disclosure": "AI drafted, reviewed by authors",
             "abstract": "A test abstract for validation testing.",
-            "keywords": self.KWS_3,
+            "subjects": self.KWS_3,
             "license": "CC0",
             "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
         }
@@ -358,23 +358,23 @@ class TestSubmissionValidation:
         assert "Unsupported license" in r.json()["detail"]
 
     @requires_db
-    def test_submit_rejects_missing_keywords(self, authed_client):
-        """Keywords (3 classifications) are required."""
-        r = self._submit(authed_client, keywords="")
+    def test_submit_rejects_missing_subjects(self, authed_client):
+        """Subjects (3 classifications) are required."""
+        r = self._submit(authed_client, subjects="")
         assert r.status_code == 400
         assert "Exactly 3 subject classifications" in r.json()["detail"]
 
     @requires_db
-    def test_submit_rejects_two_keywords(self, authed_client):
+    def test_submit_rejects_two_subjects(self, authed_client):
         """Fewer than 3 classifications are rejected."""
-        r = self._submit(authed_client, keywords=self.KWS_2)
+        r = self._submit(authed_client, subjects=self.KWS_2)
         assert r.status_code == 400
         assert "Exactly 3 subject classifications" in r.json()["detail"]
 
     @requires_db
-    def test_submit_rejects_four_keywords(self, authed_client):
+    def test_submit_rejects_four_subjects(self, authed_client):
         """More than 3 classifications are rejected."""
-        r = self._submit(authed_client, keywords=self.KWS_4)
+        r = self._submit(authed_client, subjects=self.KWS_4)
         assert r.status_code == 400
         assert "Exactly 3 subject classifications" in r.json()["detail"]
 
@@ -420,7 +420,7 @@ class TestSubmissionValidation:
                 "authors": '[{"orcid": "0000-0000-0000-0000", "name": "Test"}]',
                 "ai_disclosure": "AI drafted",
                 "abstract": "Test abstract.",
-                "keywords": self.KWS_3,
+                "subjects": self.KWS_3,
                 "license": "CC0",
                 "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
             },
@@ -441,7 +441,7 @@ class TestSubmissionValidation:
                 "authors": '[{"orcid": "0000-0000-0000-0000", "name": "Test"}]',
                 "ai_disclosure": "AI drafted",
                 "abstract": "Test abstract.",
-                "keywords": self.KWS_3,
+                "subjects": self.KWS_3,
                 "license": "CC0",
                 "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
             },
@@ -642,7 +642,7 @@ class TestVersioning:
                 "authors": json.dumps([{"orcid": "0000-0000-0000-0001", "name": "Admin"}]),
                 "ai_disclosure": "AI drafted",
                 "abstract": "A second paper for versioning tests.",
-                "keywords": "Natural sciences > Computer and information sciences, Natural sciences > Mathematics, Social sciences > Economics and business",
+                "subjects": "Natural sciences > Computer and information sciences, Natural sciences > Mathematics, Social sciences > Economics and business",
                 "supersedes_id": db["article_id"],
             },
         )
@@ -667,7 +667,7 @@ class TestVersioning:
                 "authors": json.dumps([{"orcid": db["orcid"], "name": "Test Author"}]),
                 "ai_disclosure": "AI drafted v2",
                 "abstract": "Updated abstract for v2.",
-                "keywords": "Natural sciences > Computer and information sciences, Natural sciences > Mathematics, Social sciences > Economics and business",
+                "subjects": "Natural sciences > Computer and information sciences, Natural sciences > Mathematics, Social sciences > Economics and business",
                 "supersedes_id": db["article_id"],
             },
         )
@@ -691,7 +691,7 @@ class TestVersioning:
                 "authors": json.dumps([{"orcid": db["orcid"], "name": "Test Author"}]),
                 "ai_disclosure": "AI drafted v2",
                 "abstract": "Updated abstract for v2 approval test.",
-                "keywords": "Natural sciences > Computer and information sciences, Natural sciences > Mathematics, Social sciences > Economics and business",
+                "subjects": "Natural sciences > Computer and information sciences, Natural sciences > Mathematics, Social sciences > Economics and business",
                 "supersedes_id": db["article_id"],
             },
         )
@@ -774,7 +774,7 @@ class TestNotifications:
                 "authors": json.dumps([{"orcid": "0000-0000-0000-0001", "name": "Admin"}]),
                 "ai_disclosure": "AI drafted",
                 "abstract": "Testing moderation notifications.",
-                "keywords": "Natural sciences > Computer and information sciences, Natural sciences > Mathematics, Social sciences > Economics and business",
+                "subjects": "Natural sciences > Computer and information sciences, Natural sciences > Mathematics, Social sciences > Economics and business",
             },
         )
         assert r.status_code == 200
@@ -807,7 +807,7 @@ class TestSecurity:
                 "authors": json.dumps([{"orcid": "0000-0000-0000-0000", "name": "Test"}]),
                 "ai_disclosure": "AI drafted",
                 "abstract": "Test abstract.",
-                "keywords": "Natural sciences > Mathematics, Natural sciences > Physical sciences, Social sciences > Economics and business",
+                "subjects": "Natural sciences > Mathematics, Natural sciences > Physical sciences, Social sciences > Economics and business",
                 "license": "CC0",
                 "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
             },
@@ -887,7 +887,7 @@ class TestSecurity:
                 "authors": json.dumps([{"orcid": "not-an-orcid", "name": "Test"}]),
                 "ai_disclosure": "AI drafted",
                 "abstract": "Test abstract.",
-                "keywords": "Natural sciences > Mathematics, Natural sciences > Physical sciences, Social sciences > Economics and business",
+                "subjects": "Natural sciences > Mathematics, Natural sciences > Physical sciences, Social sciences > Economics and business",
                 "license": "CC0",
                 "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
             },
@@ -909,7 +909,7 @@ class TestSecurity:
                 "authors": json.dumps([{"orcid": "0000-0000-0000-0000", "name": "Test"}]),
                 "ai_disclosure": "AI drafted",
                 "abstract": "Test abstract.",
-                "keywords": "Natural sciences > Mathematics, Natural sciences > Physical sciences, Social sciences > Economics and business",
+                "subjects": "Natural sciences > Mathematics, Natural sciences > Physical sciences, Social sciences > Economics and business",
                 "license": "CC0",
                 "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
             },
@@ -931,7 +931,7 @@ class TestSecurity:
                 "authors": json.dumps([{"orcid": "0000-0000-0000-0000", "name": "Test"}]),
                 "ai_disclosure": "AI drafted",
                 "abstract": "A" * 6000,  # MAX_ABSTRACT_LENGTH is 5000
-                "keywords": "Natural sciences > Mathematics, Natural sciences > Physical sciences, Social sciences > Economics and business",
+                "subjects": "Natural sciences > Mathematics, Natural sciences > Physical sciences, Social sciences > Economics and business",
                 "license": "CC0",
                 "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
             },
