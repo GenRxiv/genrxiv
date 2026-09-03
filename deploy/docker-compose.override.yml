@@ -33,7 +33,7 @@ services:
       - ./deploy/ojs-orcid-redirect-patch.sh:/usr/local/bin/ojs-orcid-redirect-patch.sh:ro
       - ./ojs-theme/genrxiv:/var/www/html/plugins/themes/genrxiv:ro
       - ./ojs-plugins/aiDisclosure:/var/www/html/plugins/generic/aiDisclosure:ro
-      - ./ojs-plugins/latexCompiler:/var/www/html/plugins/generic/latexCompiler:ro
+      - ./ojs-plugins/markdownRenderer:/var/www/html/plugins/generic/markdownRenderer:ro
       - ./ojs-plugins/submissionPolicy:/var/www/html/plugins/generic/submissionPolicy:ro
       - ./ojs-plugins/arkIdentifier:/var/www/html/plugins/generic/arkIdentifier:ro
     entrypoint: ["/bin/sh", "/usr/local/bin/ojs-entrypoint.sh"]

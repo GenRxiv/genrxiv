@@ -1,20 +1,23 @@
 """
 GenRxiv conversion service.
 
-POST /convert/latex   -> compiles a .tex + assets zip to PDF via Tectonic
-POST /convert/markdown -> compiles Markdown to PDF via Pandoc
+POST /render/html      -> renders Markdown to HTML with KaTeX math (primary)
+POST /convert/markdown -> compiles Markdown to PDF via Pandoc + Tectonic (download)
+POST /signup           -> stores launch-notification email signups
 
 Each job runs in its own throwaway temp directory, with a hard wall-clock
 timeout and no network access during compilation (Tectonic is invoked with
 --untrusted, which disables shell-escape and restricts file access to the
 job directory).
+
+GenRxiv accepts Markdown submissions only — no LaTeX uploads, no PDF uploads.
+The Markdown source is the version of record; HTML and PDF are renders.
 """
 import asyncio
 import shutil
 import sqlite3
 import tempfile
 import uuid
-import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 from pydantic import BaseModel, EmailStr
@@ -102,15 +105,6 @@ def _check_image_limits(tmp_path: Path):
         )
 
 
-def _safe_extract(zf: zipfile.ZipFile, dest: Path):
-    """Extract a zip, refusing any entry that would escape `dest`."""
-    for member in zf.namelist():
-        target = (dest / member).resolve()
-        if not str(target).startswith(str(dest.resolve())):
-            raise HTTPException(400, f"Unsafe path in archive: {member}")
-    zf.extractall(dest)
-
-
 async def _run_with_timeout(cmd: list[str], cwd: Path, timeout: int):
     proc = await asyncio.create_subprocess_exec(
         *cmd,
@@ -127,52 +121,6 @@ async def _run_with_timeout(cmd: list[str], cwd: Path, timeout: int):
     if proc.returncode != 0:
         raise HTTPException(422, f"Compilation failed:\n{stderr.decode(errors='replace')[-4000:]}")
     return stdout, stderr
-
-
-@app.post("/convert/latex")
-@limiter.limit("10 per minute")
-async def convert_latex(request: Request, main_file: str, archive: UploadFile = File(...)):
-    """
-    `archive`: a zip containing the .tex source and any figures/assets.
-    `main_file`: the entry-point filename inside the zip, e.g. "paper.tex".
-    """
-    if archive.size and archive.size > MAX_UPLOAD_BYTES:
-        raise HTTPException(413, "Archive too large")
-
-    job_id = uuid.uuid4().hex
-    with tempfile.TemporaryDirectory(prefix=f"genrxiv-{job_id}-") as tmp:
-        tmp_path = Path(tmp)
-        zip_path = tmp_path / "src.zip"
-        zip_path.write_bytes(await archive.read())
-
-        with zipfile.ZipFile(zip_path) as zf:
-            _safe_extract(zf, tmp_path)
-        zip_path.unlink()
-
-        main_path = tmp_path / main_file
-        if not main_path.exists():
-            raise HTTPException(400, f"main_file '{main_file}' not found in archive")
-
-        out_pdf = tmp_path / (main_path.stem + ".pdf")
-
-        # --untrusted disables shell-escape and restricts file access to the
-        # working directory — the key line of defense against malicious .tex.
-        cmd = [
-            "tectonic",
-            "--untrusted",
-            "-o", str(tmp_path),
-            str(main_path),
-        ]
-        await _run_with_timeout(cmd, cwd=tmp_path, timeout=COMPILE_TIMEOUT_SECONDS)
-
-        if not out_pdf.exists():
-            raise HTTPException(422, "Compilation reported success but no PDF was produced.")
-
-        # Copy out of the temp dir before it's cleaned up
-        result_path = Path(tempfile.gettempdir()) / f"genrxiv-result-{job_id}.pdf"
-        shutil.copy(out_pdf, result_path)
-
-    return FileResponse(result_path, media_type="application/pdf", filename="output.pdf")
 
 
 @app.post("/convert/markdown")
@@ -298,65 +246,43 @@ HTML_FOOTER = """
 
 @app.post("/render/html")
 @limiter.limit("10 per minute")
-async def render_html(request: Request, main_file: str = "", archive: UploadFile = None, file: UploadFile = None):
+async def render_html(request: Request, file: UploadFile = File(...)):
     """
-    Render Markdown or LaTeX to a standalone HTML page with KaTeX math.
+    Render Markdown to a standalone HTML page with KaTeX math.
 
-    Accepts either:
-    - `file`: a single .md or .tex file
-    - `archive` + `main_file`: a zip containing source + figures
+    `file`: a single .md file — the paper source. Figures may be
+    embedded as data URIs or referenced as separate submission files.
 
     Returns a complete HTML document with KaTeX loaded via CDN,
     GenRxiv styling, and print-friendly CSS.
     """
+    if file.size and file.size > MAX_UPLOAD_BYTES:
+        raise HTTPException(413, "File too large")
+
     job_id = uuid.uuid4().hex
     with tempfile.TemporaryDirectory(prefix=f"genrxiv-html-{job_id}-") as tmp:
         tmp_path = Path(tmp)
 
-        if archive is not None and archive.filename:
-            if archive.size and archive.size > MAX_UPLOAD_BYTES:
-                raise HTTPException(413, "Archive too large")
-            zip_path = tmp_path / "src.zip"
-            zip_path.write_bytes(await archive.read())
-            with zipfile.ZipFile(zip_path) as zf:
-                _safe_extract(zf, tmp_path)
-            zip_path.unlink()
+        src_path = tmp_path / "input.md"
+        src_path.write_bytes(await file.read())
 
-            if not main_file:
-                raise HTTPException(400, "main_file required when using archive")
-            src_path = tmp_path / main_file
-            if not src_path.exists():
-                raise HTTPException(400, f"main_file '{main_file}' not found in archive")
-        elif file is not None and file.filename:
-            if file.size and file.size > MAX_UPLOAD_BYTES:
-                raise HTTPException(413, "File too large")
-            src_path = tmp_path / file.filename
-            src_path.write_bytes(await file.read())
-        else:
-            raise HTTPException(400, "Provide either 'file' or 'archive' + 'main_file'")
+        # Verify it's Markdown
+        ext = Path(file.filename or "input.md").suffix.lower()
+        if ext not in ('.md', '.markdown'):
+            raise HTTPException(400, f"GenRxiv accepts Markdown submissions only (.md). Received: {ext or 'no extension'}")
 
-        # Check image size limits
+        # Check image size limits (covers embedded data-URI images too)
         _check_image_limits(tmp_path)
-
-        # Determine input format from extension
-        ext = src_path.suffix.lower()
-        if ext in ('.md', '.markdown'):
-            input_format = 'markdown'
-        elif ext in ('.tex', '.latex'):
-            input_format = 'latex'
-        else:
-            raise HTTPException(400, f"Unsupported source format: {ext}. Use .md or .tex")
 
         # Render to HTML fragment via Pandoc
         # --katex wraps math in spans that KaTeX auto-render processes
         cmd = [
             "pandoc",
             str(src_path),
-            "-f", input_format,
+            "-f", "markdown",
             "-t", "html5",
             "--katex",
             "--wrap=none",
-            "--standalone=false",
         ]
         stdout, _ = await _run_with_timeout(cmd, cwd=tmp_path, timeout=COMPILE_TIMEOUT_SECONDS)
         html_fragment = stdout.decode("utf-8", errors="replace")

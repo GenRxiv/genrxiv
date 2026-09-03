@@ -1,25 +1,25 @@
 <?php
 /**
- * @file plugins/generic/latexCompiler/LatexCompilerPlugin.php
+ * @file plugins/generic/markdownRenderer/MarkdownRendererPlugin.php
  *
- * GenRxiv LaTeX/Markdown Compiler plugin.
+ * GenRxiv Markdown Renderer plugin.
  *
- * When a .tex, .md, or .zip file is uploaded as a submission file,
- * this plugin calls the convert-service to render it:
+ * When a .md file is uploaded as a submission file, this plugin calls
+ * the convert-service to render it:
  *
  * 1. HTML galley (primary) — via /render/html, with KaTeX math,
- *    SVG figures, and print-friendly CSS. This is the version of
- *    record displayed on the article page.
+ *    and print-friendly CSS. This is the version of record displayed
+ *    on the article page.
  *
- * 2. PDF galley (on-demand) — via /convert/latex or /convert/markdown.
- *    Provided for readers who want a downloadable PDF, but the HTML
- *    is the canonical view.
+ * 2. PDF galley (secondary) — via /convert/markdown. Provided for
+ *    readers who want a downloadable PDF, but the HTML is the
+ *    canonical view.
  *
- * This keeps storage small: source + HTML is ~50-200 KB per paper
- * vs 2-10 MB for a PDF with embedded fonts and images.
+ * GenRxiv accepts Markdown submissions only — no LaTeX, no PDF uploads.
+ * The Markdown source is the version of record.
  */
 
-namespace APP\plugins\generic\latexCompiler;
+namespace APP\plugins\generic\markdownRenderer;
 
 use APP\core\Application;
 use APP\facades\Repo;
@@ -28,7 +28,7 @@ use PKP\file\TemporaryFileManager;
 use PKP\plugins\GenericPlugin;
 use PKP\plugins\Hook;
 
-class LatexCompilerPlugin extends GenericPlugin
+class MarkdownRendererPlugin extends GenericPlugin
 {
     public function register($category, $path, $mainContextId = null)
     {
@@ -45,12 +45,12 @@ class LatexCompilerPlugin extends GenericPlugin
 
     public function getDisplayName()
     {
-        return __('plugins.generic.latexCompiler.name');
+        return __('plugins.generic.markdownRenderer.name');
     }
 
     public function getDescription()
     {
-        return __('plugins.generic.latexCompiler.description');
+        return __('plugins.generic.markdownRenderer.description');
     }
 
     public function getCanEnable()
@@ -60,15 +60,14 @@ class LatexCompilerPlugin extends GenericPlugin
 
     /**
      * Called when a submission file is added.
-     * If it's a .tex, .md, or .zip file, render it to HTML and PDF.
+     * If it's a .md file, render it to HTML and PDF galleys.
      */
     public function onFileAdded($hookName, $args)
     {
         $submissionFile = $args[0];
-        $fileExtension = pathinfo($submissionFile->getOriginalFileName(), PATHINFO_EXTENSION);
+        $fileExtension = strtolower(pathinfo($submissionFile->getOriginalFileName(), PATHINFO_EXTENSION));
 
-        $compilableExtensions = ['tex', 'md', 'markdown', 'zip'];
-        if (!in_array(strtolower($fileExtension), $compilableExtensions)) {
+        if (!in_array($fileExtension, ['md', 'markdown'])) {
             return;
         }
 
@@ -76,8 +75,8 @@ class LatexCompilerPlugin extends GenericPlugin
     }
 
     /**
-     * Render a submission file using the convert-service.
-     * Produces an HTML galley (primary) and optionally a PDF galley.
+     * Render a Markdown submission file using the convert-service.
+     * Produces an HTML galley (primary) and a PDF galley (secondary).
      */
     private function renderFile($submissionFile)
     {
@@ -102,7 +101,6 @@ class LatexCompilerPlugin extends GenericPlugin
         }
 
         $originalFileName = $submissionFile->getOriginalFileName();
-        $fileExtension = strtolower(pathinfo($originalFileName, PATHINFO_EXTENSION));
 
         $convertUrl = getenv('CONVERT_SERVICE_URL') ?: 'http://convert:8000';
 
@@ -110,8 +108,7 @@ class LatexCompilerPlugin extends GenericPlugin
         $htmlResult = $this->callConvertService(
             $convertUrl . '/render/html',
             $filePath,
-            $originalFileName,
-            $fileExtension
+            $originalFileName
         );
 
         if ($htmlResult) {
@@ -127,18 +124,16 @@ class LatexCompilerPlugin extends GenericPlugin
                 $context->getId()
             );
             @unlink($htmlTmpFile);
-            error_log("[LatexCompiler] Rendered $originalFileName to HTML for submission $submissionId");
+            error_log("[MarkdownRenderer] Rendered $originalFileName to HTML for submission $submissionId");
         } else {
-            error_log("[LatexCompiler] Failed to render HTML for $originalFileName");
+            error_log("[MarkdownRenderer] Failed to render HTML for $originalFileName");
         }
 
         // --- 2. Compile PDF galley (secondary, for download) ---
-        $endpoint = in_array($fileExtension, ['md', 'markdown']) ? 'convert/markdown' : 'convert/latex';
         $pdfResult = $this->callConvertService(
-            $convertUrl . '/' . $endpoint,
+            $convertUrl . '/convert/markdown',
             $filePath,
-            $originalFileName,
-            $fileExtension
+            $originalFileName
         );
 
         if ($pdfResult) {
@@ -154,9 +149,9 @@ class LatexCompilerPlugin extends GenericPlugin
                 $context->getId()
             );
             @unlink($pdfTmpFile);
-            error_log("[LatexCompiler] Compiled $originalFileName to PDF for submission $submissionId");
+            error_log("[MarkdownRenderer] Compiled $originalFileName to PDF for submission $submissionId");
         } else {
-            error_log("[LatexCompiler] Failed to compile PDF for $originalFileName (HTML may still be available)");
+            error_log("[MarkdownRenderer] Failed to compile PDF for $originalFileName (HTML may still be available)");
         }
     }
 
@@ -164,28 +159,19 @@ class LatexCompilerPlugin extends GenericPlugin
      * Call the convert-service with a file upload.
      * Returns the response body on success, null on failure.
      */
-    private function callConvertService($url, $filePath, $originalFileName, $fileExtension)
+    private function callConvertService($url, $filePath, $originalFileName)
     {
         $tmpFile = tempnam(sys_get_temp_dir(), 'genrxiv_upload_');
         copy($filePath, $tmpFile);
-
-        $postFields = [];
-        if ($fileExtension === 'zip') {
-            // For zips, we need to specify the main file
-            // Try common entry points
-            $mainFile = $this->findMainFileInZip($tmpFile);
-            if ($mainFile) {
-                $postFields['main_file'] = $mainFile;
-            }
-        }
-        $postFields['file'] = new \CURLFile($tmpFile, mime_content_type($filePath), $originalFileName);
 
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $url);
         curl_setopt($ch, CURLOPT_POST, true);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_TIMEOUT, 120);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $postFields);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, [
+            'file' => new \CURLFile($tmpFile, 'text/markdown', $originalFileName),
+        ]);
 
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -195,51 +181,11 @@ class LatexCompilerPlugin extends GenericPlugin
         unlink($tmpFile);
 
         if ($httpCode !== 200 || $error) {
-            error_log("[LatexCompiler] Convert-service call to $url failed: HTTP $httpCode, error: $error");
+            error_log("[MarkdownRenderer] Convert-service call to $url failed: HTTP $httpCode, error: $error");
             return null;
         }
 
         return $response;
-    }
-
-    /**
-     * Find the likely main .tex or .md file in a zip.
-     */
-    private function findMainFileInZip($zipPath)
-    {
-        $zip = new \ZipArchive();
-        if ($zip->open($zipPath) !== true) {
-            return null;
-        }
-
-        $candidates = ['paper.tex', 'main.tex', 'article.tex', 'manuscript.tex',
-                       'paper.md', 'main.md', 'article.md', 'manuscript.md'];
-        $allFiles = [];
-
-        for ($i = 0; $i < $zip->numFiles; $i++) {
-            $name = $zip->getNameIndex($i);
-            $allFiles[] = $name;
-        }
-
-        // First, look for exact matches to common names
-        foreach ($candidates as $candidate) {
-            if (in_array($candidate, $allFiles)) {
-                $zip->close();
-                return $candidate;
-            }
-        }
-
-        // Then, look for any .tex or .md file
-        foreach ($allFiles as $name) {
-            $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
-            if (in_array($ext, ['tex', 'md', 'markdown'])) {
-                $zip->close();
-                return $name;
-            }
-        }
-
-        $zip->close();
-        return null;
     }
 
     /**
@@ -256,7 +202,6 @@ class LatexCompilerPlugin extends GenericPlugin
         if (empty($publications)) {
             return;
         }
-        $publication = $publications[0];
 
         $fileContent = file_get_contents($filePath);
 

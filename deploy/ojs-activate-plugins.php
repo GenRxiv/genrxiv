@@ -45,32 +45,37 @@ try {
         echo "[Plugins] Enabled aiDisclosure plugin for journal\n";
     }
 
-    // --- LaTeX Compiler plugin ---
-    $stmt = $pdo->prepare("SELECT count(*) FROM versions WHERE product_type = 'plugins.generic' AND product = 'latexCompiler'");
+    // --- Markdown Renderer plugin (replaces latexCompiler) ---
+    // Remove old latexCompiler registration if present
+    $pdo->exec("DELETE FROM versions WHERE product_type = 'plugins.generic' AND product = 'latexCompiler'");
+    $pdo->exec("DELETE FROM plugin_settings WHERE plugin_name = 'latexcompilerplugin'");
+    echo "[Plugins] Cleaned up old latexCompiler plugin\n";
+
+    $stmt = $pdo->prepare("SELECT count(*) FROM versions WHERE product_type = 'plugins.generic' AND product = 'markdownRenderer'");
     $stmt->execute();
     $exists = $stmt->fetchColumn();
 
     if (!$exists) {
-        $pdo->exec("INSERT INTO versions (major, minor, revision, build, date_installed, current, product_type, product, product_class_name, lazy_load, sitewide) VALUES (1, 0, 0, 0, NOW(), 1, 'plugins.generic', 'latexCompiler', 'LatexCompilerPlugin', 1, 0)");
-        echo "[Plugins] Registered latexCompiler plugin in versions table\n";
+        $pdo->exec("INSERT INTO versions (major, minor, revision, build, date_installed, current, product_type, product, product_class_name, lazy_load, sitewide) VALUES (1, 0, 0, 0, NOW(), 1, 'plugins.generic', 'markdownRenderer', 'MarkdownRendererPlugin', 1, 0)");
+        echo "[Plugins] Registered markdownRenderer plugin in versions table\n";
     }
 
-    $stmt = $pdo->prepare("SELECT count(*) FROM plugin_settings WHERE plugin_name = 'latexcompilerplugin' AND setting_name = 'enabled'");
+    $stmt = $pdo->prepare("SELECT count(*) FROM plugin_settings WHERE plugin_name = 'markdownrendererplugin' AND setting_name = 'enabled' AND context_id IS NULL");
     $stmt->execute();
     $enabled = $stmt->fetchColumn();
 
     if (!$enabled) {
-        $pdo->exec("INSERT INTO plugin_settings (plugin_name, context_id, setting_name, setting_value, setting_type) VALUES ('latexcompilerplugin', NULL, 'enabled', '1', 'bool')");
-        echo "[Plugins] Enabled latexCompiler plugin\n";
+        $pdo->exec("INSERT INTO plugin_settings (plugin_name, context_id, setting_name, setting_value, setting_type) VALUES ('markdownrendererplugin', NULL, 'enabled', '1', 'bool')");
+        echo "[Plugins] Enabled markdownRenderer plugin (site)\n";
     }
 
-    $stmt = $pdo->prepare("SELECT count(*) FROM plugin_settings WHERE plugin_name = 'latexcompilerplugin' AND setting_name = 'enabled' AND context_id = 1");
+    $stmt = $pdo->prepare("SELECT count(*) FROM plugin_settings WHERE plugin_name = 'markdownrendererplugin' AND setting_name = 'enabled' AND context_id = 1");
     $stmt->execute();
     $journalEnabled = $stmt->fetchColumn();
 
     if (!$journalEnabled) {
-        $pdo->exec("INSERT INTO plugin_settings (plugin_name, context_id, setting_name, setting_value, setting_type) VALUES ('latexcompilerplugin', 1, 'enabled', '1', 'bool')");
-        echo "[Plugins] Enabled latexCompiler plugin for journal\n";
+        $pdo->exec("INSERT INTO plugin_settings (plugin_name, context_id, setting_name, setting_value, setting_type) VALUES ('markdownrendererplugin', 1, 'enabled', '1', 'bool')");
+        echo "[Plugins] Enabled markdownRenderer plugin (journal)\n";
     }
 
     // --- Submission Policy plugin ---

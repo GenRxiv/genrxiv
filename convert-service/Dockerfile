@@ -1,14 +1,28 @@
 FROM python:3.12-slim
 
-# Tectonic (self-contained LaTeX engine) + Pandoc, no full TeXLive needed
+# Pandoc for conversion + Tectonic (LaTeX engine for PDF output)
+# libgraphite2 / libharfbuzz / fontconfig are Tectonic runtime deps,
+# installed explicitly so autoremove cannot strip them
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        curl ca-certificates pandoc \
+        ca-certificates pandoc curl \
+        libgraphite2-3 libharfbuzz0b fontconfig \
     && curl --proto '=https' --tlsv1.2 -fsSL https://drop-sh.fullyjustified.net | sh \
     && mv tectonic /usr/local/bin/tectonic \
     && apt-get purge -y curl && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*
 
+# Create the runtime user before warming the cache
 RUN useradd -m -u 1000 convertor
+
+# Pre-warm the Tectonic cache as the runtime user, so the first real
+# compile doesn't need to download the LaTeX bundle (the runtime
+# container may have no internet access)
+USER convertor
+RUN echo '\\documentclass{article}\\begin{document}X\\end{document}' > /tmp/warm.tex \
+    && tectonic /tmp/warm.tex -o /tmp \
+    && rm -f /tmp/warm.tex /tmp/warm.pdf
+
+USER root
 WORKDIR /app
 
 COPY requirements.txt .

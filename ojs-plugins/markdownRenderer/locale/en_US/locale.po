@@ -1,0 +1,5 @@
+msgid "plugins.generic.markdownRenderer.name"
+msgstr "GenRxiv Markdown Renderer"
+
+msgid "plugins.generic.markdownRenderer.description"
+msgstr "Renders Markdown submissions to HTML (primary, with KaTeX math) and PDF (secondary download). GenRxiv accepts Markdown only — the source is the version of record."
