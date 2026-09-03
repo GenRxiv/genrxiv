@@ -411,6 +411,35 @@
 </style>
 </head>
 <body>
+  <nav id="topnav" style="display:flex;justify-content:space-between;align-items:center;padding:0.6rem 1.5rem;border-bottom:1px solid var(--rule);font-size:0.9rem">
+    <div style="display:flex;gap:1.2rem;align-items:center">
+      <a href="/" style="font-weight:600;color:var(--accent);text-decoration:none">GenRxiv</a>
+      <a href="/browse" style="color:var(--ink);text-decoration:none">Browse</a>
+      <a href="/keywords" style="color:var(--ink);text-decoration:none">Keywords</a>
+      <a href="/api/stats" style="color:var(--ink);text-decoration:none">Stats</a>
+      <a href="/feed.xml" style="color:var(--ink);text-decoration:none">Feed</a>
+    </div>
+    <div id="auth-area" style="display:flex;gap:0.8rem;align-items:center"></div>
+  </nav>
+  <script>
+  (function() {
+    fetch('/auth/me').then(r => r.json()).then(user => {
+      var area = document.getElementById('auth-area');
+      if (user.authenticated) {
+        var name = user.name || 'Account';
+        area.innerHTML = '<a href="/dashboard" style="color:var(--ink);text-decoration:none">' + name + '</a>' +
+          '<a href="/submit" style="display:inline-block;padding:0.3rem 0.9rem;background:var(--accent);color:#fff;border-radius:4px;text-decoration:none;font-size:0.85rem">Submit</a>' +
+          '<form method="post" action="/auth/logout" style="display:inline"><button type="submit" style="background:none;border:none;color:var(--ink);cursor:pointer;font-size:0.85rem;text-decoration:underline">Sign out</button></form>';
+      } else {
+        area.innerHTML = '<a href="/auth/orcid?redirect=/dashboard" style="color:var(--ink);text-decoration:none">Sign in with ORCID</a>' +
+          '<a href="/submit" style="display:inline-block;padding:0.3rem 0.9rem;background:var(--accent);color:#fff;border-radius:4px;text-decoration:none;font-size:0.85rem">Submit</a>';
+      }
+    }).catch(function() {
+      var area = document.getElementById('auth-area');
+      area.innerHTML = '<a href="/auth/orcid?redirect=/dashboard" style="color:var(--ink);text-decoration:none">Sign in with ORCID</a>';
+    });
+  })();
+  </script>
   <div class="page">
     <div class="masthead">
       <h1>GenRxiv</h1>
@@ -418,7 +447,6 @@
       <div style="margin-top:1rem;display:flex;gap:0.8rem;flex-wrap:wrap">
         <a href="/browse" style="display:inline-block;padding:0.5rem 1.2rem;border:1px solid var(--accent);border-radius:4px;color:var(--accent);font-size:0.95rem;text-decoration:none">Browse articles</a>
         <a href="/submit" style="display:inline-block;padding:0.5rem 1.2rem;background:var(--accent);color:#fff;border:1px solid var(--accent);border-radius:4px;font-size:0.95rem;text-decoration:none">Submit a paper</a>
-        <a href="/auth/orcid?redirect=/dashboard" style="display:inline-block;padding:0.5rem 1.2rem;border:1px solid var(--rule);border-radius:4px;color:var(--ink);font-size:0.95rem;text-decoration:none">Sign in with ORCID</a>
         <a href="/feed.xml" style="display:inline-block;padding:0.5rem 1.2rem;border:1px solid var(--rule);border-radius:4px;color:var(--ink);font-size:0.95rem;text-decoration:none">RSS feed</a>
       </div>
     </div>
