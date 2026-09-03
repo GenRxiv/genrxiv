@@ -223,6 +223,13 @@ def orcid_callback(request: Request, code: str, state: str):
     author = _upsert_author(orcid, name, affiliation, email)
     session_token = _create_session(author["id"], access_token)
 
+    # Fetch and cache the author's ORCID works count (non-blocking on failure)
+    try:
+        from orcid_client import cache_orcid_record
+        cache_orcid_record(author["id"], orcid)
+    except Exception:
+        pass  # Don't let ORCID API failure block login
+
     redirect = request.cookies.get("orcid_redirect", "/")
     response = RedirectResponse(redirect)
     response.set_cookie(

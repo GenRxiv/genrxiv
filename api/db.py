@@ -141,6 +141,23 @@ END$$;
 
 -- Add index for supersedes_id if it doesn't exist
 CREATE INDEX IF NOT EXISTS idx_articles_supersedes_id ON articles(supersedes_id);
+
+-- Add cached ORCID record columns to authors
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_name = 'authors' AND column_name = 'orcid_works_count') THEN
+        ALTER TABLE authors ADD COLUMN orcid_works_count INTEGER DEFAULT 0;
+    END IF;
+END$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_name = 'authors' AND column_name = 'orcid_record_fetched_at') THEN
+        ALTER TABLE authors ADD COLUMN orcid_record_fetched_at TIMESTAMPTZ;
+    END IF;
+END$$;
 """
 
 

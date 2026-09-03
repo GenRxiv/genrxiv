@@ -198,7 +198,7 @@ def get_article_by_ark(ark: str) -> dict | None:
 def get_article_authors(article_id: int) -> list[dict]:
     with get_conn().connection() as conn:
         rows = conn.execute(
-            """SELECT a.id, a.orcid, a.name, a.affiliation
+            """SELECT a.id, a.orcid, a.name, a.affiliation, a.orcid_works_count
                FROM authors a
                JOIN article_authors aa ON a.id = aa.author_id
                WHERE aa.article_id = %s
@@ -373,6 +373,22 @@ async def submit(
                 (article_id, author_id, i),
             )
         conn.commit()
+
+    # Refresh cached ORCID works count for all authors on this submission
+    try:
+        from orcid_client import cache_orcid_record
+        from db import get_conn as _get_conn
+        with _get_conn().connection() as conn:
+            author_rows = conn.execute(
+                """SELECT a.id, a.orcid FROM authors a
+                   JOIN article_authors aa ON a.id = aa.author_id
+                   WHERE aa.article_id = %s""",
+                (article_id,),
+            ).fetchall()
+        for ar in author_rows:
+            cache_orcid_record(ar["id"], ar["orcid"])
+    except Exception:
+        pass  # Don't let ORCID API failure block submission
 
     return {
         "id": article_id,

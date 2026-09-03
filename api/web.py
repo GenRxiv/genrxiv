@@ -239,22 +239,31 @@ def browse_page(
     page: int = 1,
     per_page: int = 20,
     q: str = "",
+    sort: str = "recent",
 ):
     """Browse published articles."""
     author = get_current_author(request)
     offset = (page - 1) * per_page
+
+    # Determine sort order
+    if sort == "established":
+        order_clause = "COALESCE(MAX(au.orcid_works_count), 0) DESC, a.published_at DESC"
+    else:
+        order_clause = "a.published_at DESC"
+
     with get_conn().connection() as conn:
         if q:
             rows = conn.execute(
-                """SELECT a.id, a.ark, a.title, a.abstract, a.keywords, a.published_at,
-                          string_agg(au.name, ', ' ORDER BY aa."order") as author_names
+                f"""SELECT a.id, a.ark, a.title, a.abstract, a.keywords, a.published_at,
+                          string_agg(au.name, ', ' ORDER BY aa."order") as author_names,
+                          COALESCE(MAX(au.orcid_works_count), 0) as max_works
                    FROM articles a
                    LEFT JOIN article_authors aa ON a.id = aa.article_id
                    LEFT JOIN authors au ON aa.author_id = au.id
                    WHERE a.status = 'published'
                      AND (a.title ILIKE %s OR a.abstract ILIKE %s)
                    GROUP BY a.id
-                   ORDER BY a.published_at DESC LIMIT %s OFFSET %s""",
+                   ORDER BY {order_clause} LIMIT %s OFFSET %s""",
                 (f"%{q}%", f"%{q}%", per_page, offset),
             ).fetchall()
             total = conn.execute(
@@ -265,14 +274,15 @@ def browse_page(
             ).fetchone()["c"]
         else:
             rows = conn.execute(
-                """SELECT a.id, a.ark, a.title, a.abstract, a.keywords, a.published_at,
-                          string_agg(au.name, ', ' ORDER BY aa."order") as author_names
+                f"""SELECT a.id, a.ark, a.title, a.abstract, a.keywords, a.published_at,
+                          string_agg(au.name, ', ' ORDER BY aa."order") as author_names,
+                          COALESCE(MAX(au.orcid_works_count), 0) as max_works
                    FROM articles a
                    LEFT JOIN article_authors aa ON a.id = aa.article_id
                    LEFT JOIN authors au ON aa.author_id = au.id
                    WHERE a.status = 'published'
                    GROUP BY a.id
-                   ORDER BY a.published_at DESC LIMIT %s OFFSET %s""",
+                   ORDER BY {order_clause} LIMIT %s OFFSET %s""",
                 (per_page, offset),
             ).fetchall()
             total = conn.execute(
@@ -283,7 +293,23 @@ def browse_page(
     if not cards:
         cards = '<div class="empty"><h3>No articles yet</h3><p>Be the first to submit.</p></div>'
 
-    # Pagination
+    search_box = f"""
+    <form method="get" action="/browse" style="margin-bottom:1.5rem">
+        <input type="text" name="q" value="{q}" placeholder="Search articles..." style="width:60%;padding:0.5rem;border:1px solid var(--border);border-radius:4px;font-size:1rem">
+        <button type="submit" class="btn">Search</button>
+    </form>"""
+
+    # Sort links
+    sort_q = f"&q={quote(q)}" if q else ""
+    sort_links = f"""
+    <div style="margin-bottom:1.5rem;font-size:0.9rem">
+        Sort by:
+        {'<strong>Most recent</strong>' if sort == 'recent' else f'<a href="/browse?page=1{sort_q}&sort=recent">Most recent</a>'}
+        &middot;
+        {'<strong>Established authors</strong>' if sort == 'established' else f'<a href="/browse?page=1{sort_q}&sort=established">Established authors</a>'}
+    </div>"""
+
+    # Update pagination to include sort
     pages = (total + per_page - 1) // per_page
     pagination = ""
     if pages > 1:
@@ -292,20 +318,15 @@ def browse_page(
             if p == page:
                 parts.append(f'<span class="current">{p}</span>')
             else:
-                qs = f"?page={p}" + (f"&q={quote(q)}" if q else "")
+                qs = f"?page={p}" + (f"&q={quote(q)}" if q else "") + (f"&sort={sort}" if sort != "recent" else "")
                 parts.append(f'<a href="/browse{qs}">{p}</a>')
         pagination = f'<div class="pagination">{"".join(parts)}</div>'
-
-    search_box = f"""
-    <form method="get" action="/browse" style="margin-bottom:1.5rem">
-        <input type="text" name="q" value="{q}" placeholder="Search articles..." style="width:60%;padding:0.5rem;border:1px solid var(--border);border-radius:4px;font-size:1rem">
-        <button type="submit" class="btn">Search</button>
-    </form>"""
 
     body = f"""
     <h1>Browse Articles</h1>
     <p style="color:#888;margin-bottom:1.5rem">{total} published article{'s' if total != 1 else ''}</p>
     {search_box}
+    {sort_links}
     {cards}
     {pagination}
     """
@@ -474,7 +495,7 @@ def author_page(orcid: str, request: Request):
     author_session = get_current_author(request)
     with get_conn().connection() as conn:
         author = conn.execute(
-            "SELECT id, orcid, name, affiliation, created_at FROM authors WHERE orcid = %s",
+            "SELECT id, orcid, name, affiliation, created_at, orcid_works_count FROM authors WHERE orcid = %s",
             (orcid,),
         ).fetchone()
         if not author:
@@ -502,6 +523,8 @@ def author_page(orcid: str, request: Request):
     if not cards:
         cards = '<div class="empty"><h3>No published articles yet</h3></div>'
 
+    works_count = author["orcid_works_count"] if author["orcid_works_count"] else 0
+
     body = f"""
     <div class="author-info">
         <div>
@@ -511,7 +534,8 @@ def author_page(orcid: str, request: Request):
         </div>
     </div>
     <div class="stats-grid" style="margin-bottom:2rem">
-        <div class="stat-card"><div class="num">{len(articles)}</div><div class="label">Published articles</div></div>
+        <div class="stat-card"><div class="num">{len(articles)}</div><div class="label">GenRxiv articles</div></div>
+        <div class="stat-card"><div class="num">{works_count}</div><div class="label">ORCID publications</div></div>
         <div class="stat-card"><div class="num">{endorsement_count}</div><div class="label">Endorsements given</div></div>
     </div>
     <h2>Articles</h2>
@@ -777,7 +801,7 @@ def profile_page(request: Request):
     author = require_author(request)
     with get_conn().connection() as conn:
         row = conn.execute(
-            "SELECT id, orcid, name, email, affiliation FROM authors WHERE id = %s",
+            "SELECT id, orcid, name, email, affiliation, orcid_works_count, orcid_record_fetched_at FROM authors WHERE id = %s",
             (author["id"],),
         ).fetchone()
         article_count = conn.execute(
@@ -791,6 +815,9 @@ def profile_page(request: Request):
     email_value = row["email"] if row and row["email"] else ""
     affiliation_value = row["affiliation"] if row and row["affiliation"] else ""
     is_admin = author["orcid"] in config.admin_orcids
+    works_count = row["orcid_works_count"] if row and row["orcid_works_count"] else 0
+    fetched_at = row["orcid_record_fetched_at"] if row and row["orcid_record_fetched_at"] else None
+    fetched_str = _format_date(fetched_at) if fetched_at else "never"
 
     AFFILIATION_OPTIONS = [
         "Independent Researcher",
@@ -829,6 +856,10 @@ def profile_page(request: Request):
         </div>
         <div class="meta" style="margin-top:0.5rem">
             <strong>Articles:</strong> {published_count} published, {article_count - published_count} other
+        </div>
+        <div class="meta" style="margin-top:0.5rem">
+            <strong>ORCID publications:</strong> {works_count}
+            <span style="color:#888;font-size:0.85rem">(cached {fetched_str})</span>
         </div>
     </div>
 
