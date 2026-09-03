@@ -27,3 +27,7 @@ Thumbs.db
 !docs/**/*.pdf
 node_modules/
 dist/
+
+# Backups — local copies only, real backups go to B2
+deploy/backup/local/
+deploy/backup/backup.log

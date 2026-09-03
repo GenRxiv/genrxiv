@@ -61,6 +61,9 @@ php /usr/local/bin/ojs-activate-theme.php 2>/dev/null
 # Create the GenRxiv journal if it doesn't exist
 php /usr/local/bin/ojs-create-journal.php 2>/dev/null
 
+# Create journal sections (Preprints)
+php /usr/local/bin/ojs-create-sections.php 2>/dev/null
+
 # Configure ORCID
 php /usr/local/bin/ojs-configure-orcid.php 2>/dev/null
 
