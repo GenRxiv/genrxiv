@@ -29,11 +29,28 @@ submissions.
 
 | | |
 |---|---|
-| **Submissions** | LaTeX or Markdown, rendered server-side to PDF and HTML |
+| **Submissions** | Markdown or LaTeX source, rendered to HTML (primary) with PDF on demand |
 | **Author identity** | ORCID iD, so attribution is verifiable |
 | **Disclosure** | Every paper carries a statement of what was AI-generated and how |
 | **Machine access** | OAI-PMH metadata endpoint, sitemap, and schema.org JSON-LD |
 | **Licensing** | Open access, Creative Commons |
+
+### Space-efficient by design
+
+GenRxiv stores the source, not the render. Papers are submitted as
+Markdown (with LaTeX math) or LaTeX source, and the server renders them
+to HTML with [KaTeX](https://katex.org/) for math and native SVG for
+figures. Readers print from the browser. A downloadable PDF is also
+generated, but the HTML is the version of record.
+
+This keeps storage ~50-200 KB per paper instead of the 2-10 MB typical
+of PDF-first preprint servers — a 20-50x reduction. It also makes every
+paper immediately machine-readable: the HTML is structured, semantic,
+and parseable by search engines and AI tools without PDF extraction.
+
+**Figure limits:** raster images are capped at 500 KB each and 2 MB
+total per paper. Use SVG where possible — it's smaller, sharper, and
+scales to any display.
 
 ## Architecture
 
@@ -50,8 +67,8 @@ moderation, ORCID login, and OAI-PMH.
         |
         +-- PostgreSQL
         |
-        +-- convert-service  (LaTeX -> PDF via Tectonic)
-                             (Markdown -> PDF)
+        +-- convert-service  (Markdown/LaTeX -> HTML via Pandoc + KaTeX)
+                             (Markdown/LaTeX -> PDF via Tectonic, on demand)
 ```
 
 The conversion service runs untrusted author-submitted LaTeX, so it is

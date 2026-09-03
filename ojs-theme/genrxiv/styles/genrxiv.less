@@ -295,3 +295,66 @@ select {
     letter-spacing: -0.01em;
     color: @genrxiv-paper;
 }
+
+// ---- Print styles (for article pages and HTML galleys) ----
+@media print {
+    // Remove navigation, sidebars, and non-content elements
+    .pkp_navigation,
+    .pkp_site_name,
+    .pkp_footer,
+    .compare_galleys,
+    .breadcrumbs,
+    .no-print,
+    nav,
+    header[role="banner"],
+    footer[role="contentinfo"] {
+        display: none !important;
+    }
+
+    // White background, black text for print
+    body,
+    .page {
+        background: #fff !important;
+        color: #000 !important;
+        font-size: 11pt;
+    }
+
+    // Remove box shadows and borders that don't print well
+    * {
+        box-shadow: none !important;
+    }
+
+    // Make links print as plain text
+    a {
+        color: inherit !important;
+        text-decoration: none !important;
+    }
+
+    // Avoid breaking inside these elements
+    .item,
+    pre,
+    blockquote,
+    figure,
+    .galley_view {
+        break-inside: avoid;
+    }
+
+    h1, h2, h3 {
+        break-after: avoid;
+    }
+
+    // Full width for print
+    .container,
+    .container-fluid {
+        width: 100% !important;
+        max-width: none !important;
+        padding: 0 !important;
+        margin: 0 !important;
+    }
+
+    // Article content takes the full page
+    .page_article .main_entry {
+        width: 100% !important;
+        float: none !important;
+    }
+}
