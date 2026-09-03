@@ -52,7 +52,7 @@ for file in $SCAN_FILES; do
     if echo "$STAGED" | grep -qiE '(password|secret|token|api_key|apikey|private_key)[[:space:]]*[=:][[:space:]]*["'"'"']?[A-Za-z0-9+/=_-]{12,}'; then
         # Exclude known placeholders
         MATCHES=$(echo "$STAGED" | grep -iE '(password|secret|token|api_key|apikey|private_key)[[:space:]]*[=:][[:space:]]*["'"'"']?[A-Za-z0-9+/=_-]{12,}')
-        REAL_SECRETS=$(echo "$MATCHES" | grep -viE 'changeme|paste_token|your-orcid|your-|placeholder|example|getenv|env\(|\$|random_bytes|base64:.*random')
+        REAL_SECRETS=$(echo "$MATCHES" | grep -viE 'changeme|paste_token|your-orcid|your-|placeholder|example|getenv|env\(|\$|random_bytes|base64:.*random|session_token|access_token|_create_session|_token')
         if [ -n "$REAL_SECRETS" ]; then
             echo "${RED}BLOCKED: Potential secret in $file${NC}"
             echo "$REAL_SECRETS" | head -5

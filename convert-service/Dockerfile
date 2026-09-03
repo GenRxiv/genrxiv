@@ -25,10 +25,10 @@ RUN echo '\\documentclass{article}\\begin{document}X\\end{document}' > /tmp/warm
 USER root
 WORKDIR /app
 
-COPY requirements.txt .
+COPY convert-service/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY app.py .
+COPY convert-service/app.py .
 
 RUN mkdir -p /data && chown convertor:convertor /data
 

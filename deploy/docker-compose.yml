@@ -3,66 +3,70 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ojs
-      POSTGRES_USER: ojs
+      POSTGRES_DB: genrxiv
+      POSTGRES_USER: genrxiv
       POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
-      - ojs_db:/var/lib/postgresql/data
+      - genrxiv_db:/var/lib/postgresql/data
 
-  ojs:
-    # Intel Mac -> pkpofficial/ojs:latest
-    # Apple Silicon Mac -> teic/docker-pkp-ojs:lts
-    image: pkpofficial/ojs:latest
+  api:
+    build:
+      context: ..
+      dockerfile: api/Dockerfile
     restart: unless-stopped
     depends_on:
       - db
+      - convert
     environment:
-      OJS_DB_DRIVER: postgres
-      OJS_DB_HOST: db
-      OJS_DB_NAME: ojs
-      OJS_DB_USER: ojs
-      OJS_DB_PASSWORD: ${DB_PASSWORD}
-      OJS_BASE_URL: https://genrxiv.org
-      OJS_ADMIN_USER: ${ADMIN_USER}
-      OJS_ADMIN_PASSWORD: ${ADMIN_PASSWORD}
-      OJS_ADMIN_EMAIL: ${ADMIN_EMAIL}
-      OJS_CLI_INSTALL: 1
+      DATABASE_URL: postgresql://genrxiv:${DB_PASSWORD}@db/genrxiv
+      ORCID_CLIENT_ID: ${ORCID_CLIENT_ID}
+      ORCID_CLIENT_SECRET: ${ORCID_CLIENT_SECRET}
+      SESSION_SECRET: ${SESSION_SECRET}
+      ARK_NAAN: ${ARK_NAAN:-99999}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      ADMIN_ORCIDS: ${ADMIN_ORCIDS}
+      CONVERT_SERVICE_URL: http://convert:8000
+      BASE_URL: https://genrxiv.org
     volumes:
-      - ojs_files:/var/www/files
-      - ojs_public:/var/www/html/public
-    ports:
-      - "8080:80"
-
-  convert:
-    build: ./convert-service
-    restart: unless-stopped
-    # No published ports — only reachable from other containers on this
-    # compose network (OJS calls it internally, e.g. http://convert:8000).
+      - article_files:/app/files
     expose:
       - "8000"
-    # Hard resource caps: a malicious or runaway LaTeX job shouldn't be able
-    # to take down the whole Mac.
+
+  convert:
+    build:
+      context: ..
+      dockerfile: convert-service/Dockerfile
+    restart: unless-stopped
+    expose:
+      - "8000"
     deploy:
       resources:
         limits:
           cpus: "1.0"
           memory: 1g
-    # Optional but recommended once you've confirmed Tectonic's package
-    # bundle is cached: set `network_mode: none` here to cut internet access
-    # entirely during compilation, then only re-enable briefly to warm the
-    # bundle cache when Tectonic updates.
 
-  # Free tunnel out to the internet — no port forwarding, no home IP exposed.
-  # Create the tunnel first in the Cloudflare Zero Trust dashboard, then paste
-  # the token below (or better, put it in .env as CF_TUNNEL_TOKEN).
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    depends_on:
+      - api
+      - convert
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ../site:/site:ro
+    ports:
+      - "8080:80"
+
   cloudflared:
     image: cloudflare/cloudflared:latest
     restart: unless-stopped
     command: tunnel run --token ${CF_TUNNEL_TOKEN}
     depends_on:
-      - ojs
+      - nginx
 
 volumes:
-  ojs_db:
-  ojs_files:
-  ojs_public:
+  genrxiv_db:
+  article_files:

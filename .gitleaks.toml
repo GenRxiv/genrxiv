@@ -15,4 +15,6 @@ regexes = [
   '''APP-YOUR-ORCID-CLIENT-ID''',
   '''your-orcid-client-secret''',
   '''base64:.*random_bytes''',
+  '''session_token''',
+  '''access_token''',
 ]
