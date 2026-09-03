@@ -20,6 +20,7 @@ def init_pool():
         min_size=2,
         max_size=10,
         kwargs={"row_factory": dict_row},
+        open=True,
     )
 
 

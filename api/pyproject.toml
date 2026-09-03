@@ -1,0 +1,7 @@
+[tool.pytest.ini_options]
+filterwarnings = [
+    # starlette 0.38.x uses anyio.abc.BlockingPortal which is deprecated in anyio 4.x.
+    # This is fixed in newer starlette versions but we're pinned by FastAPI 0.115.0.
+    # Remove this filter when upgrading FastAPI/starlette.
+    "ignore: The anyio.abc.BlockingPortal alias is deprecated:DeprecationWarning",
+]
