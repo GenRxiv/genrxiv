@@ -37,7 +37,8 @@ else:
 # 403-for-non-admin behaviour.
 TEST_ADMIN_ORCID = "0000-0000-0000-0001"
 TEST_AUTHOR_ORCID = "0000-0000-0000-0000"
-os.environ.setdefault("ADMIN_ORCIDS", TEST_ADMIN_ORCID)
+# Force-set (not setdefault) so we override any production env vars.
+os.environ["ADMIN_ORCIDS"] = TEST_ADMIN_ORCID
 os.environ.setdefault("SESSION_SECRET", "test-session-secret")
 
 # A throwaway files directory so rendered article artefacts never touch /app/files.
@@ -50,6 +51,11 @@ from db import init_pool, init_schema, get_conn
 from config import config
 from auth import SESSION_COOKIE, SESSION_DURATION
 import main as main_module
+
+# Override the frozen config's admin_orcids to match our test admin ORCID.
+# This is necessary because config is created at import time from env vars,
+# and we need to ensure the test admin ORCID is the only admin.
+object.__setattr__(config, "admin_orcids", (TEST_ADMIN_ORCID,))
 
 
 # ─── Skip marker ────────────────────────────────────────────────────────────
@@ -88,6 +94,11 @@ def db(tmp_path):
         except Exception:
             pass
     init_pool()
+
+    # Drop any leftover tables from a previous run, then create fresh.
+    with get_conn().connection() as conn:
+        conn.execute(DROP_SQL)
+        conn.commit()
     init_schema()
 
     now = datetime.now(timezone.utc)

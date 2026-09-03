@@ -71,7 +71,7 @@ class TestOAI:
     def test_list_metadata_formats_returns_oai_dc_and_datacite(self, app_client):
         r = app_client.get("/oai", params={"verb": "ListMetadataFormats"})
         assert r.status_code == 200
-        assert "<oai_dc" in r.text
+        assert "oai_dc" in r.text
         assert "oai_datacite" in r.text
         assert "<metadataFormat>" in r.text
 

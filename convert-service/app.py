@@ -58,7 +58,13 @@ def _init_db():
     conn.commit()
     conn.close()
 
-_init_db()
+# Initialize the signup database — tolerate failure in environments where
+# the default path isn't writable (e.g. CI runners without /data/).
+# Tests monkeypatch DB_PATH and re-init before use.
+try:
+    _init_db()
+except (OSError, PermissionError):
+    pass
 
 
 class SignupRequest(BaseModel):
