@@ -12,8 +12,8 @@ Simple server-rendered pages using Jinja2 templates:
 from datetime import datetime
 from urllib.parse import quote
 
-from fastapi import APIRouter, Request, Depends, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, Request, Depends, HTTPException, Form
+from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel
 
 from config import config
@@ -155,7 +155,7 @@ def _header_html(author: dict | None) -> str:
     """Render the site header with nav."""
     nav_links = '<a href="/browse">Browse</a><a href="/keywords">Keywords</a><a href="/stats">Stats</a>'
     if author:
-        auth_links = f'<a href="/dashboard">My Submissions</a><a href="/submit" class="btn btn-primary">Submit</a><a href="/auth/me" style="font-size:0.85rem">{author["name"]}</a><form method="post" action="/auth/logout" style="display:inline"><button type="submit" style="background:none;border:none;color:var(--cobalt);font-size:0.85rem;cursor:pointer;padding:0;text-decoration:underline">Sign out</button></form>'
+        auth_links = f'<a href="/dashboard">My Submissions</a><a href="/submit" class="btn btn-primary">Submit</a><a href="/profile" style="font-size:0.85rem">{author["name"]}</a><form method="post" action="/auth/logout" style="display:inline"><button type="submit" style="background:none;border:none;color:var(--cobalt);font-size:0.85rem;cursor:pointer;padding:0;text-decoration:underline">Sign out</button></form>'
     else:
         auth_links = f'<a href="/auth/orcid?redirect=/browse" class="btn">Sign in with ORCID</a><a href="/submit" class="btn btn-primary">Submit</a>'
     return f"""<header>
@@ -706,42 +706,27 @@ def dashboard_page(request: Request):
 
     email_value = author_email["email"] if author_email and author_email["email"] else ""
 
-    # Email notification settings
-    email_section = f"""
-    <div class="card" style="margin-bottom:2rem">
-        <h2 style="font-size:1.1rem">Notification Settings</h2>
-        <p style="font-size:0.9rem;color:#555;margin-bottom:1rem">
-            Enter your email to receive notifications when your submissions are approved or rejected.
-            ORCID's public API doesn't share email, so you need to add it here.
-        </p>
-        <form method="post" action="/api/me/email" id="email-form">
-            <div class="form-group" style="display:flex;gap:0.5rem;align-items:flex-end">
-                <div style="flex:1">
-                    <label>Email for notifications (optional)</label>
-                    <input type="email" name="email" value="{email_value}" placeholder="you@example.com">
-                </div>
-                <button type="submit" class="btn btn-primary">Save</button>
-            </div>
-        </form>
-        <div id="email-saved" style="display:none;margin-top:0.5rem" class="success">Email saved.</div>
-    </div>
-    <script>
-    document.getElementById('email-form').addEventListener('submit', function(e) {{
-        e.preventDefault();
-        var form = e.target;
-        var data = {{email: form.email.value}};
-        fetch('/api/me/email', {{
-            method: 'POST',
-            headers: {{'Content-Type': 'application/json'}},
-            body: JSON.stringify(data)
-        }}).then(r => r.json()).then(() => {{
-            var msg = document.getElementById('email-saved');
-            msg.style.display = 'block';
-            setTimeout(() => msg.style.display = 'none', 3000);
-        }});
-    }});
-    </script>
-    """
+    # Email notification settings — link to profile page
+    if email_value:
+        email_section = f"""
+        <div class="card" style="margin-bottom:2rem">
+            <h2 style="font-size:1.1rem">Notification Settings</h2>
+            <p style="font-size:0.9rem;color:#555">
+                Notification email: <strong>{email_value}</strong>
+                &middot; <a href="/profile">Edit in profile</a>
+            </p>
+        </div>
+        """
+    else:
+        email_section = """
+        <div class="card" style="margin-bottom:2rem">
+            <h2 style="font-size:1.1rem">Notification Settings</h2>
+            <p style="font-size:0.9rem;color:#555">
+                No notification email set.
+                <a href="/profile">Add your email in your profile</a> to receive moderation updates.
+            </p>
+        </div>
+        """
 
     if not rows:
         body = f"""
@@ -782,6 +767,119 @@ def dashboard_page(request: Request):
         {''.join(cards)}
         """
     return _page("My Submissions", body, author)
+
+
+# ─── Profile page ──────────────────────────────────────────────────────────
+
+@router.get("/profile", response_class=HTMLResponse)
+def profile_page(request: Request):
+    """Author profile page with email settings."""
+    author = require_author(request)
+    with get_conn().connection() as conn:
+        row = conn.execute(
+            "SELECT id, orcid, name, email, affiliation FROM authors WHERE id = %s",
+            (author["id"],),
+        ).fetchone()
+        article_count = conn.execute(
+            "SELECT COUNT(*) AS c FROM articles WHERE submitted_by = %s", (author["id"],)
+        ).fetchone()["c"]
+        published_count = conn.execute(
+            "SELECT COUNT(*) AS c FROM articles WHERE submitted_by = %s AND status = 'published'",
+            (author["id"],),
+        ).fetchone()["c"]
+
+    email_value = row["email"] if row and row["email"] else ""
+    affiliation_value = row["affiliation"] if row and row["affiliation"] else ""
+    is_admin = author["orcid"] in config.admin_orcids
+
+    saved = request.query_params.get("saved")
+    saved_msg = ""
+    if saved == "email":
+        saved_msg = '<div class="card" style="background:#e8f5e9;border:1px solid #4caf50;margin-bottom:1.5rem;padding:1rem">Email saved successfully.</div>'
+    elif saved == "affiliation":
+        saved_msg = '<div class="card" style="background:#e8f5e9;border:1px solid #4caf50;margin-bottom:1.5rem;padding:1rem">Affiliation saved successfully.</div>'
+
+    body = f"""
+    <h1>{author['name']}</h1>
+    {saved_msg}
+    <div class="card" style="margin-bottom:1.5rem">
+        <div class="meta" style="margin-bottom:0.5rem">
+            <strong>ORCID:</strong>
+            <a href="https://orcid.org/{author['orcid']}" target="_blank">{author['orcid']}</a>
+        </div>
+        <div class="meta" style="margin-bottom:0.5rem">
+            <strong>Affiliation:</strong> {affiliation_value or '<span style="color:#888">Not set</span>'}
+        </div>
+        <div class="meta">
+            <strong>Role:</strong> {'Administrator' if is_admin else 'Author'}
+        </div>
+        <div class="meta" style="margin-top:0.5rem">
+            <strong>Articles:</strong> {published_count} published, {article_count - published_count} other
+        </div>
+    </div>
+
+    <div class="card" style="margin-bottom:1.5rem">
+        <h2 style="font-size:1.1rem">Notification Settings</h2>
+        <p style="font-size:0.9rem;color:#555;margin-bottom:1rem">
+            Enter your email to receive notifications when your submissions are approved or rejected.
+            ORCID's public API doesn't share email, so you need to add it here.
+        </p>
+        <form method="post" action="/profile/email">
+            <div class="form-group">
+                <label>Email for notifications (optional)</label>
+                <input type="email" name="email" value="{email_value}" placeholder="you@example.com">
+            </div>
+            <button type="submit" class="btn btn-primary">Save email</button>
+        </form>
+    </div>
+
+    <div class="card">
+        <h2 style="font-size:1.1rem">Affiliation</h2>
+        <form method="post" action="/profile/affiliation">
+            <div class="form-group">
+                <label>Your affiliation (optional)</label>
+                <input type="text" name="affiliation" value="{affiliation_value}" placeholder="University / Organization">
+            </div>
+            <button type="submit" class="btn btn-primary">Save affiliation</button>
+        </form>
+    </div>
+
+    <div style="margin-top:1.5rem">
+        <a href="/dashboard">&larr; My Submissions</a>
+    </div>
+    """
+    return _page("Profile", body, author)
+
+
+@router.post("/profile/email")
+def update_profile_email(request: Request, email: str = Form(default="")):
+    """Handle email form submission from profile page."""
+    import re
+    author = require_author(request)
+    email = email.strip() if email else ""
+    if email and not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+        raise HTTPException(400, "Invalid email address")
+    with get_conn().connection() as conn:
+        conn.execute(
+            "UPDATE authors SET email = %s WHERE id = %s",
+            (email or None, author["id"]),
+        )
+        conn.commit()
+    return RedirectResponse(url="/profile?saved=email", status_code=303)
+
+
+@router.post("/profile/affiliation")
+def update_profile_affiliation(request: Request, affiliation: str = Form(default="")):
+    """Handle affiliation form submission from profile page."""
+    author = require_author(request)
+    affiliation = affiliation.strip() if affiliation else ""
+    with get_conn().connection() as conn:
+        conn.execute(
+            "UPDATE authors SET affiliation = %s WHERE id = %s",
+            (affiliation or None, author["id"]),
+        )
+        conn.commit()
+    return RedirectResponse(url="/profile?saved=affiliation", status_code=303)
 
 
 # ─── Admin page ────────────────────────────────────────────────────────────

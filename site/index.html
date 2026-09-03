@@ -427,7 +427,7 @@
       var area = document.getElementById('auth-area');
       if (user.authenticated) {
         var name = user.name || 'Account';
-        area.innerHTML = '<a href="/dashboard" style="color:var(--ink);text-decoration:none">' + name + '</a>' +
+        area.innerHTML = '<a href="/profile" style="color:var(--ink);text-decoration:none">' + name + '</a>' +
           '<a href="/submit" style="display:inline-block;padding:0.3rem 0.9rem;background:var(--accent);color:#fff;border-radius:4px;text-decoration:none;font-size:0.85rem">Submit</a>' +
           '<form method="post" action="/auth/logout" style="display:inline"><button type="submit" style="background:none;border:none;color:var(--ink);cursor:pointer;font-size:0.85rem;text-decoration:underline">Sign out</button></form>';
       } else {
