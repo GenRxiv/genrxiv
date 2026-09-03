@@ -19,11 +19,18 @@ from datetime import datetime, timezone
 from pathlib import Path
 from pydantic import BaseModel, EmailStr
 
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 app = FastAPI(title="GenRxiv Conversion Service")
+
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(
     CORSMiddleware,
@@ -57,7 +64,8 @@ class SignupRequest(BaseModel):
 
 
 @app.post("/signup")
-async def signup(req: SignupRequest):
+@limiter.limit("5 per minute, 20 per hour")
+async def signup(req: SignupRequest, request: Request):
     conn = sqlite3.connect(str(DB_PATH))
     try:
         conn.execute(
@@ -101,7 +109,8 @@ async def _run_with_timeout(cmd: list[str], cwd: Path, timeout: int):
 
 
 @app.post("/convert/latex")
-async def convert_latex(main_file: str, archive: UploadFile = File(...)):
+@limiter.limit("10 per minute")
+async def convert_latex(request: Request, main_file: str, archive: UploadFile = File(...)):
     """
     `archive`: a zip containing the .tex source and any figures/assets.
     `main_file`: the entry-point filename inside the zip, e.g. "paper.tex".
@@ -146,7 +155,8 @@ async def convert_latex(main_file: str, archive: UploadFile = File(...)):
 
 
 @app.post("/convert/markdown")
-async def convert_markdown(file: UploadFile = File(...)):
+@limiter.limit("10 per minute")
+async def convert_markdown(request: Request, file: UploadFile = File(...)):
     """Markdown -> PDF via Pandoc. Placeholder until the in-house MD->PDF
     library is wired in here instead."""
     if file.size and file.size > MAX_UPLOAD_BYTES:

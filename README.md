@@ -93,6 +93,38 @@ genuinely useful. See [CONTRIBUTING.md](CONTRIBUTING.md).
 - **Code** in this repository: [AGPL-3.0](LICENSE)
 - **Archived papers**: Creative Commons, chosen per-submission by the author
 
+## Persistent identifiers
+
+GenRxiv issues [ARK (Archival Resource Key)](https://n2t.net/) identifiers for
+every published preprint. ARKs are free, resolvable through `n2t.net`, and
+included in OAI-PMH metadata and on article pages.
+
+### DOI upgrade path
+
+ARKs are an interim step. The goal is to issue [Crossref](https://www.crossref.org/)
+DOIs once GenRxiv has:
+
+- A track record of published submissions
+- Organizational backing (institutional sponsor or funded governance)
+- A sustainability plan that commits to maintaining DOI metadata indefinitely
+- Crossref membership approval (annual fee, application review)
+
+Once those conditions are met, GenRxiv will:
+
+1. Apply for a Crossref membership and receive a DOI prefix (e.g. `10.55555`)
+2. Enable OJS's built-in Crossref plugin to mint DOIs on publication
+3. Register each DOI with Crossref deposit, including metadata and PDF URL
+4. Continue supporting existing ARKs — both identifiers resolve to the same
+   article, and ARKs can redirect to the DOI URL if needed
+
+DOIs are a permanence commitment. Once minted and registered, they must resolve
+forever — even if GenRxiv changes domains, changes infrastructure, or shuts
+down (in which case Crossref's fallback resolution takes over). This is why
+DOIs are not issued from day one: the commitment should not be made lightly.
+
+For more on ARKs and the difference between ARKs and DOIs, see
+<https://n2t.net/e/ark_ids.html>.
+
 ## Support
 
 GenRxiv runs on self-hosted infrastructure funded personally. If you'd like to
