@@ -240,13 +240,13 @@ def orcid_callback(request: Request, code: str, state: str):
 
 @router.post("/logout")
 def logout(request: Request):
-    """Destroy session."""
+    """Destroy session and redirect to homepage."""
     token = request.cookies.get(SESSION_COOKIE)
     if token:
         with get_conn().connection() as conn:
             conn.execute("DELETE FROM sessions WHERE token = %s", (token,))
             conn.commit()
-    response = JSONResponse({"status": "ok"})
+    response = RedirectResponse(url="/", status_code=303)
     response.delete_cookie(SESSION_COOKIE)
     return response
 
