@@ -26,11 +26,14 @@ def _get_submitter_email(article_id: int) -> str | None:
     return row["email"] if row else None
 
 
+def _smtp_configured() -> bool:
+    """Check if SMTP is configured."""
+    return bool(config.smtp_host and config.smtp_username and config.smtp_password)
+
+
 def _send_email(to: str, subject: str, body: str):
     """Send an email via SMTP. Silently fails if SMTP is not configured."""
-    if not config.smtp_host:
-        return
-    if not config.smtp_username or not config.smtp_password:
+    if not _smtp_configured():
         return
 
     msg = MIMEMultipart("alternative")
@@ -50,6 +53,8 @@ def _send_email(to: str, subject: str, body: str):
 
 def notify_approved(article_id: int, ark: str, title: str, note: str = ""):
     """Notify the submitter that their article was approved."""
+    if not _smtp_configured():
+        return
     email = _get_submitter_email(article_id)
     if not email:
         return
@@ -69,6 +74,8 @@ URL: {article_url}
 
 def notify_rejected(article_id: int, title: str, note: str = ""):
     """Notify the submitter that their article was rejected."""
+    if not _smtp_configured():
+        return
     email = _get_submitter_email(article_id)
     if not email:
         return

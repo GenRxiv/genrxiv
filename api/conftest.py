@@ -40,6 +40,10 @@ TEST_AUTHOR_ORCID = "0000-0000-0000-0000"
 # Force-set (not setdefault) so we override any production env vars.
 os.environ["ADMIN_ORCIDS"] = TEST_ADMIN_ORCID
 os.environ.setdefault("SESSION_SECRET", "test-session-secret")
+# Clear SMTP settings so notification tests don't try to send real email
+os.environ["SMTP_HOST"] = ""
+os.environ["SMTP_USERNAME"] = ""
+os.environ["SMTP_PASSWORD"] = ""
 
 # A throwaway files directory so rendered article artefacts never touch /app/files.
 _FILES_TMP = tempfile.mkdtemp(prefix="genrxiv_test_files_")
@@ -56,6 +60,10 @@ import main as main_module
 # This is necessary because config is created at import time from env vars,
 # and we need to ensure the test admin ORCID is the only admin.
 object.__setattr__(config, "admin_orcids", (TEST_ADMIN_ORCID,))
+# Clear SMTP config so notifications are no-ops during tests
+object.__setattr__(config, "smtp_host", "")
+object.__setattr__(config, "smtp_username", "")
+object.__setattr__(config, "smtp_password", "")
 
 
 # ─── Skip marker ────────────────────────────────────────────────────────────

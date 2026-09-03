@@ -168,7 +168,7 @@ def _header_html(author: dict | None) -> str:
 def _footer_html() -> str:
     return f"""<footer>
 <p>{config.site_name} &mdash; An open archive for AI-generated research.</p>
-<p><a href="/api/articles">API</a> &middot; <a href="/oai?verb=Identify">OAI-PMH</a> &middot; <a href="/sitemap.xml">Sitemap</a> &middot; <a href="/robots.txt">robots.txt</a></p>
+<p><a href="/api/articles">API</a> &middot; <a href="/oai?verb=Identify">OAI-PMH</a> &middot; <a href="/feed.xml">Feed</a> &middot; <a href="/sitemap.xml">Sitemap</a> &middot; <a href="/robots.txt">robots.txt</a></p>
 </footer>"""
 
 
@@ -183,6 +183,7 @@ def _page(title: str, body: str, author: dict | None = None) -> HTMLResponse:
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@400;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="alternate" type="application/atom+xml" title="{config.site_name} — Recent Articles" href="/feed.xml">
 <style>{PAGE_CSS}</style>
 </head>
 <body>
@@ -490,13 +491,13 @@ def submit_page(request: Request):
         </div>
         <div class="form-group">
             <label>License</label>
-            <select name="license">
+            <select name="license" id="license-select">
                 <option value="CC-BY-4.0">CC BY 4.0 (default)</option>
                 <option value="CC-BY-SA-4.0">CC BY-SA 4.0</option>
                 <option value="CC-BY-ND-4.0">CC BY-ND 4.0</option>
                 <option value="CC0">CC0 (Public Domain)</option>
             </select>
-            <input type="hidden" name="license_url" value="https://creativecommons.org/licenses/by/4.0/">
+            <input type="hidden" name="license_url" id="license-url" value="https://creativecommons.org/licenses/by/4.0/">
         </div>
         <button type="submit" class="btn btn-primary">Submit for review</button>
     </form>
@@ -504,8 +505,108 @@ def submit_page(request: Request):
         <p>After submission, your paper will be reviewed by a moderator before publication.
         You'll be able to track its status from <a href="/dashboard">My Submissions</a>.</p>
     </div>
+    <script>
+    document.getElementById('license-select').addEventListener('change', function() {{
+        var urls = {{
+            'CC-BY-4.0': 'https://creativecommons.org/licenses/by/4.0/',
+            'CC-BY-SA-4.0': 'https://creativecommons.org/licenses/by-sa/4.0/',
+            'CC-BY-ND-4.0': 'https://creativecommons.org/licenses/by-nd/4.0/',
+            'CC0': 'https://creativecommons.org/publicdomain/zero/1.0/'
+        }};
+        document.getElementById('license-url').value = urls[this.value] || '';
+    }});
+    </script>
     """
     return _page("Submit", body, author)
+
+
+@router.get("/submit-version/{article_id}", response_class=HTMLResponse)
+def submit_version_page(article_id: int, request: Request):
+    """Submit a new version of an existing article."""
+    author = require_author(request)
+    with get_conn().connection() as conn:
+        article = conn.execute(
+            "SELECT id, ark, title, version, status FROM articles WHERE id = %s",
+            (article_id,),
+        ).fetchone()
+        if not article:
+            raise HTTPException(404, "Article not found")
+        # Verify the author is one of the article's authors
+        is_author = conn.execute(
+            "SELECT 1 FROM article_authors WHERE article_id = %s AND author_id = %s",
+            (article_id, author["id"]),
+        ).fetchone()
+        if not is_author:
+            raise HTTPException(403, "You can only submit new versions of your own articles")
+
+    body = f"""
+    <h1>Submit New Version</h1>
+    <div class="card" style="margin-bottom:1.5rem">
+        <h2>{article['title']}</h2>
+        <div class="meta">
+            Current version: v{article['version']}
+            &middot; Status: <span class="status-badge status-{article['status']}">{article['status']}</span>
+            {f'&middot; ARK: {article["ark"]}' if article.get('ark') else ''}
+        </div>
+        <p style="margin-top:0.5rem;font-size:0.9rem;color:#555">
+            The new version will go through moderation again. Once approved, it will
+            replace the current version and the ARK will transfer to the new version.
+        </p>
+    </div>
+    <form method="post" action="/api/submit" enctype="multipart/form-data">
+        <input type="hidden" name="supersedes_id" value="{article_id}">
+        <div class="form-group">
+            <label>Updated Markdown file (.md)</label>
+            <input type="file" name="markdown" accept=".md,.markdown" required>
+            <div class="hint">Max 25MB. The file is the version of record.</div>
+        </div>
+        <div class="form-group">
+            <label>Title</label>
+            <input type="text" name="title" required value="{article['title']}">
+        </div>
+        <div class="form-group">
+            <label>Authors (JSON array)</label>
+            <textarea name="authors" required>[{{"orcid": "{author['orcid']}", "name": "{author['name']}"}}]</textarea>
+            <div class="hint">JSON array of {{"orcid": "...", "name": "...", "affiliation": "..."}} objects.</div>
+        </div>
+        <div class="form-group">
+            <label>AI disclosure</label>
+            <textarea name="ai_disclosure" required placeholder="State plainly what the AI did.">Drafted by an AI, verified by the authors.</textarea>
+        </div>
+        <div class="form-group">
+            <label>Abstract (optional)</label>
+            <textarea name="abstract" placeholder="Brief abstract..."></textarea>
+        </div>
+        <div class="form-group">
+            <label>Keywords (comma-separated, optional)</label>
+            <input type="text" name="keywords" placeholder="AI, machine learning, ...">
+        </div>
+        <div class="form-group">
+            <label>License</label>
+            <select name="license" id="license-select">
+                <option value="CC-BY-4.0">CC BY 4.0 (default)</option>
+                <option value="CC-BY-SA-4.0">CC BY-SA 4.0</option>
+                <option value="CC-BY-ND-4.0">CC BY-ND 4.0</option>
+                <option value="CC0">CC0 (Public Domain)</option>
+            </select>
+            <input type="hidden" name="license_url" id="license-url" value="https://creativecommons.org/licenses/by/4.0/">
+        </div>
+        <button type="submit" class="btn btn-primary">Submit version for review</button>
+    </form>
+    <div style="margin-top:1.5rem"><a href="/dashboard">&larr; Back to My Submissions</a></div>
+    <script>
+    document.getElementById('license-select').addEventListener('change', function() {{
+        var urls = {{
+            'CC-BY-4.0': 'https://creativecommons.org/licenses/by/4.0/',
+            'CC-BY-SA-4.0': 'https://creativecommons.org/licenses/by-sa/4.0/',
+            'CC-BY-ND-4.0': 'https://creativecommons.org/licenses/by-nd/4.0/',
+            'CC0': 'https://creativecommons.org/publicdomain/zero/1.0/'
+        }};
+        document.getElementById('license-url').value = urls[this.value] || '';
+    }});
+    </script>
+    """
+    return _page("Submit New Version", body, author)
 
 
 # ─── Dashboard (author's submissions) ──────────────────────────────────────
@@ -516,7 +617,7 @@ def dashboard_page(request: Request):
     author = require_author(request)
     with get_conn().connection() as conn:
         rows = conn.execute(
-            """SELECT id, ark, title, status, submitted_at, published_at
+            """SELECT id, ark, title, status, version, submitted_at, published_at
                FROM articles WHERE submitted_by = %s ORDER BY submitted_at DESC""",
             (author["id"],),
         ).fetchall()
@@ -537,14 +638,21 @@ def dashboard_page(request: Request):
             published = _format_date(r.get("published_at"))
             submitted = _format_date(r.get("submitted_at"))
             link = f'<a href="/article/{r["ark"]}">{r["title"]}</a>' if r["ark"] else r["title"]
+            version_badge = f'<span class="status-badge" style="background:#e4e9ff;color:#2f5cff">v{r["version"]}</span>' if r.get("version") and r["version"] > 1 else ""
+            # Show "Submit new version" link for published or superseded articles
+            new_version_link = ""
+            if r["status"] in ("published", "superseded"):
+                new_version_link = f' <a href="/submit-version/{r["id"]}" class="btn" style="font-size:0.8rem;padding:0.3rem 0.8rem">Submit new version</a>'
             cards.append(f"""<div class="card">
 <h2>{link}</h2>
 <div class="meta">
     <span class="status-badge {status_class}">{r['status']}</span>
+    {version_badge}
     &middot; Submitted {submitted}
     {f'&middot; Published {published}' if published else ''}
     &middot; ARK: {ark}
 </div>
+<div style="margin-top:0.5rem">{new_version_link}</div>
 </div>""")
         body = f"""
         <h1>My Submissions</h1>

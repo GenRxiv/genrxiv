@@ -378,6 +378,7 @@ async def submit(
         "id": article_id,
         "ark": assign_ark(article_id),
         "status": "pending",
+        "version": version,
         "submitted_at": row["submitted_at"].isoformat(),
     }
 
@@ -578,6 +579,65 @@ def article_jsonld(ark: str):
         raise HTTPException(404, "Article not found")
     authors = get_article_authors(article["id"])
     return build_jsonld(article, authors)
+
+
+@router.get("/article/{ark:path}/versions", response_class=HTMLResponse)
+def article_versions_page(ark: str, request: Request):
+    """Version history page for an article."""
+    from urllib.parse import unquote as _unquote
+    from web import _page, _format_date
+    ark = _unquote(ark)
+    article = get_article_by_ark(ark)
+    if not article:
+        raise HTTPException(404, "Article not found")
+    with get_conn().connection() as conn:
+        root_id = article["supersedes_id"] or article["id"]
+        versions = conn.execute(
+            """SELECT id, version, title, status, ark, published_at, submitted_at
+               FROM articles
+               WHERE id = %s OR supersedes_id = %s
+               ORDER BY version DESC""",
+            (root_id, root_id),
+        ).fetchall()
+    from auth import get_current_author
+    author = get_current_author(request)
+    version_rows = []
+    for v in versions:
+        is_current = v["status"] == "published"
+        status_class = f"status-{v['status']}"
+        published = _format_date(v.get("published_at"))
+        submitted = _format_date(v.get("submitted_at"))
+        link = f'<a href="/article/{v["ark"]}">v{v["version"]}</a>' if v.get("ark") else f"v{v['version']}"
+        version_rows.append(f"""<tr>
+<td><strong>{link}</strong>{' <span class="status-badge status-published">current</span>' if is_current else ''}</td>
+<td>{v['title']}</td>
+<td><span class="status-badge {status_class}">{v['status']}</span></td>
+<td>{submitted}</td>
+<td>{published}</td>
+</tr>""")
+    body = f"""
+    <h1>Version History</h1>
+    <div class="card" style="margin-bottom:1.5rem">
+        <h2>{article['title']}</h2>
+        <div class="meta">ARK: {ark} &middot; Current version: v{article['version']}</div>
+    </div>
+    <table style="width:100%;border-collapse:collapse;font-size:0.9rem">
+        <thead>
+            <tr style="border-bottom:2px solid var(--border);text-align:left">
+                <th style="padding:0.5rem">Version</th>
+                <th style="padding:0.5rem">Title</th>
+                <th style="padding:0.5rem">Status</th>
+                <th style="padding:0.5rem">Submitted</th>
+                <th style="padding:0.5rem">Published</th>
+            </tr>
+        </thead>
+        <tbody>
+            {''.join(version_rows)}
+        </tbody>
+    </table>
+    <div style="margin-top:1.5rem"><a href="/article/{ark}">&larr; Back to article</a></div>
+    """
+    return _page("Version History", body, author)
 
 
 @router.get("/article/{ark:path}", response_class=HTMLResponse)
