@@ -128,8 +128,10 @@ classifications. The resulting document is ready to submit as-is.
 
 The authoring format is deliberately constrained:
 
-- **Markdown only.** No YAML front matter, no raw HTML, no LaTeX document
-  commands. Plain Markdown.
+- **Markdown only.** YAML front matter is supported for metadata
+  (title, abstract, authors, subjects, AI disclosure) and is stripped
+  during rendering. No raw HTML, no LaTeX document commands. Plain
+  Markdown for the body.
 - **LaTeX math notation** inside dollar signs, rendered by KaTeX [@katex].
 - **SVG preferred for figures.** Raster images are accepted but capped at
   500 KB each and 2 MB total per submission.
