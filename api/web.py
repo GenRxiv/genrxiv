@@ -1225,6 +1225,154 @@ function backToForm(e) {
     document.getElementById('preview-section').style.display = 'none';
 }
 
+// ─── YAML front matter auto-fill ──────────────────────────────────────────
+// When a Markdown file is selected, parse YAML front matter and auto-fill
+// the form. This lets agents prepare a complete submission in the Markdown
+// file itself — a human just uploads it and reviews.
+
+function parseYamlFrontMatter(text) {
+    // Match --- at the start, followed by YAML, ending with ---
+    var m = text.match(/^---\n([\s\S]*?)\n---\n/);
+    if (!m) return null;
+    var yaml = m[1];
+    var result = {};
+
+    // Simple YAML parser for our flat key-value structure.
+    // Handles: key: value, key: "value", lists with - items, nested lists.
+    var lines = yaml.split('\n');
+    var currentKey = null;
+    var currentList = null;
+
+    for (var i = 0; i < lines.length; i++) {
+        var line = lines[i];
+        // Nested object item: "  - orcid: ..." then "    name: ..."
+        // Check this BEFORE simple list items
+        var objMatch = line.match(/^\s+-\s+(\w+):\s*["']?(.*?)["']?\s*$/);
+        if (objMatch && currentKey) {
+            if (!Array.isArray(result[currentKey])) result[currentKey] = [];
+            var obj = {};
+            obj[objMatch[1]] = objMatch[2];
+            // Look ahead for more fields in this object
+            for (var j = i + 1; j < lines.length; j++) {
+                var nextLine = lines[j];
+                var nestedMatch = nextLine.match(/^\s+(\w+):\s*["']?(.*?)["']?\s*$/);
+                if (nestedMatch) {
+                    obj[nestedMatch[1]] = nestedMatch[2];
+                    i = j;
+                } else {
+                    break;
+                }
+            }
+            result[currentKey].push(obj);
+            continue;
+        }
+
+        // Simple list item: "  - value" or '  - "value"'
+        var listMatch = line.match(/^\s+-\s+["']?(.*?)["']?\s*$/);
+        if (listMatch && currentKey) {
+            if (!result[currentKey]) result[currentKey] = [];
+            result[currentKey].push(listMatch[1]);
+            continue;
+        }
+
+        // Key-value: "key: value" or 'key: "value"'
+        var kvMatch = line.match(/^(\w+):\s*["']?(.*?)["']?\s*$/);
+        if (kvMatch) {
+            currentKey = kvMatch[1];
+            var val = kvMatch[2];
+            if (val) {
+                result[currentKey] = val;
+            }
+            // If no value, it's a list header — currentKey stays for following - items
+        }
+    }
+    return result;
+}
+
+function stripYamlFrontMatter(text) {
+    return text.replace(/^---\n[\s\S]*?\n---\n/, '');
+}
+
+function fillFormFromFrontMatter(meta) {
+    if (!meta) return;
+
+    // Title
+    if (meta.title) {
+        var titleInput = document.querySelector('[name="title"]');
+        if (titleInput) titleInput.value = meta.title;
+    }
+
+    // Abstract
+    if (meta.abstract) {
+        var abstractInput = document.querySelector('[name="abstract"]');
+        if (abstractInput) abstractInput.value = meta.abstract;
+    }
+
+    // AI disclosure
+    if (meta.ai_disclosure) {
+        var disclosureInput = document.querySelector('[name="ai_disclosure"]');
+        if (disclosureInput) disclosureInput.value = meta.ai_disclosure;
+    }
+
+    // Co-authors (array of {orcid, name} objects)
+    if (meta.authors && Array.isArray(meta.authors)) {
+        var container = document.getElementById('co-authors');
+        // Remove existing co-author rows (keep the first one — it's the submitter)
+        var existing = container.querySelectorAll('.author-entry');
+        for (var i = 1; i < existing.length; i++) existing[i].remove();
+
+        meta.authors.forEach(function(a) {
+            if (a.orcid && a.name) {
+                addAuthorRow(a.orcid, a.name);
+            }
+        });
+    }
+
+    // Subjects (array of "Domain > Subdomain" strings)
+    if (meta.subjects && Array.isArray(meta.subjects)) {
+        var rows = document.querySelectorAll('.class-row');
+        meta.subjects.forEach(function(subj, idx) {
+            if (idx >= rows.length) return;
+            var parts = subj.split(' > ');
+            var domain = parts[0].trim();
+            var subdomain = parts[1] ? parts[1].trim() : '';
+
+            var domainSel = rows[idx].querySelector('.class-domain');
+            var subSel = rows[idx].querySelector('.class-subdomain');
+
+            // Set domain
+            domainSel.value = domain;
+            // Trigger change to populate subdomain options
+            domainSel.dispatchEvent(new Event('change'));
+
+            // Set subdomain if we have a value
+            if (subdomain) {
+                // The option value is "Domain > Subdomain"
+                var fullValue = domain + ' > ' + subdomain;
+                subSel.value = fullValue;
+                subSel.dispatchEvent(new Event('change'));
+            }
+        });
+    }
+
+    // Update preview state after filling
+    updatePreviewState();
+}
+
+function handleFileSelect(input) {
+    if (!input.files || !input.files.length) return;
+    var file = input.files[0];
+    var reader = new FileReader();
+    reader.onload = function(e) {
+        var text = e.target.result;
+        var meta = parseYamlFrontMatter(text);
+        if (meta) {
+            fillFormFromFrontMatter(meta);
+        }
+    };
+    reader.readAsText(file);
+}
+
 // ─── Init ─────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', function() {
     // Build 3 classification rows
@@ -1237,6 +1385,14 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('add-author-btn').addEventListener('click', function() {
         addAuthorRow('', '');
     });
+
+    // File input: auto-fill from YAML front matter
+    var fileInput = document.querySelector('[name="markdown"]');
+    if (fileInput) {
+        fileInput.addEventListener('change', function() {
+            handleFileSelect(this);
+        });
+    }
 
     // Monitor all inputs for preview state updates
     var form = document.getElementById('main-form');
@@ -1353,6 +1509,12 @@ def submit_page(request: Request):
                 <label>Markdown file (.md)</label>
                 <input type="file" name="markdown" accept=".md,.markdown" required>
                 <div class="hint">Max 25MB. The file is the version of record.</div>
+                <div class="hint" style="margin-top:0.3rem;color:var(--cobalt)">
+                    Metadata can be embedded as YAML front matter in the file —
+                    the form will auto-fill when you upload. See
+                    <a href="/api/agent-guide" target="_blank">the agent guide</a>
+                    for the format.
+                </div>
             </div>
 
             <div class="form-group">

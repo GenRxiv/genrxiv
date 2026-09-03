@@ -367,6 +367,28 @@ Required fields:
   license        - License identifier ("CC0")
   license_url    - License URL (CC0 URL: https://creativecommons.org/publicdomain/zero/1.0/)
 
+Embedded metadata (YAML front matter):
+  The Markdown file can include YAML front matter at the top. When
+  uploaded via the web form, the form auto-fills from the front matter.
+  The submitter (logged-in ORCID user) is always the first author.
+
+  Example:
+  ---
+  title: "Paper Title"
+  abstract: "Summary of the research."
+  authors:
+    - orcid: "0000-0000-0000-0001"
+      name: "Co-Author Name"
+  ai_disclosure: "AI-generated, reviewed by authors."
+  subjects:
+    - "Natural sciences > Mathematics"
+    - "Natural sciences > Computer and information sciences"
+    - "Social sciences > Economics and business"
+  ---
+
+  Note: authors in front matter are co-authors only (the submitter is
+  prepended automatically). Pandoc strips front matter during rendering.
+
 Citations:
   Use Pandoc @citekey syntax in the Markdown for inline citations.
   Include a ```bibtex fenced code block with all references.

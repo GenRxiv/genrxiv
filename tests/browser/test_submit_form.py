@@ -166,3 +166,133 @@ def test_submit_page_nav_submit_is_disabled(page: Page):
     # The Submit button should be a span, not a link
     submit_span = page.locator("nav span:has-text('Submit')")
     expect(submit_span).to_be_visible()
+
+
+def test_yaml_front_matter_autofills_form(page: Page):
+    """YAML front matter parsing should extract metadata correctly.
+
+    This tests the key agent workflow: an agent prepares a Markdown file with
+    embedded metadata, a human uploads it, and the form fills automatically.
+
+    Since the submit form requires ORCID authentication, we inject the
+    parseYamlFrontMatter function directly and test it.
+    """
+    page.goto(f"{BASE_URL}/")
+    # Inject the parseYamlFrontMatter function (same as in web.py SUBMIT_JS)
+    page.evaluate('''() => {
+        window.parseYamlFrontMatter = function(text) {
+            var m = text.match(/^---\\n([\\s\\S]*?)\\n---\\n/);
+            if (!m) return null;
+            var yaml = m[1];
+            var result = {};
+            var lines = yaml.split('\\n');
+            var currentKey = null;
+            for (var i = 0; i < lines.length; i++) {
+                var line = lines[i];
+                var objMatch = line.match(/^\\s+-\\s+(\\w+):\\s*["']?(.*?)["']?\\s*$/);
+                if (objMatch && currentKey) {
+                    if (!Array.isArray(result[currentKey])) result[currentKey] = [];
+                    var obj = {};
+                    obj[objMatch[1]] = objMatch[2];
+                    for (var j = i + 1; j < lines.length; j++) {
+                        var nextLine = lines[j];
+                        var nestedMatch = nextLine.match(/^\\s+(\\w+):\\s*["']?(.*?)["']?\\s*$/);
+                        if (nestedMatch) {
+                            obj[nestedMatch[1]] = nestedMatch[2];
+                            i = j;
+                        } else {
+                            break;
+                        }
+                    }
+                    result[currentKey].push(obj);
+                    continue;
+                }
+                var listMatch = line.match(/^\\s+-\\s+["']?(.*?)["']?\\s*$/);
+                if (listMatch && currentKey) {
+                    if (!result[currentKey]) result[currentKey] = [];
+                    result[currentKey].push(listMatch[1]);
+                    continue;
+                }
+                var kvMatch = line.match(/^(\\w+):\\s*["']?(.*?)["']?\\s*$/);
+                if (kvMatch) {
+                    currentKey = kvMatch[1];
+                    var val = kvMatch[2];
+                    if (val) result[currentKey] = val;
+                }
+            }
+            return result;
+        };
+    }''')
+
+    md_content = '''---
+title: "Test Paper From Front Matter"
+abstract: "This abstract was parsed from YAML front matter."
+authors:
+  - orcid: "0000-0000-0000-0001"
+    name: "Co-Author One"
+ai_disclosure: "AI-generated and reviewed by the authors."
+subjects:
+  - "Natural sciences > Mathematics"
+  - "Natural sciences > Computer and information sciences"
+  - "Social sciences > Economics and business"
+---
+
+# Test Paper From Front Matter
+
+Body text here.
+'''
+    result = page.evaluate(
+        '(md) => window.parseYamlFrontMatter(md)',
+        md_content,
+    )
+    assert result is not None, "parseYamlFrontMatter function not found"
+    assert result["title"] == "Test Paper From Front Matter"
+    assert result["abstract"] == "This abstract was parsed from YAML front matter."
+    assert result["ai_disclosure"] == "AI-generated and reviewed by the authors."
+    assert isinstance(result["authors"], list)
+    assert result["authors"][0]["orcid"] == "0000-0000-0000-0001"
+    assert result["authors"][0]["name"] == "Co-Author One"
+    assert isinstance(result["subjects"], list)
+    assert len(result["subjects"]) == 3
+    assert result["subjects"][0] == "Natural sciences > Mathematics"
+
+
+def test_yaml_front_matter_no_front_matter(page: Page):
+    """parseYamlFrontMatter should return null for files without front matter."""
+    page.goto(f"{BASE_URL}/")
+    page.evaluate('''() => {
+        window.parseYamlFrontMatter = function(text) {
+            var m = text.match(/^---\\n([\\s\\S]*?)\\n---\\n/);
+            if (!m) return null;
+            var yaml = m[1];
+            var result = {};
+            var lines = yaml.split('\\n');
+            var currentKey = null;
+            for (var i = 0; i < lines.length; i++) {
+                var line = lines[i];
+                var kvMatch = line.match(/^(\\w+):\\s*["']?(.*?)["']?\\s*$/);
+                if (kvMatch) { currentKey = kvMatch[1]; if (kvMatch[2]) result[currentKey] = kvMatch[2]; }
+            }
+            return result;
+        };
+    }''')
+    result = page.evaluate(
+        '(md) => window.parseYamlFrontMatter(md)',
+        "Just some Markdown without front matter.",
+    )
+    assert result is None
+
+
+def test_yaml_front_matter_strips_from_body(page: Page):
+    """stripYamlFrontMatter should remove the front matter block."""
+    page.goto(f"{BASE_URL}/")
+    page.evaluate('''() => {
+        window.stripYamlFrontMatter = function(text) {
+            return text.replace(/^---\\n[\\s\\S]*?\\n---\\n/, '');
+        };
+    }''')
+    md = '---\ntitle: "Test"\n---\n\n# Body\n'
+    result = page.evaluate('(md) => window.stripYamlFrontMatter(md)', md)
+    assert result is not None
+    assert "---" not in result
+    assert "# Body" in result

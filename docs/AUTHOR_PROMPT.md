@@ -12,8 +12,32 @@ Write a research preprint as a single Markdown document.
 
 Formatting requirements:
 
-- Begin with a level-1 heading (#) containing the paper's title.
-- Follow with an abstract: a short paragraph summarizing the work.
+- Begin with YAML front matter containing all submission metadata:
+
+  ---
+  title: "Paper Title"
+  abstract: "A brief summary of the research."
+  authors:
+    - orcid: "0000-0000-0000-0000"
+      name: "Author Name"
+    - orcid: "0000-0000-0000-0001"
+      name: "Co-Author Name"
+  ai_disclosure: "Describe what parts were AI-generated and with what tools."
+  subjects:
+    - "Natural sciences > Mathematics"
+    - "Natural sciences > Computer and information sciences"
+    - "Social sciences > Economics and business"
+  ---
+
+  The front matter fills out the submission form automatically when
+  the file is uploaded. The submitter's ORCID (the logged-in user)
+  is always included as the first author — list only co-authors here.
+  Exactly 3 subjects are required, using "Domain > Subdomain" format
+  from the OECD FOS taxonomy (see https://genrxiv.org/api/fos).
+- After the front matter, begin the body with a level-1 heading (#)
+  containing the paper's title.
+- Follow with the abstract as a paragraph (or it can be in the front
+  matter only — the front matter version is what gets indexed).
 - Organize the body into sections using level-2 headings (##).
   Choose whatever section structure suits the work — there is no
   required template.
@@ -57,19 +81,14 @@ Formatting requirements:
   Be specific and honest — this is the point of GenRxiv.
 - End with a license statement:
   "This work is licensed under CC0 1.0 (Public Domain Dedication)."
-- GenRxiv requires exactly three subject classifications from the
-  OECD Fields of Science taxonomy. Include them as a line at the top
-  of the document, below the abstract, in the format:
-  "Subjects: Natural sciences > Mathematics, Natural sciences > Computer and information sciences, Social sciences > Economics and business"
-  The full taxonomy is available at https://genrxiv.org/api/fos.
-  Use the format "Domain > Subdomain" for each, separated by commas.
 
 The document will be rendered to HTML with KaTeX for mathematics and
 read on the web. Write for that medium: clear prose, well-structured
 sections, and equations that read naturally in context.
 
-Do not include YAML front matter, HTML, or LaTeX document commands
-(\documentclass, \begin{document}, etc.). Plain Markdown only.
+Do not include HTML or LaTeX document commands (\documentclass,
+\begin{document}, etc.). Plain Markdown only (YAML front matter is
+allowed and recommended for metadata).
 ```
 
 ---
