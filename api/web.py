@@ -249,9 +249,12 @@ def _page(
     extra_css: str = "",
     extra_js: str = "",
     raw_title: bool = False,
+    wrap_container: bool = True,
 ) -> HTMLResponse:
     """Render a full HTML page."""
     page_title = title if raw_title else f"{title} &middot; {config.site_name}"
+    if wrap_container:
+        body = f'<div class="container">\n{body}\n</div>'
     html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -596,6 +599,7 @@ def splash_page(request: Request):
         extra_css=SPLASH_CSS,
         extra_js=SPLASH_JS,
         raw_title=True,
+        wrap_container=False,
     )
 
 
