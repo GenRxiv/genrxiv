@@ -284,6 +284,9 @@ async def submit(
 
     # Validate fields
     title = validate_title(title)
+    abstract = abstract.strip()
+    if not abstract:
+        raise HTTPException(400, "Abstract is required")
     if len(abstract) > MAX_ABSTRACT_LENGTH:
         raise HTTPException(400, f"Abstract too long (max {MAX_ABSTRACT_LENGTH} chars)")
     ai_disclosure = ai_disclosure.strip()

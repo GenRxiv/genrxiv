@@ -19,8 +19,65 @@ from pydantic import BaseModel
 from config import config
 from db import get_conn
 from auth import get_current_author, require_author, require_admin
+from orcid_client import fetch_orcid_works_count
 
 router = APIRouter()
+
+# ─── OECD Fields of Science taxonomy ───────────────────────────────────────
+# Used for structured subject classification on submissions.
+# Authors must select 3 classifications from this taxonomy.
+
+OECD_FOS = {
+    "Natural sciences": [
+        "Mathematics", "Computer and information sciences", "Physical sciences",
+        "Chemical sciences", "Earth and related environmental sciences",
+        "Biological sciences", "Other natural sciences",
+    ],
+    "Engineering and technology": [
+        "Civil engineering", "Electrical, electronic, information engineering",
+        "Mechanical engineering", "Chemical engineering",
+        "Materials engineering", "Medical engineering",
+        "Environmental engineering", "Environmental biotechnology",
+        "Industrial biotechnology", "Nano-technology",
+        "Other engineering and technologies",
+    ],
+    "Medical and health sciences": [
+        "Basic medicine", "Clinical medicine", "Health sciences",
+        "Medical biotechnology", "Other medical sciences",
+    ],
+    "Agricultural and veterinary sciences": [
+        "Agriculture, forestry, and fisheries", "Animal and dairy science",
+        "Veterinary science", "Agricultural biotechnology",
+        "Other agricultural sciences",
+    ],
+    "Social sciences": [
+        "Psychology and cognitive sciences", "Economics and business",
+        "Education", "Sociology", "Law", "Political science",
+        "Social and economic geography", "Media and communications",
+        "Other social sciences",
+    ],
+    "Humanities and the arts": [
+        "History and archaeology", "Languages and literature",
+        "Philosophy, ethics, and religion", "Arts (arts, history of arts, performing arts, music)",
+        "Other humanities",
+    ],
+}
+
+
+def _oecd_select_html(selected: list[str] = None) -> str:
+    """Build HTML for the OECD FOS multi-select (3 required)."""
+    selected = selected or []
+    options = ""
+    for category, fields in OECD_FOS.items():
+        options += f'<optgroup label="{category}">\n'
+        for field in fields:
+            # Use "Category > Field" as the value for clarity
+            value = f"{category} > {field}"
+            is_selected = " selected" if value in selected else ""
+            options += f'<option value="{value}"{is_selected}>{field}</option>\n'
+        options += "</optgroup>\n"
+    return f'<select name="keywords" multiple size="10" required style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:4px;font-size:1rem;font-family:inherit">{options}</select>'
+
 
 # ─── Shared template helpers ───────────────────────────────────────────────
 
@@ -250,6 +307,50 @@ def _article_card(article: dict, show_endorsements: bool = False) -> str:
 {f'<div class="keywords">{kw_html}</div>' if kw_html else ''}
 <div class="meta">Published {published} &middot; ARK: {ark}</div>
 </div>"""
+
+
+# ─── ORCID lookup for co-author entry ──────────────────────────────────────
+
+@router.get("/api/orcid-lookup/{orcid}")
+def orcid_lookup(orcid: str, request: Request):
+    """Look up an ORCID iD and return the name if known.
+
+    Checks the local authors table first, then falls back to the ORCID
+    public API. Returns {orcid, name, source} or 404 if not found.
+    """
+    # Normalize the ORCID
+    orcid = orcid.strip()
+    if len(orcid) == 16 and "-" not in orcid:
+        orcid = f"{orcid[0:4]}-{orcid[4:8]}-{orcid[8:12]}-{orcid[12:16]}"
+
+    # Check local DB first
+    with get_conn().connection() as conn:
+        row = conn.execute(
+            "SELECT name, affiliation FROM authors WHERE orcid = %s", (orcid,)
+        ).fetchone()
+    if row:
+        return {"orcid": orcid, "name": row["name"], "affiliation": row.get("affiliation"), "source": "local"}
+
+    # Fall back to ORCID public API
+    try:
+        import httpx2 as httpx
+        with httpx.Client(timeout=10) as client:
+            r = client.get(
+                f"{config.orcid_api_url}/{orcid}/person",
+                headers={"Accept": "application/json"},
+            )
+            if r.status_code == 200:
+                data = r.json()
+                name_obj = data.get("name", {})
+                given = name_obj.get("given-names", {}).get("value", "")
+                family = name_obj.get("family-name", {}).get("value", "")
+                name = f"{given} {family}".strip()
+                if name:
+                    return {"orcid": orcid, "name": name, "affiliation": None, "source": "orcid"}
+    except Exception:
+        pass
+
+    raise HTTPException(404, f"ORCID {orcid} not found")
 
 
 # ─── Splash page ───────────────────────────────────────────────────────────
@@ -813,9 +914,181 @@ def author_page(orcid: str, request: Request):
 
 # ─── Submit page ───────────────────────────────────────────────────────────
 
+SUBMIT_CSS = """
+.author-entry { display:flex; gap:0.5rem; align-items:center; margin-bottom:0.5rem; }
+.author-entry input { flex:1; }
+.author-entry .author-name { font-size:0.85rem; color:var(--ink-soft); margin-left:0.5rem; }
+.author-entry .author-name.loading { color:var(--muted); }
+.author-entry .author-name.not-found { color:#c0392b; }
+.author-entry .remove-author { background:none; border:1px solid var(--border); border-radius:3px; cursor:pointer; padding:0.2rem 0.5rem; font-size:0.8rem; color:#888; }
+.author-entry .remove-author:hover { color:#c0392b; border-color:#c0392b; }
+.add-author-btn { background:none; border:1px dashed var(--border); border-radius:4px; padding:0.4rem 1rem; cursor:pointer; font-size:0.85rem; color:var(--ink-soft); margin-bottom:1rem; }
+.add-author-btn:hover { border-color:var(--accent); color:var(--accent); }
+.preview-card { background:#fff; border:1px solid var(--border); border-radius:8px; padding:1.5rem; margin-bottom:1rem; }
+.preview-card h2 { margin-bottom:0.5rem; }
+.preview-card .meta { font-size:0.85rem; color:#888; margin-top:0.5rem; }
+.preview-card .authors-list { margin:0.5rem 0; font-size:0.95rem; }
+.preview-card .author-line { padding:0.3rem 0; border-bottom:1px solid var(--rule); }
+.preview-card .author-line:last-child { border-bottom:none; }
+.preview-card .author-line .orcid { font-family:'IBM Plex Mono',monospace; font-size:0.8rem; color:var(--muted); }
+.confirm-checkbox { display:flex; align-items:flex-start; gap:0.6rem; margin:1rem 0; }
+.confirm-checkbox input[type="checkbox"] { margin-top:0.2rem; width:18px; height:18px; accent-color:var(--accent); flex-shrink:0; }
+.confirm-checkbox label { font-size:0.95rem; color:var(--ink); }
+"""
+
+SUBMIT_JS = """
+// Co-author ORCID lookup
+function normalizeOrcid(id) {
+    id = id.trim().replace(/\\s/g, '');
+    if (id.length === 16 && !id.includes('-')) {
+        return id.slice(0,4) + '-' + id.slice(4,8) + '-' + id.slice(8,12) + '-' + id.slice(12,16);
+    }
+    return id;
+}
+
+function lookupOrcid(input, nameSpan) {
+    const raw = input.value.trim();
+    if (!raw) { nameSpan.textContent = ''; nameSpan.className = 'author-name'; return; }
+    const orcid = normalizeOrcid(raw);
+    if (!/^\\d{4}-\\d{4}-\\d{4}-\\d{4}$/.test(orcid)) {
+        nameSpan.textContent = 'Invalid ORCID format';
+        nameSpan.className = 'author-name not-found';
+        return;
+    }
+    nameSpan.textContent = 'Looking up...';
+    nameSpan.className = 'author-name loading';
+    fetch('/api/orcid-lookup/' + orcid)
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+            if (data) {
+                nameSpan.textContent = data.name + (data.affiliation ? ' · ' + data.affiliation : '');
+                nameSpan.className = 'author-name';
+                input.dataset.name = data.name;
+            } else {
+                nameSpan.textContent = 'Not found — check the ORCID iD';
+                nameSpan.className = 'author-name not-found';
+                delete input.dataset.name;
+            }
+        })
+        .catch(() => {
+            nameSpan.textContent = 'Lookup failed';
+            nameSpan.className = 'author-name not-found';
+            delete input.dataset.name;
+        });
+}
+
+function addAuthorRow(orcid, name) {
+    const container = document.getElementById('co-authors');
+    const div = document.createElement('div');
+    div.className = 'author-entry';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.name = 'co_author_orcids';
+    input.placeholder = '0000-0000-0000-0000';
+    input.value = orcid || '';
+    input.style.padding = '0.6rem';
+    input.style.border = '1px solid var(--border)';
+    input.style.borderRadius = '4px';
+    input.style.fontSize = '0.95rem';
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'author-name';
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'remove-author';
+    removeBtn.textContent = 'Remove';
+    removeBtn.onclick = function() { div.remove(); };
+    input.addEventListener('input', function() {
+        clearTimeout(input.timer);
+        input.timer = setTimeout(function() { lookupOrcid(input, nameSpan); }, 400);
+    });
+    div.appendChild(input);
+    div.appendChild(nameSpan);
+    div.appendChild(removeBtn);
+    container.appendChild(div);
+    if (orcid) lookupOrcid(input, nameSpan);
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('add-author-btn').addEventListener('click', function() {
+        addAuthorRow('', '');
+    });
+    // Trigger initial lookup for pre-filled submitter
+    document.querySelectorAll('#co-authors .author-entry input').forEach(function(input) {
+        const nameSpan = input.parentElement.querySelector('.author-name');
+        if (input.value) lookupOrcid(input, nameSpan);
+    });
+});
+
+// Preview step: gather form data, look up all ORCIDs, show confirmation
+function showPreview(e) {
+    e.preventDefault();
+    var title = document.querySelector('[name="title"]').value.trim();
+    var abstract = document.querySelector('[name="abstract"]').value.trim();
+    var mdFile = document.querySelector('[name="markdown"]').files[0];
+    var submitterOrcid = document.querySelector('[name="submitter_orcid"]').value;
+    var submitterName = document.querySelector('[name="submitter_name"]').value;
+    var coAuthorInputs = document.querySelectorAll('[name="co_author_orcids"]');
+    var keywords = Array.from(document.querySelectorAll('[name="keywords"] option:checked')).map(function(o) { return o.value; });
+    var reviewed = document.querySelector('[name="reviewed"]').checked;
+    var cc0 = document.querySelector('[name="cc0_agree"]').checked;
+
+    if (!title || !abstract || !mdFile) { alert('Title, abstract, and Markdown file are required.'); return; }
+    if (keywords.length !== 3) { alert('Please select exactly 3 subject classifications.'); return; }
+    if (!reviewed) { alert('Please confirm you have reviewed and verified the content.'); return; }
+    if (!cc0) { alert('Please agree to the CC0 public domain dedication.'); return; }
+
+    // Gather all authors
+    var authors = [{orcid: submitterOrcid, name: submitterName}];
+    coAuthorInputs.forEach(function(input) {
+        var orcid = normalizeOrcid(input.value);
+        if (orcid && /^\\d{4}-\\d{4}-\\d{4}-\\d{4}$/.test(orcid)) {
+            var name = input.dataset.name || input.parentElement.querySelector('.author-name').textContent.split(' · ')[0] || 'Unknown';
+            if (!name.includes('Not found') && !name.includes('Looking') && !name.includes('Invalid') && !name.includes('failed')) {
+                authors.push({orcid: orcid, name: name});
+            }
+        }
+    });
+
+    // Build preview
+    var authorsHtml = authors.map(function(a) {
+        return '<div class="author-line">' + a.name + ' <span class="orcid">' + a.orcid + '</span></div>';
+    }).join('');
+    var kwHtml = keywords.map(function(k) { return '<span class="subject-tag">' + k + '</span>'; }).join(' ');
+
+    document.getElementById('preview-title').textContent = title;
+    document.getElementById('preview-abstract').textContent = abstract;
+    document.getElementById('preview-authors').innerHTML = authorsHtml;
+    document.getElementById('preview-keywords').innerHTML = kwHtml;
+    document.getElementById('preview-file').textContent = mdFile.name + ' (' + (mdFile.size / 1024).toFixed(1) + ' KB)';
+
+    // Store authors JSON for final submission
+    document.getElementById('authors-json').value = JSON.stringify(authors);
+
+    // Copy values to confirm form
+    document.getElementById('confirm-title').value = title;
+    document.getElementById('confirm-abstract').value = abstract;
+    document.getElementById('confirm-authors').value = JSON.stringify(authors);
+    document.getElementById('confirm-keywords').value = keywords.join(', ');
+    // Copy the file to the confirm form's file input
+    var confirmFile = document.getElementById('confirm-markdown');
+    confirmFile.files = mdFile;
+
+    // Show preview, hide form
+    document.getElementById('submit-form').style.display = 'none';
+    document.getElementById('preview-section').style.display = 'block';
+}
+
+function backToForm(e) {
+    e.preventDefault();
+    document.getElementById('submit-form').style.display = 'block';
+    document.getElementById('preview-section').style.display = 'none';
+}
+"""
+
+
 @router.get("/submit", response_class=HTMLResponse)
 def submit_page(request: Request):
-    """Submission form."""
+    """Submission form with ORCID-based author entry and preview/confirm flow."""
     author = get_current_author(request)
     if not author:
         body = f"""
@@ -827,66 +1100,110 @@ def submit_page(request: Request):
         """
         return _page("Submit", body, None)
 
+    oecd_select = _oecd_select_html()
     body = f"""
     <h1>Submit a Paper</h1>
     <p style="color:#888;margin-bottom:1.5rem">GenRxiv accepts Markdown submissions only. Markdown is the version of record.</p>
-    <form method="post" action="/api/submit" enctype="multipart/form-data">
-        <div class="form-group">
-            <label>Markdown file (.md)</label>
-            <input type="file" name="markdown" accept=".md,.markdown" required>
-            <div class="hint">Max 25MB. The file is the version of record.</div>
+
+    <div id="submit-form">
+        <form method="post" action="/api/submit" enctype="multipart/form-data" id="main-form">
+            <input type="hidden" name="submitter_orcid" value="{author['orcid']}">
+            <input type="hidden" name="submitter_name" value="{author['name']}">
+            <input type="hidden" name="authors" id="authors-json" value="">
+            <input type="hidden" name="license" value="CC0">
+            <input type="hidden" name="license_url" value="https://creativecommons.org/publicdomain/zero/1.0/">
+            <input type="hidden" name="ai_disclosure" value="AI-generated content, reviewed and verified by the authors.">
+
+            <div class="form-group">
+                <label>Markdown file (.md)</label>
+                <input type="file" name="markdown" accept=".md,.markdown" required>
+                <div class="hint">Max 25MB. The file is the version of record.</div>
+            </div>
+
+            <div class="form-group">
+                <label>Title</label>
+                <input type="text" name="title" required placeholder="Paper title">
+            </div>
+
+            <div class="form-group">
+                <label>Abstract</label>
+                <textarea name="abstract" required placeholder="A brief summary of the research..."></textarea>
+                <div class="hint">Required. This is what appears in browse, search, and feeds.</div>
+            </div>
+
+            <div class="form-group">
+                <label>Authors</label>
+                <div id="co-authors">
+                    <div class="author-entry">
+                        <input type="text" value="{author['orcid']}" readonly
+                            style="padding:0.6rem;border:1px solid var(--border);border-radius:4px;font-size:0.95rem;flex:1;background:var(--paper-warm)"
+                            data-name="{author['name']}">
+                        <span class="author-name">{author['name']} (you)</span>
+                    </div>
+                </div>
+                <div class="hint" style="margin-bottom:0.5rem">Add co-authors by ORCID iD. Names are looked up automatically.</div>
+                <button type="button" class="add-author-btn" id="add-author-btn">+ Add co-author</button>
+            </div>
+
+            <div class="form-group">
+                <label>Subject classifications (select 3)</label>
+                {oecd_select}
+                <div class="hint">Select exactly 3 from the OECD Fields of Science taxonomy.</div>
+            </div>
+
+            <div class="form-group">
+                <div class="confirm-checkbox">
+                    <input type="checkbox" name="reviewed" id="reviewed" required>
+                    <label for="reviewed">I confirm that this content was AI-generated, and I have reviewed and verified it for accuracy and integrity.</label>
+                </div>
+                <div class="confirm-checkbox">
+                    <input type="checkbox" name="cc0_agree" id="cc0_agree" required>
+                    <label for="cc0_agree">I dedicate this work to the public domain under <a href="https://creativecommons.org/publicdomain/zero/1.0/" target="_blank">CC0</a>.</label>
+                </div>
+            </div>
+
+            <button type="button" class="btn btn-primary" onclick="showPreview(event)">Preview submission</button>
+        </form>
+    </div>
+
+    <div id="preview-section" style="display:none">
+        <h2>Preview</h2>
+        <p style="color:#888;margin-bottom:1.5rem">Please review your submission before confirming.</p>
+
+        <div class="preview-card">
+            <h2 id="preview-title"></h2>
+            <div class="meta"><strong>Abstract:</strong> <span id="preview-abstract"></span></div>
+            <div class="authors-list" id="preview-authors"></div>
+            <div class="meta"><strong>Subjects:</strong> <span id="preview-keywords"></span></div>
+            <div class="meta"><strong>File:</strong> <span id="preview-file"></span></div>
+            <div class="meta"><strong>License:</strong> CC0 (Public Domain)</div>
+            <div class="meta"><strong>AI disclosure:</strong> AI-generated content, reviewed and verified by the authors.</div>
         </div>
-        <div class="form-group">
-            <label>Title</label>
-            <input type="text" name="title" required placeholder="Paper title">
-        </div>
-        <div class="form-group">
-            <label>Authors (JSON array)</label>
-            <textarea name="authors" required>[{{"orcid": "{author['orcid']}", "name": "{author['name']}"}}]</textarea>
-            <div class="hint">JSON array of {{"orcid": "...", "name": "...", "affiliation": "..."}} objects. You can add co-authors.</div>
-        </div>
-        <div class="form-group">
-            <label>AI disclosure</label>
-            <textarea name="ai_disclosure" required placeholder="State plainly what the AI did.">Drafted by an AI, verified by the authors.</textarea>
-            <div class="hint">GenRxiv assumes AI was involved. Just state what it did.</div>
-        </div>
-        <div class="form-group">
-            <label>Abstract (optional)</label>
-            <textarea name="abstract" placeholder="Brief abstract..."></textarea>
-        </div>
-        <div class="form-group">
-            <label>Keywords (comma-separated, optional)</label>
-            <input type="text" name="keywords" placeholder="AI, machine learning, ...">
-        </div>
-        <div class="form-group">
-            <label>License</label>
-            <select name="license" id="license-select">
-                <option value="CC-BY-4.0">CC BY 4.0 (default)</option>
-                <option value="CC-BY-SA-4.0">CC BY-SA 4.0</option>
-                <option value="CC-BY-ND-4.0">CC BY-ND 4.0</option>
-                <option value="CC0">CC0 (Public Domain)</option>
-            </select>
-            <input type="hidden" name="license_url" id="license-url" value="https://creativecommons.org/licenses/by/4.0/">
-        </div>
-        <button type="submit" class="btn btn-primary">Submit for review</button>
-    </form>
+
+        <p style="margin:1.5rem 0">By confirming, you agree that the authors listed above are correct and that you have their permission to include them.</p>
+
+        <form method="post" action="/api/submit" enctype="multipart/form-data" id="confirm-form">
+            <!-- Re-submit all fields -->
+            <input type="hidden" name="title" id="confirm-title">
+            <input type="hidden" name="abstract" id="confirm-abstract">
+            <input type="hidden" name="authors" id="confirm-authors">
+            <input type="hidden" name="license" value="CC0">
+            <input type="hidden" name="license_url" value="https://creativecommons.org/publicdomain/zero/1.0/">
+            <input type="hidden" name="ai_disclosure" value="AI-generated content, reviewed and verified by the authors.">
+            <input type="hidden" name="keywords" id="confirm-keywords">
+            <!-- File needs to be re-attached — we'll use JS to copy it -->
+            <input type="file" name="markdown" id="confirm-markdown" style="display:none">
+            <button type="submit" class="btn btn-primary">Confirm and submit</button>
+            <button type="button" class="btn" onclick="backToForm(event)" style="margin-left:0.5rem">Go back and edit</button>
+        </form>
+    </div>
+
     <div style="margin-top:1.5rem;font-size:0.85rem;color:#888">
         <p>After submission, your paper will be reviewed by a moderator before publication.
         You'll be able to track its status from <a href="/dashboard">My Submissions</a>.</p>
     </div>
-    <script>
-    document.getElementById('license-select').addEventListener('change', function() {{
-        var urls = {{
-            'CC-BY-4.0': 'https://creativecommons.org/licenses/by/4.0/',
-            'CC-BY-SA-4.0': 'https://creativecommons.org/licenses/by-sa/4.0/',
-            'CC-BY-ND-4.0': 'https://creativecommons.org/licenses/by-nd/4.0/',
-            'CC0': 'https://creativecommons.org/publicdomain/zero/1.0/'
-        }};
-        document.getElementById('license-url').value = urls[this.value] || '';
-    }});
-    </script>
     """
-    return _page("Submit", body, author)
+    return _page("Submit", body, author, extra_css=SUBMIT_CSS, extra_js=SUBMIT_JS)
 
 
 @router.get("/submit-version/{article_id}", response_class=HTMLResponse)

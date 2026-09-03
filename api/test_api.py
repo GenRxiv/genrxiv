@@ -217,6 +217,28 @@ class TestWebPages:
         r = authed_client.get("/submit")
         assert r.status_code == 200
         assert "Submit a Paper" in r.text
+        assert "Subject classifications" in r.text
+        assert "CC0" in r.text
+        assert "reviewed and verified" in r.text
+
+    @requires_db
+    def test_submit_rejects_missing_abstract(self, authed_client):
+        """Abstract is now required."""
+        import json
+        import io
+        md = io.BytesIO(b"# Test\n\nContent.")
+        r = authed_client.post(
+            "/api/submit",
+            files={"markdown": ("test.md", md, "text/markdown")},
+            data={
+                "title": "Test Paper",
+                "authors": json.dumps([{"orcid": "0000-0000-0000-0000", "name": "Test Author"}]),
+                "ai_disclosure": "AI drafted",
+                "abstract": "",
+            },
+        )
+        assert r.status_code == 400
+        assert "Abstract is required" in r.json()["detail"]
 
 
 # ─── 18-21. Auth-gated pages (dashboard / admin) ────────────────────────────
@@ -410,6 +432,7 @@ class TestVersioning:
                 "title": "Second Paper",
                 "authors": json.dumps([{"orcid": "0000-0000-0000-0001", "name": "Admin"}]),
                 "ai_disclosure": "AI drafted",
+                "abstract": "A second paper for versioning tests.",
                 "supersedes_id": db["article_id"],
             },
         )
@@ -433,6 +456,7 @@ class TestVersioning:
                 "title": "Test Paper v2",
                 "authors": json.dumps([{"orcid": db["orcid"], "name": "Test Author"}]),
                 "ai_disclosure": "AI drafted v2",
+                "abstract": "Updated abstract for v2.",
                 "supersedes_id": db["article_id"],
             },
         )
@@ -455,6 +479,7 @@ class TestVersioning:
                 "title": "Test Paper v2",
                 "authors": json.dumps([{"orcid": db["orcid"], "name": "Test Author"}]),
                 "ai_disclosure": "AI drafted v2",
+                "abstract": "Updated abstract for v2 approval test.",
                 "supersedes_id": db["article_id"],
             },
         )
@@ -536,6 +561,7 @@ class TestNotifications:
                 "title": "Notification Test",
                 "authors": json.dumps([{"orcid": "0000-0000-0000-0001", "name": "Admin"}]),
                 "ai_disclosure": "AI drafted",
+                "abstract": "Testing moderation notifications.",
             },
         )
         assert r.status_code == 200
