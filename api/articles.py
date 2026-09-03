@@ -7,17 +7,44 @@ import json
 import re
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import unquote
 
 import httpx
 from fastapi import APIRouter, Request, HTTPException, Depends, UploadFile, File, Form, Query
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse, RedirectResponse, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from config import config
 from db import get_conn
 from auth import get_current_author, require_author, require_admin
 
+limiter = Limiter(key_func=get_remote_address)
+
 router = APIRouter()
+
+# ─── Constants ─────────────────────────────────────────────────────────────
+
+MAX_TITLE_LENGTH = 500
+MAX_ABSTRACT_LENGTH = 5000
+MAX_AI_DISCLOSURE_LENGTH = 2000
+MAX_KEYWORDS = 20
+MAX_KEYWORD_LENGTH = 100
+MAX_AUTHORS = 50
+MAX_MARKDOWN_SIZE = 25 * 1024 * 1024  # 25 MB
+ALLOWED_EXTENSIONS = {".md", ".markdown"}
+ALLOWED_LICENSES = {
+    "CC-BY-4.0": "https://creativecommons.org/licenses/by/4.0/",
+    "CC-BY-SA-4.0": "https://creativecommons.org/licenses/by-sa/4.0/",
+    "CC-BY-ND-4.0": "https://creativecommons.org/licenses/by-nd/4.0/",
+    "CC-BY-NC-4.0": "https://creativecommons.org/licenses/by-nc/4.0/",
+    "CC-BY-NC-SA-4.0": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+    "CC-BY-NC-ND-4.0": "https://creativecommons.org/licenses/by-nc-nd/4.0/",
+    "CC0": "https://creativecommons.org/publicdomain/zero/1.0/",
+}
+
+ORCID_PATTERN = re.compile(r"^\d{4}-\d{4}-\d{4}-\d{3}[\dX]$")
 
 # ─── Helpers ───────────────────────────────────────────────────────────────
 
@@ -37,6 +64,49 @@ def is_agent(user_agent: str) -> bool:
 
 def ip_hash(ip: str) -> str:
     return hashlib.sha256(ip.encode()).hexdigest()[:16]
+
+
+def validate_orcid(orcid: str) -> str:
+    """Validate ORCID iD format (0000-0000-0000-000X)."""
+    orcid = orcid.strip()
+    if not ORCID_PATTERN.match(orcid):
+        raise HTTPException(400, f"Invalid ORCID format: {orcid}")
+    return orcid
+
+
+def validate_title(title: str) -> str:
+    """Validate article title."""
+    title = title.strip()
+    if not title:
+        raise HTTPException(400, "Title is required")
+    if len(title) > MAX_TITLE_LENGTH:
+        raise HTTPException(400, f"Title too long (max {MAX_TITLE_LENGTH} chars)")
+    return title
+
+
+def validate_keywords(keywords: list[str]) -> list[str]:
+    """Validate keyword list."""
+    if len(keywords) > MAX_KEYWORDS:
+        raise HTTPException(400, f"Too many keywords (max {MAX_KEYWORDS})")
+    cleaned = []
+    for kw in keywords:
+        kw = kw.strip()
+        if not kw:
+            continue
+        if len(kw) > MAX_KEYWORD_LENGTH:
+            raise HTTPException(400, f"Keyword too long (max {MAX_KEYWORD_LENGTH} chars): {kw[:50]}")
+        cleaned.append(kw)
+    return cleaned
+
+
+def validate_license(license: str, license_url: str) -> tuple[str, str]:
+    """Validate license and return (license, license_url)."""
+    if license not in ALLOWED_LICENSES:
+        raise HTTPException(400, f"Unsupported license: {license}. Allowed: {', '.join(ALLOWED_LICENSES)}")
+    url = license_url or ALLOWED_LICENSES[license]
+    if url != ALLOWED_LICENSES[license]:
+        raise HTTPException(400, f"License URL does not match license {license}")
+    return license, url
 
 
 def assign_ark(article_id: int) -> str:
@@ -80,6 +150,22 @@ def save_article_file(article_id: int, ext: str, content: bytes | str) -> str:
     else:
         filepath.write_bytes(content)
     return f"{article_id}/{filename}"
+
+
+def safe_resolve_file(relative_path: str) -> Path | None:
+    """Safely resolve a file path under the files directory.
+    Prevents path traversal (../../etc/passwd)."""
+    files_dir = Path(config.files_dir).resolve()
+    try:
+        target = (files_dir / relative_path).resolve()
+    except (ValueError, RuntimeError):
+        return None
+    # Ensure the resolved path is under files_dir
+    if not str(target).startswith(str(files_dir)):
+        return None
+    if not target.exists() or not target.is_file():
+        return None
+    return target
 
 
 def track_download(article_id: int, fmt: str, request: Request):
@@ -168,6 +254,7 @@ class AuthorInput(BaseModel):
 
 
 @router.post("/api/submit")
+@limiter.limit("5 per minute")
 async def submit(
     request: Request,
     markdown: UploadFile = File(...),
@@ -183,13 +270,26 @@ async def submit(
     """Submit a Markdown paper."""
     # Validate file
     content = await markdown.read()
-    if len(content) > 25 * 1024 * 1024:
-        raise HTTPException(413, "File too large (25MB max)")
+    if len(content) > MAX_MARKDOWN_SIZE:
+        raise HTTPException(413, f"File too large ({MAX_MARKDOWN_SIZE // (1024*1024)}MB max)")
+    if not content:
+        raise HTTPException(400, "Empty file")
     ext = Path(markdown.filename or "input.md").suffix.lower()
-    if ext not in (".md", ".markdown"):
-        raise HTTPException(400, "GenRxiv accepts Markdown only (.md)")
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(400, f"GenRxiv accepts Markdown only ({', '.join(ALLOWED_EXTENSIONS)})")
 
     md_text = content.decode("utf-8", errors="replace")
+
+    # Validate fields
+    title = validate_title(title)
+    if len(abstract) > MAX_ABSTRACT_LENGTH:
+        raise HTTPException(400, f"Abstract too long (max {MAX_ABSTRACT_LENGTH} chars)")
+    ai_disclosure = ai_disclosure.strip()
+    if not ai_disclosure:
+        raise HTTPException(400, "AI disclosure is required")
+    if len(ai_disclosure) > MAX_AI_DISCLOSURE_LENGTH:
+        raise HTTPException(400, f"AI disclosure too long (max {MAX_AI_DISCLOSURE_LENGTH} chars)")
+    license, license_url = validate_license(license, license_url)
 
     # Parse authors JSON
     try:
@@ -199,8 +299,24 @@ async def submit(
     except (json.JSONDecodeError, ValueError):
         raise HTTPException(400, "authors must be a JSON array of {orcid, name} objects")
 
-    # Parse keywords
-    kw_list = [k.strip() for k in keywords.split(",") if k.strip()] if keywords else []
+    if len(author_list) > MAX_AUTHORS:
+        raise HTTPException(400, f"Too many authors (max {MAX_AUTHORS})")
+
+    # Validate each author
+    for a in author_list:
+        if not isinstance(a, dict) or "orcid" not in a or "name" not in a:
+            raise HTTPException(400, "Each author must have orcid and name")
+        a["orcid"] = validate_orcid(a["orcid"])
+        a["name"] = a["name"].strip()[:200]
+        if not a["name"]:
+            raise HTTPException(400, "Author name cannot be empty")
+        if a.get("affiliation"):
+            a["affiliation"] = a["affiliation"].strip()[:300]
+
+    # Parse and validate keywords
+    kw_list = validate_keywords(
+        [k.strip() for k in keywords.split(",") if k.strip()] if keywords else []
+    )
 
     # Insert article
     with get_conn().connection() as conn:
@@ -354,15 +470,14 @@ def get_article_meta(article_id: int, format: str = Query("json")):
 @router.get("/article/{ark:path}/pdf")
 def download_pdf(ark: str, request: Request):
     """Download article as PDF."""
-    from urllib.parse import unquote
     ark = unquote(ark)
     article = get_article_by_ark(ark)
     if not article:
         raise HTTPException(404, "Article not found")
     track_download(article["id"], "pdf", request)
     if article["pdf_path"]:
-        filepath = Path(config.files_dir) / article["pdf_path"]
-        if filepath.exists():
+        filepath = safe_resolve_file(article["pdf_path"])
+        if filepath:
             return FileResponse(filepath, media_type="application/pdf", filename=f"{ark.replace('/', '_')}.pdf")
     # Fallback: render on the fly
     pdf_bytes = render_pdf(article["source_markdown"])
@@ -376,7 +491,6 @@ def download_pdf(ark: str, request: Request):
 @router.get("/article/{ark:path}/markdown")
 def download_markdown(ark: str, request: Request):
     """Download original Markdown source."""
-    from urllib.parse import unquote
     ark = unquote(ark)
     article = get_article_by_ark(ark)
     if not article:
@@ -392,7 +506,6 @@ def download_markdown(ark: str, request: Request):
 @router.get("/article/{ark:path}/jsonld")
 def article_jsonld(ark: str):
     """Get article as JSON-LD."""
-    from urllib.parse import unquote
     ark = unquote(ark)
     article = get_article_by_ark(ark)
     if not article:
@@ -404,15 +517,14 @@ def article_jsonld(ark: str):
 @router.get("/article/{ark:path}", response_class=HTMLResponse)
 def view_article(ark: str, request: Request):
     """View article as HTML."""
-    from urllib.parse import unquote
     ark = unquote(ark)
     article = get_article_by_ark(ark)
     if not article:
         raise HTTPException(404, "Article not found")
     track_download(article["id"], "html", request)
     if article["html_path"]:
-        filepath = Path(config.files_dir) / article["html_path"]
-        if filepath.exists():
+        filepath = safe_resolve_file(article["html_path"])
+        if filepath:
             return HTMLResponse(filepath.read_text(encoding="utf-8"))
     # Fallback: render on the fly
     html = render_html(article["source_markdown"])

@@ -19,8 +19,8 @@ co-generated with AI and want in the open — being an early submitter is one of
 the most useful things you can do. It tells us where the submission process
 breaks.
 
-**Code.** The conversion service, the OJS configuration, the site. See the
-issues list.
+**Code.** The FastAPI application, the conversion service, the web UI, the
+nginx config, the splash page. See the issues list.
 
 ## Reporting a security issue
 

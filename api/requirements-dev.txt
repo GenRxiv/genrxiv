@@ -1,0 +1,10 @@
+-r requirements.txt
+fastapi[all]
+pytest
+httpx
+psycopg[binary]
+psycopg-pool
+pydantic[email]
+python-multipart
+jinja2
+itsdangerous

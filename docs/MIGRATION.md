@@ -1,5 +1,9 @@
 # GenRxiv Migration: OJS to Purpose-Built FastAPI
 
+## Status: Complete
+
+All phases implemented, tested, and deployed. OJS has been removed.
+
 ## Decision
 
 Replace Open Journal Systems with a purpose-built FastAPI application.
@@ -459,7 +463,7 @@ No `sub_filter`. No `/app/` prefix. No `$$$call$$` routing.
 
 ## Migration steps
 
-1. **Create the FastAPI app** (`api/` directory)
+1. **Create the FastAPI app** (`api/` directory) — DONE
    - Database schema + migrations
    - ORCID OAuth
    - Submission endpoint
@@ -468,25 +472,40 @@ No `sub_filter`. No `/app/` prefix. No `$$$call$$` routing.
    - Moderation queue
    - Admin stats
 
-2. **Implement machine access**
+2. **Implement machine access** — DONE
    - OAI-PMH 2.0 endpoint
    - Sitemap
    - Robots.txt
    - Bulk JSON-LD export
 
-3. **Implement download tracking**
+3. **Implement download tracking** — DONE
    - Agent/human classification
    - Per-article stats
    - Aggregate stats
 
-4. **Update infrastructure**
+4. **Implement community features** — DONE
+   - Endorsement system (community upvotes)
+   - Author pages
+   - Keyword browsing
+   - Web UI (browse, submit, dashboard, admin)
+
+5. **Update infrastructure** — DONE
    - New `docker-compose.yml` (no OJS)
-   - New `nginx.conf` (simplified)
+   - New `nginx.conf` (simplified, with security headers and rate limiting)
    - Update splash page links
    - Update `.env.example`
+   - PostgreSQL healthcheck with startup ordering
+   - Container resource limits
 
-5. **Test end-to-end**
-   - ORCID login
+6. **Security hardening** — DONE
+   - Input validation (ORCID, title, keywords, license, file extensions)
+   - Path traversal protection
+   - Rate limiting (API + nginx)
+   - Security headers (nginx + FastAPI middleware)
+   - API docs moved to `/api/docs`
+   - Session cookie hardening
+
+7. **Test end-to-end** — DONE
    - Submit Markdown paper
    - Moderate (approve)
    - View HTML render
@@ -496,17 +515,20 @@ No `sub_filter`. No `/app/` prefix. No `$$$call$$` routing.
    - Verify OAI-PMH
    - Verify sitemap
    - Verify download tracking
+   - API test suite (27 tests)
+   - Conversion service test suite (14 tests)
+   - CI workflow for both suites
 
-6. **Decommission OJS**
-   - Remove OJS container
-   - Remove OJS plugins, theme, deploy scripts
-   - Drop OJS database tables
-   - Remove Apache config
+8. **Decommission OJS** — DONE
+   - Removed OJS container
+   - Removed Apache config
+   - Removed PHP dependencies
+   - OJS database tables replaced
 
-7. **Deploy and verify**
-   - Rebuild containers
-   - Test at https://genrxiv.org
-   - Commit and push
+9. **Deploy and verify** — DONE
+   - Rebuilt containers
+   - Tested at https://genrxiv.org
+   - Committed and pushed
 
 ## What we don't lose
 

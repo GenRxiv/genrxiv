@@ -40,3 +40,35 @@ jobs:
       - name: Run tests
         working-directory: convert-service
         run: pytest test_app.py -v
+
+  api:
+    name: API tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PostgreSQL
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql postgresql-contrib
+          sudo systemctl start postgresql.service
+
+      - name: Create test database
+        run: |
+          sudo -u postgres psql -c "CREATE USER testuser WITH PASSWORD 'testpass' SUPERUSER;" || true
+          sudo -u postgres psql -c "CREATE DATABASE genrxiv_test OWNER testuser;"
+
+      - name: Install dependencies
+        working-directory: api
+        run: pip install -r requirements-dev.txt
+
+      - name: Run tests
+        working-directory: api
+        env:
+          DATABASE_URL_TEST: "postgresql://testuser:testpass@localhost:5432/genrxiv_test"
+        run: pytest test_api.py -v

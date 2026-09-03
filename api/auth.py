@@ -17,9 +17,13 @@ import httpx
 from fastapi import APIRouter, Request, HTTPException, Depends
 from fastapi.responses import RedirectResponse, JSONResponse
 from pydantic import BaseModel
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from config import config
 from db import get_conn
+
+limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter(prefix="/auth")
 
@@ -175,6 +179,7 @@ def orcid_login(request: Request, redirect: str = "/"):
 
 
 @router.get("/orcid/callback")
+@limiter.limit("10 per minute")
 def orcid_callback(request: Request, code: str, state: str):
     """Handle ORCID OAuth callback."""
     expected_state = request.cookies.get("orcid_state")

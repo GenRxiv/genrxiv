@@ -8,6 +8,11 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
       - genrxiv_db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U genrxiv -d genrxiv"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   api:
     build:
@@ -15,8 +20,10 @@ services:
       dockerfile: api/Dockerfile
     restart: unless-stopped
     depends_on:
-      - db
-      - convert
+      db:
+        condition: service_healthy
+      convert:
+        condition: service_started
     environment:
       DATABASE_URL: postgresql://genrxiv:${DB_PASSWORD}@db/genrxiv
       ORCID_CLIENT_ID: ${ORCID_CLIENT_ID}
@@ -34,6 +41,11 @@ services:
       - article_files:/app/files
     expose:
       - "8000"
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1g
 
   convert:
     build:
@@ -59,6 +71,11 @@ services:
       - ../site:/site:ro
     ports:
       - "8080:80"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128m
 
   cloudflared:
     image: cloudflare/cloudflared:latest
