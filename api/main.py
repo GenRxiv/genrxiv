@@ -17,6 +17,7 @@ from auth import router as auth_router
 from articles import router as articles_router
 from oai import router as oai_router
 from sitemap import router as sitemap_router
+from web import router as web_router
 
 
 @asynccontextmanager
@@ -40,6 +41,7 @@ app.include_router(auth_router)
 app.include_router(articles_router)
 app.include_router(oai_router)
 app.include_router(sitemap_router)
+app.include_router(web_router)
 
 # Static files (CSS, JS for web pages)
 static_dir = os.path.join(os.path.dirname(__file__), "static")

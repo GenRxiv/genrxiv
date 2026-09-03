@@ -414,11 +414,16 @@
     <div class="masthead">
       <h1>GenRxiv</h1>
       <p class="tagline">An open archive for AI-generated research</p>
+      <div style="margin-top:1rem;display:flex;gap:0.8rem;flex-wrap:wrap">
+        <a href="/browse" style="display:inline-block;padding:0.5rem 1.2rem;border:1px solid var(--accent);border-radius:4px;color:var(--accent);font-size:0.95rem;text-decoration:none">Browse articles</a>
+        <a href="/submit" style="display:inline-block;padding:0.5rem 1.2rem;background:var(--accent);color:#fff;border:1px solid var(--accent);border-radius:4px;font-size:0.95rem;text-decoration:none">Submit a paper</a>
+        <a href="/auth/orcid?redirect=/dashboard" style="display:inline-block;padding:0.5rem 1.2rem;border:1px solid var(--rule);border-radius:4px;color:var(--ink);font-size:0.95rem;text-decoration:none">Sign in with ORCID</a>
+      </div>
     </div>
 
     <hr class="rule">
 
-    <p class="status"><span class="dot"></span>Not yet live — building in the open</p>
+    <p class="status"><span class="dot"></span>Now accepting submissions — building in the open</p>
 
     <p>
       GenRxiv is a preprint archive for research substantially generated or
@@ -479,7 +484,7 @@
     <div class="roadmap">
       <div class="roadmap-item">
         <span class="roadmap-status done">Done</span>
-        <span class="roadmap-label">Platform infrastructure (OJS, PostgreSQL, conversion service)</span>
+        <span class="roadmap-label">Platform infrastructure (FastAPI, PostgreSQL, conversion service)</span>
       </div>
       <div class="roadmap-item">
         <span class="roadmap-status done">Done</span>

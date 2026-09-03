@@ -539,3 +539,184 @@ def article_stats(article_id: int, _author: dict = Depends(get_current_author)):
         "total_downloads": total,
         "by_format": {r["format"]: {"total": r["c"], "agent": r["agent"]} for r in by_format},
     }
+
+
+# ─── Endorsements (community upvotes) ──────────────────────────────────────
+
+@router.post("/api/articles/{article_id}/endorse")
+def endorse_article(
+    article_id: int,
+    author: dict = Depends(require_author),
+):
+    """Endorse an article (community upvote). One endorsement per author per article."""
+    with get_conn().connection() as conn:
+        row = conn.execute(
+            "SELECT id FROM articles WHERE id = %s AND status = 'published'", (article_id,)
+        ).fetchone()
+        if not row:
+            raise HTTPException(404, "Article not found")
+        existing = conn.execute(
+            "SELECT id FROM endorsements WHERE article_id = %s AND author_id = %s",
+            (article_id, author["id"]),
+        ).fetchone()
+        if existing:
+            raise HTTPException(409, "Already endorsed")
+        conn.execute(
+            "INSERT INTO endorsements (article_id, author_id) VALUES (%s, %s)",
+            (article_id, author["id"]),
+        )
+        conn.commit()
+    return {"status": "endorsed", "article_id": article_id}
+
+
+@router.delete("/api/articles/{article_id}/endorse")
+def unendorse_article(
+    article_id: int,
+    author: dict = Depends(require_author),
+):
+    """Remove endorsement."""
+    with get_conn().connection() as conn:
+        conn.execute(
+            "DELETE FROM endorsements WHERE article_id = %s AND author_id = %s",
+            (article_id, author["id"]),
+        )
+        conn.commit()
+    return {"status": "unendorsed", "article_id": article_id}
+
+
+@router.get("/api/articles/{article_id}/endorsements")
+def article_endorsements(article_id: int):
+    """Get endorsement count and list for an article."""
+    with get_conn().connection() as conn:
+        count = conn.execute(
+            "SELECT COUNT(*) as c FROM endorsements WHERE article_id = %s", (article_id,)
+        ).fetchone()["c"]
+        endorsers = conn.execute(
+            """SELECT a.orcid, a.name, e.endorsed_at
+               FROM endorsements e
+               JOIN authors a ON e.author_id = a.id
+               WHERE e.article_id = %s
+               ORDER BY e.endorsed_at DESC""",
+            (article_id,),
+        ).fetchall()
+    return {
+        "count": count,
+        "endorsers": endorsers,
+    }
+
+
+# ─── Author pages ──────────────────────────────────────────────────────────
+
+@router.get("/api/authors/{orcid:path}")
+def author_profile(orcid: str):
+    """Get author profile and their published articles."""
+    from urllib.parse import unquote
+    orcid = unquote(orcid)
+    with get_conn().connection() as conn:
+        author = conn.execute(
+            "SELECT id, orcid, name, affiliation, created_at FROM authors WHERE orcid = %s",
+            (orcid,),
+        ).fetchone()
+        if not author:
+            raise HTTPException(404, "Author not found")
+        articles = conn.execute(
+            """SELECT a.id, a.ark, a.title, a.abstract, a.keywords, a.published_at
+               FROM articles a
+               JOIN article_authors aa ON a.id = aa.article_id
+               WHERE aa.author_id = %s AND a.status = 'published'
+               ORDER BY a.published_at DESC""",
+            (author["id"],),
+        ).fetchall()
+        endorsement_count = conn.execute(
+            """SELECT COUNT(*) as c FROM endorsements e
+               JOIN articles a ON e.article_id = a.id
+               WHERE e.author_id = %s AND a.status = 'published'""",
+            (author["id"],),
+        ).fetchone()["c"]
+    return {
+        "author": author,
+        "articles": articles,
+        "endorsement_count": endorsement_count,
+    }
+
+
+# ─── Keyword browsing ──────────────────────────────────────────────────────
+
+@router.get("/api/keywords")
+def list_keywords():
+    """List all keywords with article counts."""
+    with get_conn().connection() as conn:
+        rows = conn.execute(
+            """SELECT keyword, COUNT(*) as count
+               FROM articles, unnest(keywords) AS keyword
+               WHERE status = 'published'
+               GROUP BY keyword
+               ORDER BY count DESC, keyword ASC""",
+        ).fetchall()
+    return {"keywords": rows}
+
+
+@router.get("/api/keywords/{keyword:path}/articles")
+def articles_by_keyword(keyword: str, page: int = Query(1, ge=1), per_page: int = Query(20, ge=1, le=100)):
+    """List published articles by keyword."""
+    from urllib.parse import unquote
+    keyword = unquote(keyword)
+    offset = (page - 1) * per_page
+    with get_conn().connection() as conn:
+        rows = conn.execute(
+            """SELECT id, ark, title, abstract, keywords, published_at
+               FROM articles
+               WHERE status = 'published' AND %s = ANY(keywords)
+               ORDER BY published_at DESC LIMIT %s OFFSET %s""",
+            (keyword, per_page, offset),
+        ).fetchall()
+        total = conn.execute(
+            """SELECT COUNT(*) as c FROM articles
+               WHERE status = 'published' AND %s = ANY(keywords)""",
+            (keyword,),
+        ).fetchone()["c"]
+    return {
+        "keyword": keyword,
+        "items": rows,
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+    }
+
+
+# ─── Public stats (agent-readable) ─────────────────────────────────────────
+
+@router.get("/api/stats")
+def public_stats():
+    """Public stats — no auth required, agent-readable."""
+    with get_conn().connection() as conn:
+        total_articles = conn.execute(
+            "SELECT COUNT(*) as c FROM articles WHERE status = 'published'"
+        ).fetchone()["c"]
+        total_authors = conn.execute("SELECT COUNT(*) as c FROM authors").fetchone()["c"]
+        total_downloads = conn.execute("SELECT COUNT(*) as c FROM downloads").fetchone()["c"]
+        agent_downloads = conn.execute(
+            "SELECT COUNT(*) as c FROM downloads WHERE is_agent = true"
+        ).fetchone()["c"]
+        human_downloads = conn.execute(
+            "SELECT COUNT(*) as c FROM downloads WHERE is_agent = false"
+        ).fetchone()["c"]
+        total_endorsements = conn.execute("SELECT COUNT(*) as c FROM endorsements").fetchone()["c"]
+        # Top downloaded articles
+        top_articles = conn.execute(
+            """SELECT a.id, a.ark, a.title, COUNT(d.id) as downloads
+               FROM articles a
+               LEFT JOIN downloads d ON a.id = d.article_id
+               WHERE a.status = 'published'
+               GROUP BY a.id, a.ark, a.title
+               ORDER BY downloads DESC LIMIT 10""",
+        ).fetchall()
+    return {
+        "total_articles": total_articles,
+        "total_authors": total_authors,
+        "total_downloads": total_downloads,
+        "agent_downloads": agent_downloads,
+        "human_downloads": human_downloads,
+        "total_endorsements": total_endorsements,
+        "top_articles": top_articles,
+    }
