@@ -5,7 +5,6 @@ Mounts all routers: auth, articles, OAI-PMH, sitemap, web UI.
 Initializes database schema on startup.
 """
 import os
-import time
 import logging
 from contextlib import asynccontextmanager
 
@@ -31,20 +30,8 @@ async def lifespan(app: FastAPI):
     """Initialize DB pool and schema on startup."""
     logger = logging.getLogger("genrxiv")
     init_pool()
-
-    # Retry schema initialization — the DB may not be fully ready
-    # even after the healthcheck passes (e.g. after a volume recreation).
-    for attempt in range(5):
-        try:
-            init_schema()
-            logger.info("Database schema initialized")
-            break
-        except Exception as e:
-            logger.warning("Schema init attempt %d failed: %s", attempt + 1, e)
-            if attempt == 4:
-                raise
-            time.sleep(2)
-
+    init_schema()
+    logger.info("Database schema initialized")
     os.makedirs(config.files_dir, exist_ok=True)
     yield
 
