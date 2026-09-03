@@ -1226,9 +1226,6 @@ function backToForm(e) {
 }
 
 // ─── Init ─────────────────────────────────────────────────────────────────
-var formDirty = false;
-function markDirty() { formDirty = true; }
-
 document.addEventListener('DOMContentLoaded', function() {
     // Build 3 classification rows
     var classContainer = document.getElementById('classification-rows');
@@ -1243,20 +1240,42 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Monitor all inputs for preview state updates
     var form = document.getElementById('main-form');
-    form.addEventListener('input', updatePreviewState);
-    form.addEventListener('change', updatePreviewState);
-
-    // Warn before leaving if the user has started filling in the form
-    form.addEventListener('input', markDirty);
-    form.addEventListener('change', markDirty);
+    if (form) {
+        form.addEventListener('input', updatePreviewState);
+        form.addEventListener('change', updatePreviewState);
+    }
 
     // Initial state
     updatePreviewState();
 });
 
-// beforeunload registered at top level so it's always active
+// beforeunload: check form state directly — no dependency on event listeners
+var _submitConfirmed = false;
 window.addEventListener('beforeunload', function(e) {
-    if (formDirty) {
+    if (_submitConfirmed) return;
+    var form = document.getElementById('main-form');
+    if (!form) return;
+    var hasData = false;
+    // Text inputs and textareas
+    form.querySelectorAll('input[type="text"], textarea').forEach(function(el) {
+        if (el.value.trim()) hasData = true;
+    });
+    // File input
+    var fileInput = form.querySelector('input[type="file"]');
+    if (fileInput && fileInput.files && fileInput.files.length > 0) hasData = true;
+    // Checkboxes
+    form.querySelectorAll('input[type="checkbox"]').forEach(function(el) {
+        if (el.checked) hasData = true;
+    });
+    // Selects (classification rows)
+    form.querySelectorAll('select').forEach(function(el) {
+        if (el.value) hasData = true;
+    });
+    // Co-author ORCID inputs (added dynamically but inside the form)
+    form.querySelectorAll('input[name="co_author_orcids"]').forEach(function(el) {
+        if (el.value.trim()) hasData = true;
+    });
+    if (hasData) {
         e.preventDefault();
         e.returnValue = 'You have unsaved changes. Are you sure you want to leave?';
         return 'You have unsaved changes. Are you sure you want to leave?';
@@ -1267,7 +1286,7 @@ window.addEventListener('beforeunload', function(e) {
 document.addEventListener('DOMContentLoaded', function() {
     var confirmForm = document.getElementById('confirm-form');
     if (confirmForm) {
-        confirmForm.addEventListener('submit', function() { formDirty = false; });
+        confirmForm.addEventListener('submit', function() { _submitConfirmed = true; });
     }
 });
 """
