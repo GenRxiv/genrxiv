@@ -1,10 +1,7 @@
 [tool.pytest.ini_options]
 filterwarnings = [
-    # Starlette 1.x test client deprecations — library-internal, not our code.
-    # The test client uses httpx internally; starlette now prefers httpx2.
-    # Our application code uses httpx directly (for ORCID/conversion service),
-    # so switching to httpx2 would require code changes for test-only benefit.
-    # Remove these filters when starlette's test client stabilizes.
-    "ignore:Using `httpx` with `starlette.testclient` is deprecated",
+    # Starlette 1.6.0 test client uses anyio.abc.BlockingPortal which is
+    # deprecated in anyio 4.x. This is a starlette bug, not our code.
+    # Remove when starlette fixes it.
     "ignore:The anyio.abc.BlockingPortal alias is deprecated",
 ]

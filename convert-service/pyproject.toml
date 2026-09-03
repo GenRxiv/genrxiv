@@ -1,6 +1,8 @@
 [tool.pytest.ini_options]
+cache_dir = "/tmp/pytest-cache"
 filterwarnings = [
-    # Starlette 1.x test client deprecations — library-internal, not our code.
-    "ignore:Using `httpx` with `starlette.testclient` is deprecated",
+    # Starlette 1.6.0 test client uses anyio.abc.BlockingPortal which is
+    # deprecated in anyio 4.x. This is a starlette bug, not our code.
+    # Remove when starlette fixes it.
     "ignore:The anyio.abc.BlockingPortal alias is deprecated",
 ]

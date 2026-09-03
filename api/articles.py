@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import unquote
 
-import httpx
+import httpx2 as httpx
 from fastapi import APIRouter, Request, HTTPException, Depends, UploadFile, File, Form, Query
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse, RedirectResponse, Response
 from pydantic import BaseModel, field_validator

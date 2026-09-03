@@ -5,7 +5,7 @@ Uses client credentials (read-public scope) to fetch an author's
 public works count. This is cached in the authors table and used
 for prioritizing content from established authors.
 """
-import httpx
+import httpx2 as httpx
 from config import config
 from db import get_conn
 

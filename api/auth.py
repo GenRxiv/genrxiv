@@ -13,7 +13,7 @@ import secrets
 import time
 from datetime import datetime, timezone, timedelta
 
-import httpx
+import httpx2 as httpx
 from fastapi import APIRouter, Request, HTTPException, Depends
 from fastapi.responses import RedirectResponse, JSONResponse
 from pydantic import BaseModel
