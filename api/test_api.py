@@ -435,6 +435,7 @@ class TestVersioning:
                 "authors": json.dumps([{"orcid": "0000-0000-0000-0001", "name": "Admin"}]),
                 "ai_disclosure": "AI drafted",
                 "abstract": "A second paper for versioning tests.",
+                "keywords": "Natural sciences > Computer and information sciences, Natural sciences > Mathematics, Social sciences > Economics and business",
                 "supersedes_id": db["article_id"],
             },
         )
@@ -459,6 +460,7 @@ class TestVersioning:
                 "authors": json.dumps([{"orcid": db["orcid"], "name": "Test Author"}]),
                 "ai_disclosure": "AI drafted v2",
                 "abstract": "Updated abstract for v2.",
+                "keywords": "Natural sciences > Computer and information sciences, Natural sciences > Mathematics, Social sciences > Economics and business",
                 "supersedes_id": db["article_id"],
             },
         )
@@ -482,6 +484,7 @@ class TestVersioning:
                 "authors": json.dumps([{"orcid": db["orcid"], "name": "Test Author"}]),
                 "ai_disclosure": "AI drafted v2",
                 "abstract": "Updated abstract for v2 approval test.",
+                "keywords": "Natural sciences > Computer and information sciences, Natural sciences > Mathematics, Social sciences > Economics and business",
                 "supersedes_id": db["article_id"],
             },
         )
@@ -564,6 +567,7 @@ class TestNotifications:
                 "authors": json.dumps([{"orcid": "0000-0000-0000-0001", "name": "Admin"}]),
                 "ai_disclosure": "AI drafted",
                 "abstract": "Testing moderation notifications.",
+                "keywords": "Natural sciences > Computer and information sciences, Natural sciences > Mathematics, Social sciences > Economics and business",
             },
         )
         assert r.status_code == 200

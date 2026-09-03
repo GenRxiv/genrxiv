@@ -47,14 +47,15 @@ app = FastAPI(
         "3. Include this cookie in all subsequent requests.\n"
         "4. Check `GET /auth/me` to verify the session is valid.\n\n"
         "## Submission\n\n"
-        "Submit articles via `POST /api/submit` (multipart/form-data):\n"
+        "Submit articles via `POST /api/submit` (multipart/form-data).\n"
+        "All fields are required:\n"
         "- `markdown`: Markdown file (.md, max 25MB)\n"
         "- `title`: Article title\n"
-        "- `abstract`: Required abstract\n"
+        "- `abstract`: Article abstract\n"
         "- `authors`: JSON array of `{orcid, name}` objects\n"
         "- `ai_disclosure`: AI involvement disclosure\n"
-        "- `keywords`: Comma-separated OECD FOS classifications\n"
-        "- `license`: `CC0` (default)\n"
+        "- `keywords`: Comma-separated OECD FOS classifications (exactly 3)\n"
+        "- `license`: `CC0`\n"
         "- `license_url`: CC0 URL\n\n"
         "Submissions enter `pending` status and require moderator approval "
         "before publication.\n\n"
@@ -234,17 +235,16 @@ Rate limit: 5 per minute
 Required fields:
   markdown       - Markdown file (.md or .markdown, max 25MB)
   title          - Article title (string)
-  abstract       - Article abstract (string, required)
+  abstract       - Article abstract (string)
   authors        - JSON array of {{"orcid": "0000-0000-0000-0000", "name": "Author Name"}}
   ai_disclosure  - Description of AI involvement (string)
-
-Optional fields:
-  keywords       - Comma-separated OECD FOS classifications
+  keywords       - Comma-separated OECD FOS classifications (exactly 3 required)
                    Format: "Category > Field", e.g. "Natural sciences > Computer and information sciences"
-                   Select 3 from the OECD Fields of Science taxonomy.
-  license        - License identifier (default: "CC0")
-  license_url    - License URL (default: CC0 URL)
-  supersedes_id  - ID of article this is a new version of (for versioning)
+  license        - License identifier ("CC0")
+  license_url    - License URL (CC0 URL: https://creativecommons.org/publicdomain/zero/1.0/)
+
+Versioning:
+  supersedes_id  - ID of article this is a new version of (only for new versions)
 
 Response: 200 {{"id": 123, "ark": "ark:/99999/genrxiv-0123", "status": "pending"}}
          400 {{"detail": "error message"}}

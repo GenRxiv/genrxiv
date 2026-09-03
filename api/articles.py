@@ -318,10 +318,12 @@ async def submit(
         if a.get("affiliation"):
             a["affiliation"] = a["affiliation"].strip()[:300]
 
-    # Parse and validate keywords
+    # Parse and validate keywords (exactly 3 OECD FOS classifications required)
     kw_list = validate_keywords(
         [k.strip() for k in keywords.split(",") if k.strip()] if keywords else []
     )
+    if len(kw_list) != 3:
+        raise HTTPException(400, "Exactly 3 subject classifications are required")
 
     # Insert article
     with get_conn().connection() as conn:
