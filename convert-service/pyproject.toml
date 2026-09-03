@@ -1,0 +1,6 @@
+[tool.pytest.ini_options]
+filterwarnings = [
+    # Starlette 1.x test client deprecations — library-internal, not our code.
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated",
+    "ignore:The anyio.abc.BlockingPortal alias is deprecated",
+]

@@ -1,5 +1,5 @@
-fastapi==0.115.0
-uvicorn[standard]==0.30.6
-python-multipart==0.0.9
-pydantic[email]==2.9.2
-slowapi==0.1.9
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+python-multipart==0.0.32
+pydantic[email]==2.13.4
+slowapi==0.1.10
