@@ -53,10 +53,12 @@ CI runs both suites on every push/PR (`.github/workflows/tests.yml`).
 |---|---|
 | `api/main.py` | FastAPI app, middleware, router mounting |
 | `api/config.py` | Config dataclass from environment variables |
-| `api/db.py` | psycopg3 pool, schema definition |
+| `api/db.py` | psycopg3 pool, schema definition, settings helpers |
 | `api/auth.py` | ORCID OAuth, sessions, require_author/require_admin |
-| `api/articles.py` | Submission, viewing, moderation, endorsements, stats, versioning |
-| `api/auth.py` | ORCID OAuth, sessions, require_author/require_admin |
+| `api/articles.py` | Submission, viewing, moderation, endorsements, stats, versioning, maintenance |
+| `api/ratelimit.py` | Rate limiter config (disablable via RATE_LIMIT_ENABLED) |
+| `api/migrate.py` | SQL migration runner |
+| `api/migrations/` | Numbered SQL migration files |
 | `api/notifications.py` | Email notifications on approve/reject |
 | `api/oai.py` | OAI-PMH 2.0 endpoint |
 | `api/sitemap.py` | Sitemap, robots.txt, Atom feed |
@@ -65,7 +67,12 @@ CI runs both suites on every push/PR (`.github/workflows/tests.yml`).
 | `deploy/docker-compose.yml` | Container stack |
 | `deploy/nginx.conf` | Reverse proxy config |
 | `deploy/.env.example` | Environment variable documentation |
-| `docs/MIGRATION.md` | Migration plan from OJS to FastAPI |
+| `scripts/backup.sh` | Backup DB + files to Backblaze B2 |
+| `scripts/restore.sh` | Restore DB + files from backup |
+| `scripts/maintenance.sh` | Toggle maintenance mode |
+| `scripts/deploy-downtime.sh` | Full scheduled downtime workflow |
+| `scripts/test-after-restore.sh` | Post-restore test runner |
+| `tests/browser/` | Playwright browser tests |
 
 ## Environment variables
 
@@ -83,19 +90,123 @@ See `deploy/.env.example` for the full list. Key ones:
 
 ## Database schema
 
-Six tables: `authors`, `articles`, `article_authors`, `downloads`,
-`endorsements`, `sessions`. Schema is in `api/db.py` (`SCHEMA_SQL`).
-Tables are created automatically on API startup via `init_schema()`.
-Migrations (adding columns to existing tables) are in `MIGRATIONS_SQL`
-and run automatically after schema creation.
+Eight tables: `authors`, `articles`, `article_authors`, `downloads`,
+`endorsements`, `sessions`, `settings`, `schema_migrations`.
+Schema is in `api/db.py` (`SCHEMA_SQL`). Tables are created automatically
+on API startup via `init_schema()`.
 
-Articles have `version` (integer, default 1) and `supersedes_id`
-(foreign key to articles.id) columns for versioning. When a new version
-is approved, the ARK transfers from the old version to the new one,
-and the old version's status changes to `superseded`.
+## Migrations
 
-Authors have an optional `email` column, populated from ORCID's
-`/email` scope during login. Used for moderation notifications.
+Numbered SQL files in `api/migrations/` (e.g., `001_schema_migrations.sql`).
+Tracked in the `schema_migrations` table.
+
+```bash
+# Apply pending migrations:
+docker exec -w /app deploy-api-1 python -m migrate
+
+# Check status:
+docker exec -w /app deploy-api-1 python -m migrate --status
+```
+
+To add a new migration, create `api/migrations/NNN_description.sql`.
+Migrations are forward-only. For rollbacks, write a new migration that
+reverses the change.
+
+## Scheduled downtime and deployment
+
+GenRxiv has a full scheduled-downtime workflow for patches, migrations,
+and hosting changes.
+
+### Maintenance mode
+
+Maintenance mode is controlled by a database flag in the `settings` table.
+When enabled, all routes return a 503 maintenance page except:
+- `/health` — health checks
+- `/admin/maintenance` — toggle maintenance mode
+- `/auth/me` — session verification
+
+```bash
+# Toggle via admin API (requires ADMIN_SESSION_TOKEN in .env):
+scripts/maintenance.sh on  "Scheduled maintenance"
+scripts/maintenance.sh off
+scripts/maintenance.sh status
+```
+
+### Backup
+
+```bash
+# Full backup (DB + article files + signups) to Backblaze B2:
+scripts/backup.sh
+
+# Dry run:
+scripts/backup.sh --dry-run
+```
+
+Backups are stored in `deploy/backup/local/` and uploaded to B2 with
+30-day retention. The nightly cron runs at 3am.
+
+### Restore from archive
+
+```bash
+# Restore from latest backup:
+scripts/restore.sh latest
+
+# Restore from specific backup:
+scripts/restore.sh 20250115-030000
+```
+
+This drops and recreates the database, restores from the gzipped SQL dump,
+restores the article files volume, runs migrations, and verifies table counts.
+
+### Full deployment workflow
+
+```bash
+# Full scheduled downtime (backup → maintenance → update → rebuild → migrate → test → open):
+scripts/deploy-downtime.sh
+
+# Skip git pull (code already updated):
+scripts/deploy-downtime.sh --no-pull
+
+# Restore from backup during deployment:
+scripts/deploy-downtime.sh --restore latest
+
+# Dry run (show what would happen):
+scripts/deploy-downtime.sh --dry-run
+```
+
+The workflow:
+1. Enable maintenance mode (site shows maintenance page)
+2. Backup current database and article files
+3. (Optional) Restore from a specific backup
+4. Pull latest code
+5. Rebuild and restart the API container
+6. Run database migrations
+7. Run the full test suite (91 API tests + 13 browser tests)
+8. If tests pass → disable maintenance mode → site is live
+9. If tests fail → maintenance mode stays on → investigate
+
+### Cloud hosting migration
+
+To move to a new server:
+
+1. On the OLD server: `scripts/backup.sh` (creates final backup)
+2. Transfer `deploy/backup/local/` to the NEW server
+3. On the NEW server:
+   - Clone the repo
+   - Copy `.env` (update `DATABASE_URL`, `CF_TUNNEL_TOKEN`, etc.)
+   - `scripts/restore.sh latest` (restore DB + files)
+   - `scripts/test-after-restore.sh` (verify tests pass)
+   - If tests pass, the site is live on the new server
+
+### Post-restore testing
+
+```bash
+# Run the full test suite against a test database:
+scripts/test-after-restore.sh
+```
+
+This creates a fresh `genrxiv_test` database, copies test files into the
+API container, and runs all 91 API tests. Exits 0 if all pass.
 
 ## API structure
 

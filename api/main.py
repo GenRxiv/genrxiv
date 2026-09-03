@@ -102,6 +102,73 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 app.add_middleware(SecurityHeadersMiddleware)
 
 
+# ─── Maintenance mode middleware ────────────────────────────────────────────
+
+MAINTENANCE_EXEMPT_PATHS = {
+    "/health",
+    "/admin/maintenance",
+    "/auth/me",
+}
+
+MAINTENANCE_PAGE = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GenRxiv — Under Maintenance</title>
+<style>
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+       max-width: 42rem; margin: 4rem auto; padding: 0 1.5rem; color: #1a1a1a; }
+.maint-header { border-bottom: 2px solid #0066cc; padding-bottom: 1rem; margin-bottom: 2rem; }
+.maint-header h1 { color: #0066cc; font-size: 1.5rem; margin: 0; }
+.maint-body p { line-height: 1.6; color: #555; }
+.maint-status { background: #f0f4f8; border-left: 4px solid #0066cc;
+                padding: 1rem; margin: 1.5rem 0; }
+</style>
+</head>
+<body>
+<div class="maint-header">
+    <h1>GenRxiv</h1>
+</div>
+<div class="maint-body">
+    <h2>Under Maintenance</h2>
+    <p>GenRxiv is temporarily offline for scheduled maintenance.</p>
+    <p>We're applying updates and running tests to ensure everything
+       works correctly. The archive will be back shortly.</p>
+    <div class="maint-status">
+        <strong>Status:</strong> Scheduled downtime in progress<br>
+        <strong>Service:</strong> All features temporarily unavailable
+    </div>
+    <p>If this is taking longer than expected, check back in a few minutes.
+       Thank you for your patience.</p>
+</div>
+</body>
+</html>"""
+
+
+class MaintenanceMiddleware(BaseHTTPMiddleware):
+    """Show maintenance page for all requests when maintenance mode is on.
+
+    Exempts /health, /admin/maintenance, and /auth/me so admins can
+    toggle maintenance mode and health checks still work.
+    Gracefully skips the check if the database isn't available.
+    """
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+        if path in MAINTENANCE_EXEMPT_PATHS:
+            return await call_next(request)
+        try:
+            from db import is_maintenance_mode
+            if is_maintenance_mode():
+                return HTMLResponse(MAINTENANCE_PAGE, status_code=503)
+        except Exception:
+            pass  # DB not available — skip maintenance check
+        return await call_next(request)
+
+
+app.add_middleware(MaintenanceMiddleware)
+
+
 # Mount routers
 app.include_router(auth_router)
 app.include_router(articles_router)

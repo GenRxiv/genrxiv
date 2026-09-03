@@ -102,6 +102,20 @@ CREATE TABLE IF NOT EXISTS sessions (
     expires_at TIMESTAMPTZ NOT NULL
 );
 
+-- Settings (key-value store for maintenance mode, etc.)
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Schema migrations tracking
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_articles_status ON articles(status);
 CREATE INDEX IF NOT EXISTS idx_articles_published_at ON articles(published_at DESC);
@@ -168,3 +182,29 @@ def init_schema():
         conn.execute(SCHEMA_SQL)
         conn.execute(MIGRATIONS_SQL)
         conn.commit()
+
+
+def get_setting(key: str, default: str = "") -> str:
+    """Read a setting from the settings table."""
+    with get_conn().connection() as conn:
+        row = conn.execute(
+            "SELECT value FROM settings WHERE key = %s", (key,)
+        ).fetchone()
+        return row["value"] if row else default
+
+
+def set_setting(key: str, value: str) -> None:
+    """Upsert a setting in the settings table."""
+    with get_conn().connection() as conn:
+        conn.execute(
+            """INSERT INTO settings (key, value, updated_at)
+               VALUES (%s, %s, now())
+               ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()""",
+            (key, value),
+        )
+        conn.commit()
+
+
+def is_maintenance_mode() -> bool:
+    """Check if the site is in maintenance mode."""
+    return get_setting("maintenance_mode", "false") == "true"

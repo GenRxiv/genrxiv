@@ -793,6 +793,35 @@ def admin_stats(_admin: dict = Depends(require_admin)):
     }
 
 
+# ─── Maintenance mode (admin) ──────────────────────────────────────────────
+
+@router.get("/admin/maintenance")
+def get_maintenance_status(_admin: dict = Depends(require_admin)):
+    """Get current maintenance mode status."""
+    from db import is_maintenance_mode, get_setting
+    return {
+        "maintenance_mode": is_maintenance_mode(),
+        "message": get_setting("maintenance_message", ""),
+    }
+
+
+@router.post("/admin/maintenance")
+def set_maintenance_status(
+    enabled: bool = Form(...),
+    message: str = Form(""),
+    _admin: dict = Depends(require_admin),
+):
+    """Toggle maintenance mode on/off."""
+    from db import set_setting
+    set_setting("maintenance_mode", "true" if enabled else "false")
+    if message:
+        set_setting("maintenance_message", message)
+    return {
+        "maintenance_mode": enabled,
+        "message": message if enabled else "",
+    }
+
+
 @router.get("/api/articles/{article_id}/stats")
 def article_stats(article_id: int, _author: dict = Depends(get_current_author)):
     """Per-article download stats."""

@@ -954,3 +954,163 @@ class TestSecurity:
         server = r.headers.get("server", "")
         # Nginx or similar may set this, but it shouldn't expose versions
         assert "uvicorn" not in server.lower()
+
+
+# ─── Maintenance mode tests ─────────────────────────────────────────────────
+
+class TestMaintenanceMode:
+    """Tests for the maintenance mode feature."""
+
+    @requires_db
+    def test_maintenance_off_by_default(self, client):
+        """Site should be accessible when maintenance mode is off."""
+        r = client.get("/browse")
+        assert r.status_code == 200
+        assert "Under Maintenance" not in r.text
+
+    @requires_db
+    def test_maintenance_on_shows_503(self, client, db):
+        """When maintenance mode is on, pages return 503 with maintenance page."""
+        from db import set_setting
+        set_setting("maintenance_mode", "true")
+        try:
+            r = client.get("/browse")
+            assert r.status_code == 503
+            assert "Under Maintenance" in r.text
+        finally:
+            set_setting("maintenance_mode", "false")
+
+    @requires_db
+    def test_health_accessible_during_maintenance(self, client, db):
+        """Health endpoint should work even during maintenance."""
+        from db import set_setting
+        set_setting("maintenance_mode", "true")
+        try:
+            r = client.get("/health")
+            assert r.status_code == 200
+            assert r.json()["status"] == "ok"
+        finally:
+            set_setting("maintenance_mode", "false")
+
+    @requires_db
+    def test_admin_maintenance_get_status(self, admin_client):
+        """Admin can get maintenance mode status."""
+        r = admin_client.get("/admin/maintenance")
+        assert r.status_code == 200
+        assert "maintenance_mode" in r.json()
+        assert r.json()["maintenance_mode"] is False
+
+    @requires_db
+    def test_admin_maintenance_toggle_on(self, admin_client):
+        """Admin can enable maintenance mode."""
+        r = admin_client.post(
+            "/admin/maintenance",
+            data={"enabled": "true", "message": "Testing maintenance"},
+        )
+        assert r.status_code == 200
+        assert r.json()["maintenance_mode"] is True
+        # Verify it's actually on
+        r = admin_client.get("/admin/maintenance")
+        assert r.json()["maintenance_mode"] is True
+        # Clean up
+        admin_client.post("/admin/maintenance", data={"enabled": "false"})
+
+    @requires_db
+    def test_admin_maintenance_toggle_off(self, admin_client):
+        """Admin can disable maintenance mode."""
+        # Turn on first
+        admin_client.post("/admin/maintenance", data={"enabled": "true"})
+        # Turn off
+        r = admin_client.post("/admin/maintenance", data={"enabled": "false"})
+        assert r.status_code == 200
+        assert r.json()["maintenance_mode"] is False
+        # Verify site is accessible again
+        r = admin_client.get("/browse")
+        assert r.status_code == 200
+
+    @requires_db
+    def test_non_admin_cannot_toggle_maintenance(self, authed_client):
+        """Regular users cannot toggle maintenance mode."""
+        r = authed_client.post(
+            "/admin/maintenance",
+            data={"enabled": "true"},
+        )
+        assert r.status_code == 403
+
+    @requires_db
+    def test_maintenance_doesnt_affect_api_endpoints_for_admin(self, admin_client, db):
+        """Admin API endpoints should work during maintenance (for recovery)."""
+        from db import set_setting
+        set_setting("maintenance_mode", "true")
+        try:
+            # Admin maintenance endpoint should work
+            r = admin_client.get("/admin/maintenance")
+            assert r.status_code == 200
+        finally:
+            set_setting("maintenance_mode", "false")
+
+
+# ─── Migration system tests ─────────────────────────────────────────────────
+
+class TestMigrations:
+    """Tests for the SQL migration system."""
+
+    @requires_db
+    def test_schema_migrations_table_exists(self, db):
+        """The schema_migrations table should exist after init_schema."""
+        from db import get_conn
+        with get_conn().connection() as conn:
+            row = conn.execute(
+                "SELECT EXISTS (SELECT 1 FROM information_schema.tables "
+                "WHERE table_name = 'schema_migrations')"
+            ).fetchone()
+            assert row["exists"] is True
+
+    @requires_db
+    def test_settings_table_exists(self, db):
+        """The settings table should exist after init_schema."""
+        from db import get_conn
+        with get_conn().connection() as conn:
+            row = conn.execute(
+                "SELECT EXISTS (SELECT 1 FROM information_schema.tables "
+                "WHERE table_name = 'settings')"
+            ).fetchone()
+            assert row["exists"] is True
+
+    @requires_db
+    def test_get_set_setting(self, db):
+        """Settings can be read and written."""
+        from db import get_setting, set_setting
+        set_setting("test_key", "test_value")
+        assert get_setting("test_key") == "test_value"
+        # Upsert should update, not insert
+        set_setting("test_key", "updated_value")
+        assert get_setting("test_key") == "updated_value"
+
+    @requires_db
+    def test_is_maintenance_mode_default_false(self, db):
+        """Maintenance mode should be off by default."""
+        from db import is_maintenance_mode
+        # Ensure it's off
+        from db import set_setting
+        set_setting("maintenance_mode", "false")
+        assert is_maintenance_mode() is False
+
+    def test_list_migrations_finds_files(self):
+        """The migration runner should find migration files."""
+        from migrate import list_migrations
+        migrations = list_migrations()
+        assert len(migrations) >= 2
+        # Check they're sorted by number
+        nums = [m[0] for m in migrations]
+        assert nums == sorted(nums)
+        # Check the first migration is 001
+        assert migrations[0][0] == 1
+
+    def test_migration_files_are_valid_sql(self):
+        """All migration files should be non-empty SQL."""
+        from migrate import list_migrations
+        migrations = list_migrations()
+        for num, name, path in migrations:
+            content = path.read_text(encoding="utf-8")
+            assert len(content) > 0, f"Migration {num:03d}_{name}.sql is empty"
