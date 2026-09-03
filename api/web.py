@@ -1208,6 +1208,9 @@ function backToForm(e) {
 }
 
 // ─── Init ─────────────────────────────────────────────────────────────────
+var formDirty = false;
+function markDirty() { formDirty = true; }
+
 document.addEventListener('DOMContentLoaded', function() {
     // Build 3 classification rows
     var classContainer = document.getElementById('classification-rows');
@@ -1226,25 +1229,28 @@ document.addEventListener('DOMContentLoaded', function() {
     form.addEventListener('change', updatePreviewState);
 
     // Warn before leaving if the user has started filling in the form
-    var formDirty = false;
-    form.addEventListener('input', function() { formDirty = true; });
-    form.addEventListener('change', function() { formDirty = true; });
+    form.addEventListener('input', markDirty);
+    form.addEventListener('change', markDirty);
 
-    window.addEventListener('beforeunload', function(e) {
-        if (formDirty) {
-            e.preventDefault();
-            e.returnValue = '';
-        }
-    });
+    // Initial state
+    updatePreviewState();
+});
 
-    // Clear the flag when the confirm form is submitted
+// beforeunload registered at top level so it's always active
+window.addEventListener('beforeunload', function(e) {
+    if (formDirty) {
+        e.preventDefault();
+        e.returnValue = 'You have unsaved changes. Are you sure you want to leave?';
+        return 'You have unsaved changes. Are you sure you want to leave?';
+    }
+});
+
+// Clear the flag when the confirm form is submitted
+document.addEventListener('DOMContentLoaded', function() {
     var confirmForm = document.getElementById('confirm-form');
     if (confirmForm) {
         confirmForm.addEventListener('submit', function() { formDirty = false; });
     }
-
-    // Initial state
-    updatePreviewState();
 });
 """
 
