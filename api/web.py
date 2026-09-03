@@ -153,7 +153,7 @@ footer { border-top: 1px solid var(--border); padding: 1.5rem; text-align: cente
 
 def _header_html(author: dict | None) -> str:
     """Render the site header with nav."""
-    nav_links = '<a href="/browse">Browse</a><a href="/keywords">Keywords</a><a href="/api/stats">Stats</a>'
+    nav_links = '<a href="/browse">Browse</a><a href="/keywords">Keywords</a><a href="/stats">Stats</a>'
     if author:
         auth_links = f'<a href="/dashboard">My Submissions</a><a href="/submit" class="btn btn-primary">Submit</a><a href="/auth/me" style="font-size:0.85rem">{author["name"]}</a><form method="post" action="/auth/logout" style="display:inline"><button type="submit" style="background:none;border:none;color:var(--cobalt);font-size:0.85rem;cursor:pointer;padding:0;text-decoration:underline">Sign out</button></form>'
     else:
@@ -344,6 +344,84 @@ def keywords_page(request: Request):
         <div class="keyword-cloud">{''.join(links)}</div>
         """
     return _page("Keywords", body, author)
+
+
+@router.get("/stats", response_class=HTMLResponse)
+def stats_page(request: Request):
+    """Public statistics page."""
+    author = get_current_author(request)
+    with get_conn().connection() as conn:
+        stats = {
+            "total_articles": conn.execute(
+                "SELECT COUNT(*) AS c FROM articles WHERE status = 'published'"
+            ).fetchone()["c"],
+            "pending": conn.execute(
+                "SELECT COUNT(*) AS c FROM articles WHERE status = 'pending'"
+            ).fetchone()["c"],
+            "total_authors": conn.execute("SELECT COUNT(*) AS c FROM authors").fetchone()["c"],
+            "total_downloads": conn.execute("SELECT COUNT(*) AS c FROM downloads").fetchone()["c"],
+            "agent_downloads": conn.execute(
+                "SELECT COUNT(*) AS c FROM downloads WHERE is_agent = TRUE"
+            ).fetchone()["c"],
+            "human_downloads": conn.execute(
+                "SELECT COUNT(*) AS c FROM downloads WHERE is_agent = FALSE"
+            ).fetchone()["c"],
+            "total_endorsements": conn.execute(
+                "SELECT COUNT(*) AS c FROM endorsements"
+            ).fetchone()["c"],
+        }
+        top = conn.execute(
+            """SELECT a.ark, a.title, COUNT(d.id) as dl_count
+               FROM articles a LEFT JOIN downloads d ON d.article_id = a.id
+               WHERE a.status = 'published'
+               GROUP BY a.id, a.ark, a.title
+               ORDER BY dl_count DESC LIMIT 10""",
+        ).fetchall()
+
+    stat_cards = []
+    for label, key in [
+        ("Published articles", "total_articles"),
+        ("Pending review", "pending"),
+        ("Authors", "total_authors"),
+        ("Total downloads", "total_downloads"),
+        ("Agent downloads", "agent_downloads"),
+        ("Human downloads", "human_downloads"),
+        ("Endorsements", "total_endorsements"),
+    ]:
+        stat_cards.append(
+            f'<div class="stat-card"><div class="num">{stats[key]}</div><div class="label">{label}</div></div>'
+        )
+
+    top_html = ""
+    if top:
+        rows_html = ""
+        for r in top:
+            dl = r["dl_count"] if r["dl_count"] else 0
+            link = f'<a href="/article/{r["ark"]}">{r["title"]}</a>' if r["ark"] else r["title"]
+            rows_html += f"<tr><td style='padding:0.5rem 0'>{link}</td><td style='padding:0.5rem 0;text-align:right'>{dl}</td></tr>"
+        top_html = f"""
+        <h2 style="margin-top:2rem">Top Articles by Downloads</h2>
+        <table style="width:100%;border-collapse:collapse;font-size:0.9rem">
+            <thead><tr style="border-bottom:2px solid var(--border);text-align:left">
+                <th style="padding:0.5rem 0">Title</th>
+                <th style="padding:0.5rem 0;text-align:right">Downloads</th>
+            </tr></thead>
+            <tbody>{rows_html}</tbody>
+        </table>
+        """
+    else:
+        top_html = '<div class="empty" style="margin-top:2rem"><p>No downloads yet.</p></div>'
+
+    body = f"""
+    <h1>Statistics</h1>
+    <p style="color:#888;margin-bottom:1.5rem">Public metrics for the GenRxiv archive</p>
+    <div class="stats-grid">{''.join(stat_cards)}</div>
+    {top_html}
+    <div style="margin-top:2rem;font-size:0.85rem;color:#888">
+        <p>Machine-readable data: <a href="/api/stats">/api/stats</a> (JSON)</p>
+    </div>
+    """
+    return _page("Statistics", body, author)
 
 
 # ─── Keyword articles page ─────────────────────────────────────────────────
