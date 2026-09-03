@@ -17,7 +17,7 @@ class Config:
     orcid_token_url: str = "https://orcid.org/oauth/token"
     orcid_api_url: str = "https://pub.orcid.org/v3.0"
     orcid_redirect_url: str = "https://genrxiv.org/auth/orcid/callback"
-    orcid_scope: str = "/authenticate /email"
+    orcid_scope: str = "/authenticate"
 
     # Session
     session_secret: str = "dev-secret-change-me"

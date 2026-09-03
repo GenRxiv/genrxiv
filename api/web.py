@@ -621,9 +621,53 @@ def dashboard_page(request: Request):
                FROM articles WHERE submitted_by = %s ORDER BY submitted_at DESC""",
             (author["id"],),
         ).fetchall()
+        # Get the author's email for the notification settings section
+        author_email = conn.execute(
+            "SELECT email FROM authors WHERE id = %s", (author["id"],)
+        ).fetchone()
+
+    email_value = author_email["email"] if author_email and author_email["email"] else ""
+
+    # Email notification settings
+    email_section = f"""
+    <div class="card" style="margin-bottom:2rem">
+        <h2 style="font-size:1.1rem">Notification Settings</h2>
+        <p style="font-size:0.9rem;color:#555;margin-bottom:1rem">
+            Enter your email to receive notifications when your submissions are approved or rejected.
+            ORCID's public API doesn't share email, so you need to add it here.
+        </p>
+        <form method="post" action="/api/me/email" id="email-form">
+            <div class="form-group" style="display:flex;gap:0.5rem;align-items:flex-end">
+                <div style="flex:1">
+                    <label>Email for notifications (optional)</label>
+                    <input type="email" name="email" value="{email_value}" placeholder="you@example.com">
+                </div>
+                <button type="submit" class="btn btn-primary">Save</button>
+            </div>
+        </form>
+        <div id="email-saved" style="display:none;margin-top:0.5rem" class="success">Email saved.</div>
+    </div>
+    <script>
+    document.getElementById('email-form').addEventListener('submit', function(e) {{
+        e.preventDefault();
+        var form = e.target;
+        var data = {{email: form.email.value}};
+        fetch('/api/me/email', {{
+            method: 'POST',
+            headers: {{'Content-Type': 'application/json'}},
+            body: JSON.stringify(data)
+        }}).then(r => r.json()).then(() => {{
+            var msg = document.getElementById('email-saved');
+            msg.style.display = 'block';
+            setTimeout(() => msg.style.display = 'none', 3000);
+        }});
+    }});
+    </script>
+    """
 
     if not rows:
-        body = """
+        body = f"""
+        {email_section}
         <div class="empty">
             <h3>No submissions yet</h3>
             <p>Submit your first paper.</p>
@@ -639,7 +683,6 @@ def dashboard_page(request: Request):
             submitted = _format_date(r.get("submitted_at"))
             link = f'<a href="/article/{r["ark"]}">{r["title"]}</a>' if r["ark"] else r["title"]
             version_badge = f'<span class="status-badge" style="background:#e4e9ff;color:#2f5cff">v{r["version"]}</span>' if r.get("version") and r["version"] > 1 else ""
-            # Show "Submit new version" link for published or superseded articles
             new_version_link = ""
             if r["status"] in ("published", "superseded"):
                 new_version_link = f' <a href="/submit-version/{r["id"]}" class="btn" style="font-size:0.8rem;padding:0.3rem 0.8rem">Submit new version</a>'
@@ -656,6 +699,7 @@ def dashboard_page(request: Request):
 </div>""")
         body = f"""
         <h1>My Submissions</h1>
+        {email_section}
         <p style="margin-bottom:1.5rem"><a href="/submit" class="btn btn-primary">Submit new paper</a></p>
         {''.join(cards)}
         """

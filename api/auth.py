@@ -54,7 +54,8 @@ def _exchange_code_for_token(code: str) -> dict:
     }
     with httpx.Client() as client:
         r = client.post(config.orcid_token_url, data=data)
-        r.raise_for_status()
+        if r.status_code != 200:
+            raise HTTPException(400, "Failed to exchange code for token")
         return r.json()
 
 
@@ -64,11 +65,14 @@ def _fetch_orcid_record(orcid: str, access_token: str) -> dict:
         "Authorization": f"Bearer {access_token}",
         "Accept": "application/json",
     }
-    with httpx.Client() as client:
-        r = client.get(f"{config.orcid_api_url}/{orcid}/record", headers=headers)
-        if r.status_code != 200:
-            return {}
-        return r.json()
+    try:
+        with httpx.Client() as client:
+            r = client.get(f"{config.orcid_api_url}/{orcid}/record", headers=headers)
+            if r.status_code != 200:
+                return {}
+            return r.json()
+    except Exception:
+        return {}
 
 
 def _extract_name(record: dict) -> str:
@@ -96,12 +100,16 @@ def _extract_affiliation(record: dict) -> str | None:
 
 
 def _extract_email(record: dict) -> str | None:
-    """Extract primary email from ORCID record (requires /email scope)."""
+    """Extract primary email from ORCID record.
+
+    Note: The /email scope is only available on the ORCID Member API.
+    For Public API clients, this will always return None. Authors can
+    add their email manually from the dashboard.
+    """
     emails = record.get("person", {}).get("emails", {}).get("email", [])
     for e in emails:
         if e.get("primary") and e.get("email"):
             return e["email"]
-    # Fall back to any email if no primary
     for e in emails:
         if e.get("email"):
             return e["email"]
@@ -258,3 +266,26 @@ def me(request: Request):
         "affiliation": author["affiliation"],
         "is_admin": is_admin,
     }
+
+
+class EmailUpdate(BaseModel):
+    email: str | None = None
+
+
+@router.post("/me/email")
+def update_email(request: Request, body: EmailUpdate):
+    """Set or update the current author's email for notifications."""
+    import re
+    author = require_author(request)
+    email = body.email.strip() if body.email else None
+    if email:
+        # Basic email validation
+        if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+            raise HTTPException(400, "Invalid email address")
+    with get_conn().connection() as conn:
+        conn.execute(
+            "UPDATE authors SET email = %s WHERE id = %s",
+            (email, author["id"]),
+        )
+        conn.commit()
+    return {"status": "ok", "email": email}
