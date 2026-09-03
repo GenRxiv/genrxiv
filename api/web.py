@@ -1251,35 +1251,50 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // beforeunload: check form state directly — no dependency on event listeners
 var _submitConfirmed = false;
-window.addEventListener('beforeunload', function(e) {
-    if (_submitConfirmed) return;
+function _formHasData() {
     var form = document.getElementById('main-form');
-    if (!form) return;
+    if (!form) return false;
     var hasData = false;
-    // Text inputs and textareas
     form.querySelectorAll('input[type="text"], textarea').forEach(function(el) {
         if (el.value.trim()) hasData = true;
     });
-    // File input
     var fileInput = form.querySelector('input[type="file"]');
     if (fileInput && fileInput.files && fileInput.files.length > 0) hasData = true;
-    // Checkboxes
     form.querySelectorAll('input[type="checkbox"]').forEach(function(el) {
         if (el.checked) hasData = true;
     });
-    // Selects (classification rows)
     form.querySelectorAll('select').forEach(function(el) {
         if (el.value) hasData = true;
     });
-    // Co-author ORCID inputs (added dynamically but inside the form)
     form.querySelectorAll('input[name="co_author_orcids"]').forEach(function(el) {
         if (el.value.trim()) hasData = true;
     });
-    if (hasData) {
+    return hasData;
+}
+
+window.addEventListener('beforeunload', function(e) {
+    if (_submitConfirmed) return;
+    if (_formHasData()) {
         e.preventDefault();
         e.returnValue = 'You have unsaved changes. Are you sure you want to leave?';
         return 'You have unsaved changes. Are you sure you want to leave?';
     }
+});
+
+// Also intercept nav link clicks for an explicit confirm() dialog
+// This is a fallback in case beforeunload doesn't fire
+document.addEventListener('DOMContentLoaded', function() {
+    var nav = document.querySelector('nav');
+    if (!nav) return;
+    nav.querySelectorAll('a[href]').forEach(function(link) {
+        link.addEventListener('click', function(e) {
+            if (_submitConfirmed) return;
+            if (!_formHasData()) return;
+            if (!confirm('You have unsaved changes. Are you sure you want to leave?')) {
+                e.preventDefault();
+            }
+        });
+    });
 });
 
 // Clear the flag when the confirm form is submitted
