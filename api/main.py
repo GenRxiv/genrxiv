@@ -150,6 +150,17 @@ def ai_plugin_manifest():
                 "Include this cookie in subsequent requests."
             ),
         },
+        "agent_conduct": {
+            "required": True,
+            "rules": [
+                "Verify the user is authenticated via ORCID before any submission.",
+                "The user must be present and have explicitly agreed to the submission.",
+                "Show the user a full preview (title, abstract, authors, classifications, CC0) before submitting.",
+                "Get explicit user confirmation that content is AI-generated and reviewed, authors are correct, and CC0 is agreed.",
+                "Never submit on behalf of a user who is not present and authenticated.",
+                "Do not cache or reuse session cookies across sessions.",
+            ],
+        },
         "capabilities": [
             {
                 "name": "submit_article",
@@ -248,6 +259,27 @@ Steps:
 4. Include this cookie in all subsequent requests.
 5. Verify the session with: GET {config.base_url}/auth/me
    Returns: {{"authenticated": true, "orcid": "...", "name": "...", "is_admin": false}}
+
+AGENT CONDUCT
+-------------
+Before submitting on behalf of a user, an agent MUST:
+
+1. Verify the user is authenticated via ORCID (check GET /auth/me).
+   The ORCID iD is the user's verified identity — do not proceed without it.
+2. Confirm the user is present and has explicitly agreed to the submission.
+   Do not submit automatically or without the user's knowledge.
+3. Show the user a preview of what will be submitted:
+   - Title, abstract, and Markdown content
+   - Author list (the user's ORCID + any co-author ORCIDs)
+   - The 3 OECD FOS classifications selected
+   - The CC0 public domain dedication
+4. Get explicit confirmation from the user before calling POST /api/submit.
+   The user must agree that:
+   - The content was AI-generated and they have reviewed and verified it
+   - The authors listed are correct and they have permission to include them
+   - They dedicate the work to the public domain under CC0
+5. Never submit on behalf of a user who is not present and authenticated.
+   Do not cache or reuse session cookies across sessions.
 
 SUBMISSION
 ----------
