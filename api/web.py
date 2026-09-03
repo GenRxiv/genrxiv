@@ -1173,14 +1173,14 @@ function showPreview(e) {
     var title = document.querySelector('[name="title"]').value.trim();
     var abstract = document.querySelector('[name="abstract"]').value.trim();
     var mdFile = document.querySelector('[name="markdown"]').files[0];
-    var submitterOrcid = document.querySelector('[name="submitter_orcid"]').value;
-    var submitterName = document.querySelector('[name="submitter_name"]').value;
-    var coAuthorInputs = document.querySelectorAll('[name="co_author_orcids"]');
     var subjects = getSelectedClassifications();
 
-    // Gather all authors
-    var authors = [{orcid: submitterOrcid, name: submitterName}];
-    coAuthorInputs.forEach(function(input) {
+    // Gather all authors from the author entries
+    // The submitter is included as an author entry (first, with a "you" label)
+    // but author order is determined by the entries, not forced.
+    var authors = [];
+    var allAuthorInputs = document.querySelectorAll('.author-entry input[type="text"]');
+    allAuthorInputs.forEach(function(input) {
         var orcid = normalizeOrcid(input.value);
         if (orcid && /^\\d{4}-\\d{4}-\\d{4}-\\d{4}$/.test(orcid)) {
             var name = input.dataset.name || input.parentElement.querySelector('.author-name').textContent.split(' \\u00b7 ')[0] || 'Unknown';
@@ -1314,12 +1314,11 @@ function fillFormFromFrontMatter(meta) {
         if (disclosureInput) disclosureInput.value = meta.ai_disclosure;
     }
 
-    // Co-authors (array of {orcid, name} objects)
+    // Authors (array of {orcid, name} objects) — replaces all author entries
     if (meta.authors && Array.isArray(meta.authors)) {
         var container = document.getElementById('co-authors');
-        // Remove existing co-author rows (keep the first one — it's the submitter)
-        var existing = container.querySelectorAll('.author-entry');
-        for (var i = 1; i < existing.length; i++) existing[i].remove();
+        // Remove all existing author entries (including the submitter)
+        container.innerHTML = '';
 
         meta.authors.forEach(function(a) {
             if (a.orcid && a.name) {
@@ -1529,17 +1528,18 @@ def submit_page(request: Request):
             </div>
 
             <div class="form-group">
-                <label>Authors</label>
+                <label>Authors (in order — first author is the lead)</label>
                 <div id="co-authors">
                     <div class="author-entry">
-                        <input type="text" value="{author['orcid']}" readonly
-                            style="padding:0.6rem;border:1px solid var(--border);border-radius:4px;font-size:0.95rem;flex:1;background:var(--paper-warm)"
+                        <input type="text" name="co_author_orcids" value="{author['orcid']}"
+                            style="padding:0.6rem;border:1px solid var(--border);border-radius:4px;font-size:0.95rem;flex:1"
                             data-name="{author['name']}">
                         <span class="author-name">{author['name']} (you)</span>
+                        <button type="button" class="remove-author" onclick="this.parentElement.remove(); updatePreviewState();">Remove</button>
                     </div>
                 </div>
-                <div class="hint" style="margin-bottom:0.5rem">Add co-authors by ORCID iD. Names are looked up automatically.</div>
-                <button type="button" class="add-author-btn" id="add-author-btn">+ Add co-author</button>
+                <div class="hint" style="margin-bottom:0.5rem">Add all authors by ORCID iD, in publication order. Names are looked up automatically. You can remove yourself if you're submitting on behalf of others.</div>
+                <button type="button" class="add-author-btn" id="add-author-btn">+ Add author</button>
             </div>
 
             <div class="form-group">

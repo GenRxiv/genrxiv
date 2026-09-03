@@ -252,9 +252,11 @@ subjects:
 ```
 
 When uploaded via the web form, the form auto-fills from the front
-matter. The submitter (logged-in ORCID user) is always the first
-author — front matter `authors` are co-authors only. Pandoc strips
-the front matter during rendering.
+matter. The authors list is the complete author list in publication
+order — the first entry is the lead author. The submitter (logged-in
+ORCID user) is recorded separately for accountability and does not
+need to be in the author list. Pandoc strips the front matter during
+rendering.
 
 ### Citations
 

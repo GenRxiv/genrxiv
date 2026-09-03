@@ -30,8 +30,9 @@ Formatting requirements:
   ---
 
   The front matter fills out the submission form automatically when
-  the file is uploaded. The submitter's ORCID (the logged-in user)
-  is always included as the first author — list only co-authors here.
+  the file is uploaded. The authors list is the complete author list
+  in publication order — the first entry is the lead author. Include
+  all authors, including the submitter if they are an author.
   Exactly 3 subjects are required, using "Domain > Subdomain" format
   from the OECD FOS taxonomy (see https://genrxiv.org/api/fos).
 - After the front matter, begin the body with a level-1 heading (#)

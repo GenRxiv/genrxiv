@@ -370,13 +370,17 @@ Required fields:
 Embedded metadata (YAML front matter):
   The Markdown file can include YAML front matter at the top. When
   uploaded via the web form, the form auto-fills from the front matter.
-  The submitter (logged-in ORCID user) is always the first author.
+  The authors list is the complete author list in publication order —
+  the first entry is the lead author. Include all authors, including
+  the submitter if they are an author.
 
   Example:
   ---
   title: "Paper Title"
   abstract: "Summary of the research."
   authors:
+    - orcid: "0000-0000-0000-0000"
+      name: "Lead Author"
     - orcid: "0000-0000-0000-0001"
       name: "Co-Author Name"
   ai_disclosure: "AI-generated, reviewed by authors."
@@ -386,8 +390,9 @@ Embedded metadata (YAML front matter):
     - "Social sciences > Economics and business"
   ---
 
-  Note: authors in front matter are co-authors only (the submitter is
-  prepended automatically). Pandoc strips front matter during rendering.
+  Note: The submitter (logged-in ORCID user) is recorded separately for
+  accountability but does not need to be in the author list. Pandoc
+  strips front matter during rendering.
 
 Citations:
   Use Pandoc @citekey syntax in the Markdown for inline citations.
@@ -443,8 +448,10 @@ The file should have this structure:
   ```
 
 Rules:
-- The submitter (logged-in ORCID user) is always the first author.
-  List only co-authors in the front matter.
+- The authors list is the complete author list in publication order.
+  The first entry is the lead author. Include all authors — the
+  submitter is recorded separately for accountability and does not
+  need to be in the author list.
 - Exactly 3 subjects required, using "Domain > Subdomain" format.
   Fetch the taxonomy at GET /api/fos.
 - Citations use Pandoc @citekey syntax with a bibtex code block.

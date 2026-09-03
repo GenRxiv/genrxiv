@@ -244,7 +244,9 @@ includes YAML front matter with all metadata — when a human uploads
 it on `/submit`, the form auto-fills. See
 [docs/AUTHOR_PROMPT.md](docs/AUTHOR_PROMPT.md) for the full template.
 
-The submitter (logged-in ORCID user) is always the first author.
+The submitter (logged-in ORCID user) is recorded separately for
+accountability but does not need to be an author. The front matter
+`authors` list is the complete author list in publication order.
 Agents must get explicit user confirmation before submission. See
 `GET /api/agent-guide` for the full conduct rules.
 
