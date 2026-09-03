@@ -1281,13 +1281,24 @@ window.addEventListener('beforeunload', function(e) {
     }
 });
 
-// Also intercept nav link clicks for an explicit confirm() dialog
+// Also intercept nav link clicks and form submits for an explicit confirm()
 // This is a fallback in case beforeunload doesn't fire
 document.addEventListener('DOMContentLoaded', function() {
     var nav = document.querySelector('nav');
     if (!nav) return;
+    // Intercept all links in the nav
     nav.querySelectorAll('a[href]').forEach(function(link) {
         link.addEventListener('click', function(e) {
+            if (_submitConfirmed) return;
+            if (!_formHasData()) return;
+            if (!confirm('You have unsaved changes. Are you sure you want to leave?')) {
+                e.preventDefault();
+            }
+        });
+    });
+    // Intercept form submissions in the nav (e.g. Sign out)
+    nav.querySelectorAll('form').forEach(function(form) {
+        form.addEventListener('submit', function(e) {
             if (_submitConfirmed) return;
             if (!_formHasData()) return;
             if (!confirm('You have unsaved changes. Are you sure you want to leave?')) {
