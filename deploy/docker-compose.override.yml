@@ -36,6 +36,8 @@ services:
       - ./ojs-plugins/markdownRenderer:/var/www/html/plugins/generic/markdownRenderer:ro
       - ./ojs-plugins/submissionPolicy:/var/www/html/plugins/generic/submissionPolicy:ro
       - ./ojs-plugins/arkIdentifier:/var/www/html/plugins/generic/arkIdentifier:ro
+      - ./deploy/apache-ojs.conf:/etc/apache2/sites-enabled/000-default.conf:ro
+      - ./deploy/ojs-htaccess:/var/www/html/.htaccess:ro
     entrypoint: ["/bin/sh", "/usr/local/bin/ojs-entrypoint.sh"]
     ports: !reset []
 
@@ -51,6 +53,7 @@ services:
       - convert
     volumes:
       - ./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./deploy/nginx-cache-map.conf:/etc/nginx/conf.d/cache-map.conf:ro
       - ./site:/site:ro
     ports:
       - "8080:80"
