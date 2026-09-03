@@ -205,28 +205,45 @@ footer { border-top: 1px solid var(--border); padding: 1.5rem; text-align: cente
 """
 
 
-def _header_html(author: dict | None) -> str:
-    """Render the site header with nav — matches the splash page top nav."""
+def _header_html(author: dict | None, current_path: str = "") -> str:
+    """Render the site header with nav — matches the splash page top nav.
+
+    current_path is used to disable nav links that point to the current page,
+    preventing accidental page reloads that would lose form state.
+    """
+    def nav_link(href: str, label: str, style: str = "color:var(--ink);text-decoration:none") -> str:
+        if current_path == href:
+            return f'<span style="{style};opacity:0.5;cursor:default">{label}</span>'
+        return f'<a href="{href}" style="{style}">{label}</a>'
+
     if author:
+        submit_link = nav_link(
+            "/submit", "Submit",
+            "display:inline-block;padding:0.3rem 0.9rem;background:var(--accent);color:#fff;border-radius:4px;text-decoration:none;font-size:0.85rem",
+        )
         auth_area = (
-            f'<a href="/dashboard" style="color:var(--ink);text-decoration:none">My Submissions</a>'
-            f'<a href="/profile" style="color:var(--ink);text-decoration:none">{author["name"]}</a>'
-            f'<a href="/submit" style="display:inline-block;padding:0.3rem 0.9rem;background:var(--accent);color:#fff;border-radius:4px;text-decoration:none;font-size:0.85rem">Submit</a>'
+            f'{nav_link("/dashboard", "My Submissions")}'
+            f'{nav_link("/profile", author["name"])}'
+            f'{submit_link}'
             f'<form method="post" action="/auth/logout" style="display:inline">'
             f'<button type="submit" style="background:none;border:none;color:var(--ink);cursor:pointer;font-size:0.85rem;text-decoration:underline">Sign out</button>'
             f'</form>'
         )
     else:
+        submit_link = nav_link(
+            "/submit", "Submit",
+            "display:inline-block;padding:0.3rem 0.9rem;background:var(--accent);color:#fff;border-radius:4px;text-decoration:none;font-size:0.85rem",
+        )
         auth_area = (
             f'<a href="/auth/orcid?redirect=/dashboard" style="color:var(--ink);text-decoration:none">Sign in with ORCID</a>'
-            f'<a href="/submit" style="display:inline-block;padding:0.3rem 0.9rem;background:var(--accent);color:#fff;border-radius:4px;text-decoration:none;font-size:0.85rem">Submit</a>'
+            f'{submit_link}'
         )
     return f"""<nav style="display:flex;justify-content:space-between;align-items:center;padding:0.6rem 1.5rem;border-bottom:1px solid var(--rule);font-size:0.9rem">
 <div style="display:flex;gap:1.2rem;align-items:center">
 <a href="/" style="font-weight:600;color:var(--accent);text-decoration:none">{config.site_name}</a>
-<a href="/browse" style="color:var(--ink);text-decoration:none">Browse</a>
-<a href="/keywords" style="color:var(--ink);text-decoration:none">Keywords</a>
-<a href="/stats" style="color:var(--ink);text-decoration:none">Stats</a>
+{nav_link("/browse", "Browse")}
+{nav_link("/keywords", "Keywords")}
+{nav_link("/stats", "Stats")}
 <a href="/feed.xml" style="color:var(--ink);text-decoration:none">Feed</a>
 </div>
 <div style="display:flex;gap:0.8rem;align-items:center">
@@ -250,6 +267,7 @@ def _page(
     extra_js: str = "",
     raw_title: bool = False,
     wrap_container: bool = True,
+    current_path: str = "",
 ) -> HTMLResponse:
     """Render a full HTML page."""
     page_title = title if raw_title else f"{title} &middot; {config.site_name}"
@@ -269,7 +287,7 @@ def _page(
 <style>{PAGE_CSS}{extra_css}</style>
 </head>
 <body>
-{_header_html(author)}
+{_header_html(author, current_path)}
 {body}
 {_footer_html()}
 {f"<script>{extra_js}</script>" if extra_js else ""}
@@ -702,7 +720,7 @@ def browse_page(
     {cards}
     {pagination}
     """
-    return _page("Browse", body, author)
+    return _page("Browse", body, author, current_path="/browse")
 
 
 # ─── Keywords page ─────────────────────────────────────────────────────────
@@ -736,7 +754,7 @@ def keywords_page(request: Request):
         <p style="color:#888;margin-bottom:1.5rem">{len(rows)} keyword{'s' if len(rows) != 1 else ''} across published articles</p>
         <div class="keyword-cloud">{''.join(links)}</div>
         """
-    return _page("Keywords", body, author)
+    return _page("Keywords", body, author, current_path="/keywords")
 
 
 @router.get("/stats", response_class=HTMLResponse)
@@ -814,7 +832,7 @@ def stats_page(request: Request):
         <p>Machine-readable data: <a href="/api/stats">/api/stats</a> (JSON)</p>
     </div>
     """
-    return _page("Statistics", body, author)
+    return _page("Statistics", body, author, current_path="/stats")
 
 
 # ─── Keyword articles page ─────────────────────────────────────────────────
@@ -1267,7 +1285,7 @@ def submit_page(request: Request):
             <p style="margin-top:1rem"><a href="/auth/orcid?redirect=/submit" class="btn btn-primary">Sign in with ORCID</a></p>
         </div>
         """
-        return _page("Submit", body, None)
+        return _page("Submit", body, None, current_path="/submit")
 
     import json as _json
     oecd_json = _json.dumps(OECD_FOS)
@@ -1376,7 +1394,7 @@ def submit_page(request: Request):
         You'll be able to track its status from <a href="/dashboard">My Submissions</a>.</p>
     </div>
     """
-    return _page("Submit", body, author, extra_css=SUBMIT_CSS, extra_js=submit_js)
+    return _page("Submit", body, author, extra_css=SUBMIT_CSS, extra_js=submit_js, current_path="/submit")
 
 
 @router.get("/submit-version/{article_id}", response_class=HTMLResponse)
@@ -1547,7 +1565,7 @@ def dashboard_page(request: Request):
         <p style="margin-bottom:1.5rem"><a href="/submit" class="btn btn-primary">Submit new paper</a></p>
         {''.join(cards)}
         """
-    return _page("My Submissions", body, author)
+    return _page("My Submissions", body, author, current_path="/dashboard")
 
 
 # ─── Profile page ──────────────────────────────────────────────────────────
@@ -1653,7 +1671,7 @@ def profile_page(request: Request):
         <a href="/dashboard">&larr; My Submissions</a>
     </div>
     """
-    return _page("Profile", body, author)
+    return _page("Profile", body, author, current_path="/profile")
 
 
 @router.post("/profile/email")
@@ -1767,7 +1785,7 @@ def admin_page(request: Request):
     {queue_html}
     {recent_html}
     """
-    return _page("Admin", body, admin)
+    return _page("Admin", body, admin, current_path="/admin")
 
 
 # ─── Admin submission detail page ──────────────────────────────────────────
