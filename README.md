@@ -33,10 +33,12 @@ is the signal layer, not editorial gatekeeping.
 | **Submissions** | Markdown only — rendered to HTML (primary) with PDF on demand |
 | **Author identity** | ORCID iD, so attribution is verifiable |
 | **Disclosure** | One rule: state plainly what the AI did |
-| **Machine access** | OAI-PMH metadata endpoint, sitemap, schema.org JSON-LD, public stats API |
+| **Machine access** | OAI-PMH metadata endpoint, sitemap, Atom feed, schema.org JSON-LD, public stats API |
 | **Licensing** | Open access, Creative Commons (author's choice) |
 | **Discovery** | Browse, search, keyword pages, author pages |
 | **Endorsements** | ORCID-identified authors can endorse papers (community signal) |
+| **Versioning** | Authors can submit revised versions; ARK persists across versions |
+| **Notifications** | Authors notified by email when submissions are approved or rejected |
 
 Authors prepare papers by pasting
 [docs/AUTHOR_PROMPT.md](docs/AUTHOR_PROMPT.md) into any LLM along with
@@ -144,6 +146,7 @@ test-paper.md     sample submission for testing
 | GET | `/article/{ark}/jsonld` | Schema.org JSON-LD |
 | GET | `/oai` | OAI-PMH 2.0 endpoint |
 | GET | `/sitemap.xml` | XML sitemap |
+| GET | `/feed.xml` | Atom 1.0 feed (20 most recent articles) |
 | GET | `/robots.txt` | Robots file |
 
 ### Web UI
@@ -174,6 +177,7 @@ test-paper.md     sample submission for testing
 | POST | `/api/articles/{id}/endorse` | Endorse an article |
 | DELETE | `/api/articles/{id}/endorse` | Remove endorsement |
 | GET | `/api/articles/{id}/stats` | Per-article download stats |
+| GET | `/api/articles/{id}/versions` | Version history for an article |
 
 ### Admin (requires admin ORCID)
 

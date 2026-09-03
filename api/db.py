@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS authors (
     id SERIAL PRIMARY KEY,
     orcid TEXT UNIQUE NOT NULL,
     name TEXT NOT NULL,
+    email TEXT,
     affiliation TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -53,6 +54,8 @@ CREATE TABLE IF NOT EXISTS articles (
     html_path TEXT,
     pdf_path TEXT,
     status TEXT NOT NULL DEFAULT 'pending',
+    version INTEGER NOT NULL DEFAULT 1,
+    supersedes_id INTEGER REFERENCES articles(id),
     submitted_by INTEGER REFERENCES authors(id),
     submitted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     published_at TIMESTAMPTZ,
@@ -105,11 +108,45 @@ CREATE INDEX IF NOT EXISTS idx_downloads_article_id ON downloads(article_id);
 CREATE INDEX IF NOT EXISTS idx_downloads_downloaded_at ON downloads(downloaded_at DESC);
 CREATE INDEX IF NOT EXISTS idx_article_authors_article_id ON article_authors(article_id);
 CREATE INDEX IF NOT EXISTS idx_article_authors_author_id ON article_authors(author_id);
+CREATE INDEX IF NOT EXISTS idx_articles_supersedes_id ON articles(supersedes_id);
+"""
+
+# Migrations for existing databases (idempotent — safe to run repeatedly)
+MIGRATIONS_SQL = """
+-- Add email column to authors if it doesn't exist
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_name = 'authors' AND column_name = 'email') THEN
+        ALTER TABLE authors ADD COLUMN email TEXT;
+    END IF;
+END$$;
+
+-- Add version and supersedes_id columns to articles if they don't exist
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_name = 'articles' AND column_name = 'version') THEN
+        ALTER TABLE articles ADD COLUMN version INTEGER NOT NULL DEFAULT 1;
+    END IF;
+END$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_name = 'articles' AND column_name = 'supersedes_id') THEN
+        ALTER TABLE articles ADD COLUMN supersedes_id INTEGER REFERENCES articles(id);
+    END IF;
+END$$;
+
+-- Add index for supersedes_id if it doesn't exist
+CREATE INDEX IF NOT EXISTS idx_articles_supersedes_id ON articles(supersedes_id);
 """
 
 
 def init_schema():
-    """Create tables if they don't exist."""
+    """Create tables if they don't exist, then run migrations."""
     with get_conn().connection() as conn:
         conn.execute(SCHEMA_SQL)
+        conn.execute(MIGRATIONS_SQL)
         conn.commit()

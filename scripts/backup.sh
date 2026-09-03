@@ -3,7 +3,7 @@
 #
 # Backs up:
 #   - PostgreSQL database (pg_dump, gzipped)
-#   - OJS files volume (tar, gzipped)
+#   - Article files volume (tar, gzipped)
 #   - SQLite signups database
 #
 # Uploads to Backblaze B2 via rclone, with 30-day retention.
@@ -63,23 +63,23 @@ echo "[$DATE] Starting GenRxiv backup"
 # --- 1. PostgreSQL dump ---
 echo "[$DATE] Dumping PostgreSQL..."
 DB_PASSWORD="${DB_PASSWORD:-}"
-DB_CONTAINER="genrxiv-db-1"
+DB_CONTAINER="deploy-db-1"
 
-sg docker -c "docker exec -e PGPASSWORD='$DB_PASSWORD' $DB_CONTAINER pg_dump -U ojs -d ojs --no-owner --clean --if-exists" | gzip > "$BACKUP_DIR/ojs-db-$DATE.sql.gz"
+sg docker -c "docker exec -e PGPASSWORD='$DB_PASSWORD' $DB_CONTAINER pg_dump -U genrxiv -d genrxiv --no-owner --clean --if-exists" | gzip > "$BACKUP_DIR/genrxiv-db-$DATE.sql.gz"
 
-DB_SIZE=$(du -h "$BACKUP_DIR/ojs-db-$DATE.sql.gz" | cut -f1)
+DB_SIZE=$(du -h "$BACKUP_DIR/genrxiv-db-$DATE.sql.gz" | cut -f1)
 echo "[$DATE] PostgreSQL dump: $DB_SIZE"
 
-# --- 2. OJS files volume ---
-echo "[$DATE] Archiving OJS files volume..."
-sg docker -c "docker run --rm -v genrxiv_ojs_files:/data:ro alpine tar czf - -C /data ." > "$BACKUP_DIR/ojs-files-$DATE.tar.gz"
+# --- 2. Article files volume ---
+echo "[$DATE] Archiving article files volume..."
+sg docker -c "docker run --rm -v genrxiv_article_files:/data:ro alpine tar czf - -C /data ." > "$BACKUP_DIR/article-files-$DATE.tar.gz" 2>/dev/null || echo "[$DATE] WARNING: Could not archive article files volume"
 
-FILES_SIZE=$(du -h "$BACKUP_DIR/ojs-files-$DATE.tar.gz" | cut -f1)
-echo "[$DATE] OJS files archive: $FILES_SIZE"
+FILES_SIZE=$(du -h "$BACKUP_DIR/article-files-$DATE.tar.gz" | cut -f1)
+echo "[$DATE] Article files archive: $FILES_SIZE"
 
 # --- 3. SQLite signups ---
 echo "[$DATE] Copying SQLite signups..."
-sg docker -c "docker cp genrxiv-convert-1:/data/signups.db $BACKUP_DIR/signups-$DATE.db" 2>/dev/null || echo "[$DATE] WARNING: Could not copy signups.db"
+sg docker -c "docker cp deploy-convert-1:/data/signups.db $BACKUP_DIR/signups-$DATE.db" 2>/dev/null || echo "[$DATE] WARNING: Could not copy signups.db"
 
 # --- 4. Upload to B2 ---
 REMOTE_PATH="b2:$B2_BUCKET/$HOST/$DATE"

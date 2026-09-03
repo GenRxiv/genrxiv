@@ -55,9 +55,11 @@ CI runs both suites on every push/PR (`.github/workflows/tests.yml`).
 | `api/config.py` | Config dataclass from environment variables |
 | `api/db.py` | psycopg3 pool, schema definition |
 | `api/auth.py` | ORCID OAuth, sessions, require_author/require_admin |
-| `api/articles.py` | Submission, viewing, moderation, endorsements, stats |
+| `api/articles.py` | Submission, viewing, moderation, endorsements, stats, versioning |
+| `api/auth.py` | ORCID OAuth, sessions, require_author/require_admin |
+| `api/notifications.py` | Email notifications on approve/reject |
 | `api/oai.py` | OAI-PMH 2.0 endpoint |
-| `api/sitemap.py` | Sitemap, robots.txt |
+| `api/sitemap.py` | Sitemap, robots.txt, Atom feed |
 | `api/web.py` | HTML pages (browse, submit, dashboard, admin) |
 | `convert-service/app.py` | Markdown to HTML/PDF conversion |
 | `deploy/docker-compose.yml` | Container stack |
@@ -84,6 +86,16 @@ See `deploy/.env.example` for the full list. Key ones:
 Six tables: `authors`, `articles`, `article_authors`, `downloads`,
 `endorsements`, `sessions`. Schema is in `api/db.py` (`SCHEMA_SQL`).
 Tables are created automatically on API startup via `init_schema()`.
+Migrations (adding columns to existing tables) are in `MIGRATIONS_SQL`
+and run automatically after schema creation.
+
+Articles have `version` (integer, default 1) and `supersedes_id`
+(foreign key to articles.id) columns for versioning. When a new version
+is approved, the ARK transfers from the old version to the new one,
+and the old version's status changes to `superseded`.
+
+Authors have an optional `email` column, populated from ORCID's
+`/email` scope during login. Used for moderation notifications.
 
 ## API structure
 

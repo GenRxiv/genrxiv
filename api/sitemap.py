@@ -1,5 +1,5 @@
 """
-GenRxiv API — sitemap, robots.txt, and web pages.
+GenRxiv API — sitemap, robots.txt, RSS feed, and web pages.
 """
 from datetime import datetime, timezone
 from xml.sax.saxutils import escape
@@ -44,6 +44,67 @@ def sitemap():
 {chr(10).join(urls)}
 </urlset>"""
     return Response(xml, media_type="application/xml")
+
+
+@router.get("/feed.xml", response_class=PlainTextResponse)
+def atom_feed():
+    """Atom 1.0 feed of the 20 most recent published articles."""
+    with get_conn().connection() as conn:
+        rows = conn.execute(
+            """SELECT a.id, a.ark, a.title, a.abstract, a.published_at,
+                      au.name as author_name, au.orcid as author_orcid
+               FROM articles a
+               LEFT JOIN article_authors aa ON a.id = aa.article_id
+               LEFT JOIN authors au ON aa.author_id = au.id
+               WHERE a.status = 'published'
+               ORDER BY a.published_at DESC
+               LIMIT 20""",
+        ).fetchall()
+
+    # Group authors by article
+    articles = {}
+    order = []
+    for r in rows:
+        aid = r["id"]
+        if aid not in articles:
+            articles[aid] = {
+                "ark": r["ark"],
+                "title": r["title"],
+                "abstract": r["abstract"],
+                "published_at": r["published_at"],
+                "authors": [],
+            }
+            order.append(aid)
+        if r["author_name"]:
+            articles[aid]["authors"].append(r["author_name"])
+
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    entries = []
+    for aid in order:
+        a = articles[aid]
+        url = f"{config.base_url}/article/{escape(a['ark'])}"
+        updated = a["published_at"].strftime("%Y-%m-%dT%H:%M:%SZ") if a["published_at"] else now
+        author_names = ", ".join(a["authors"]) or "Unknown"
+        summary = escape(a["abstract"] or "")
+        entries.append(f"""  <entry>
+    <id>{url}</id>
+    <title>{escape(a['title'])}</title>
+    <link href="{url}"/>
+    <updated>{updated}</updated>
+    <author><name>{escape(author_names)}</name></author>
+    <summary>{summary}</summary>
+  </entry>""")
+
+    xml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>{escape(config.site_name)} — Recent Articles</title>
+  <link href="{config.base_url}/feed.xml" rel="self"/>
+  <link href="{config.base_url}/"/>
+  <id>{config.base_url}/</id>
+  <updated>{now}</updated>
+{chr(10).join(entries)}
+</feed>"""
+    return Response(xml, media_type="application/atom+xml")
 
 
 @router.get("/robots.txt", response_class=PlainTextResponse)

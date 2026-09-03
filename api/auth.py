@@ -95,27 +95,42 @@ def _extract_affiliation(record: dict) -> str | None:
     return None
 
 
-def _upsert_author(orcid: str, name: str, affiliation: str | None) -> dict:
+def _extract_email(record: dict) -> str | None:
+    """Extract primary email from ORCID record (requires /email scope)."""
+    emails = record.get("person", {}).get("emails", {}).get("email", [])
+    for e in emails:
+        if e.get("primary") and e.get("email"):
+            return e["email"]
+    # Fall back to any email if no primary
+    for e in emails:
+        if e.get("email"):
+            return e["email"]
+    return None
+
+
+def _upsert_author(orcid: str, name: str, affiliation: str | None, email: str | None = None) -> dict:
     """Create or update author in DB, return author dict."""
     with get_conn().connection() as conn:
         row = conn.execute(
-            "SELECT id, orcid, name, affiliation FROM authors WHERE orcid = %s",
+            "SELECT id, orcid, name, email, affiliation FROM authors WHERE orcid = %s",
             (orcid,),
         ).fetchone()
         if row:
             conn.execute(
-                "UPDATE authors SET name = %s, affiliation = COALESCE(%s, affiliation) WHERE orcid = %s",
-                (name, affiliation, orcid),
+                "UPDATE authors SET name = %s, email = COALESCE(%s, email), affiliation = COALESCE(%s, affiliation) WHERE orcid = %s",
+                (name, email, affiliation, orcid),
             )
             conn.commit()
             row["name"] = name
+            if email:
+                row["email"] = email
             if affiliation:
                 row["affiliation"] = affiliation
             return row
         else:
             row = conn.execute(
-                "INSERT INTO authors (orcid, name, affiliation) VALUES (%s, %s, %s) RETURNING id, orcid, name, affiliation",
-                (orcid, name, affiliation),
+                "INSERT INTO authors (orcid, name, email, affiliation) VALUES (%s, %s, %s, %s) RETURNING id, orcid, name, email, affiliation",
+                (orcid, name, email, affiliation),
             ).fetchone()
             conn.commit()
             return row
@@ -141,14 +156,14 @@ def get_current_author(request: Request) -> dict | None:
         return None
     with get_conn().connection() as conn:
         row = conn.execute(
-            """SELECT a.id, a.orcid, a.name, a.affiliation, s.expires_at
+            """SELECT a.id, a.orcid, a.name, a.email, a.affiliation, s.expires_at
                FROM sessions s JOIN authors a ON s.author_id = a.id
                WHERE s.token = %s AND s.expires_at > now()""",
             (token,),
         ).fetchone()
     if not row:
         return None
-    return {"id": row["id"], "orcid": row["orcid"], "name": row["name"], "affiliation": row["affiliation"]}
+    return {"id": row["id"], "orcid": row["orcid"], "name": row["name"], "email": row["email"], "affiliation": row["affiliation"]}
 
 
 def require_author(request: Request) -> dict:
@@ -195,8 +210,9 @@ def orcid_callback(request: Request, code: str, state: str):
     record = _fetch_orcid_record(orcid, access_token)
     name = _extract_name(record)
     affiliation = _extract_affiliation(record)
+    email = _extract_email(record)
 
-    author = _upsert_author(orcid, name, affiliation)
+    author = _upsert_author(orcid, name, affiliation, email)
     session_token = _create_session(author["id"], access_token)
 
     redirect = request.cookies.get("orcid_redirect", "/")
@@ -238,6 +254,7 @@ def me(request: Request):
         "authenticated": True,
         "orcid": author["orcid"],
         "name": author["name"],
+        "email": author.get("email"),
         "affiliation": author["affiliation"],
         "is_admin": is_admin,
     }

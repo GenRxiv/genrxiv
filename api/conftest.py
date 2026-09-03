@@ -106,18 +106,18 @@ def db(tmp_path):
     with get_conn().connection() as conn:
         # ── Authors ────────────────────────────────────────────────────────
         author_row = conn.execute(
-            """INSERT INTO authors (orcid, name, affiliation)
-               VALUES (%s, %s, %s)
+            """INSERT INTO authors (orcid, name, email, affiliation)
+               VALUES (%s, %s, %s, %s)
                RETURNING id, orcid, name""",
-            (TEST_AUTHOR_ORCID, "Test Author", "Test University"),
+            (TEST_AUTHOR_ORCID, "Test Author", "test@example.com", "Test University"),
         ).fetchone()
         author_id = author_row["id"]
 
         admin_row = conn.execute(
-            """INSERT INTO authors (orcid, name, affiliation)
-               VALUES (%s, %s, %s)
+            """INSERT INTO authors (orcid, name, email, affiliation)
+               VALUES (%s, %s, %s, %s)
                RETURNING id, orcid, name""",
-            (TEST_ADMIN_ORCID, "Test Admin", "GenRxiv"),
+            (TEST_ADMIN_ORCID, "Test Admin", "admin@example.com", "GenRxiv"),
         ).fetchone()
         admin_id = admin_row["id"]
 

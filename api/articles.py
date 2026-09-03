@@ -19,6 +19,7 @@ from slowapi.util import get_remote_address
 from config import config
 from db import get_conn
 from auth import get_current_author, require_author, require_admin
+from notifications import notify_approved, notify_rejected
 
 limiter = Limiter(key_func=get_remote_address)
 
@@ -265,6 +266,7 @@ async def submit(
     license: str = Form("CC-BY-4.0"),
     license_url: str = Form("https://creativecommons.org/licenses/by/4.0/"),
     keywords: str = Form(""),
+    supersedes_id: int | None = Form(None),
     _author: dict = Depends(require_author),
 ):
     """Submit a Markdown paper."""
@@ -320,11 +322,32 @@ async def submit(
 
     # Insert article
     with get_conn().connection() as conn:
+        # If this is a new version of an existing article, compute the version number
+        version = 1
+        if supersedes_id:
+            # Verify the original article exists and the submitter is an author of it
+            original = conn.execute(
+                """SELECT a.id, a.version, a.status
+                   FROM articles a
+                   JOIN article_authors aa ON a.id = aa.article_id
+                   WHERE a.id = %s AND aa.author_id = %s""",
+                (supersedes_id, _author["id"]),
+            ).fetchone()
+            if not original:
+                raise HTTPException(403, "You can only submit new versions of your own articles")
+            # Find the latest version in the chain
+            latest = conn.execute(
+                "SELECT version FROM articles WHERE id = %s OR supersedes_id = %s ORDER BY version DESC LIMIT 1",
+                (supersedes_id, supersedes_id),
+            ).fetchone()
+            if latest:
+                version = latest["version"] + 1
+
         row = conn.execute(
-            """INSERT INTO articles (title, abstract, ai_disclosure, license, license_url, keywords, source_markdown, submitted_by, status)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'pending')
+            """INSERT INTO articles (title, abstract, ai_disclosure, license, license_url, keywords, source_markdown, submitted_by, status, version, supersedes_id)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'pending', %s, %s)
                RETURNING id, ark, status, submitted_at""",
-            (title, abstract or None, ai_disclosure, license, license_url, kw_list, md_text, _author["id"]),
+            (title, abstract or None, ai_disclosure, license, license_url, kw_list, md_text, _author["id"], version, supersedes_id),
         ).fetchone()
         article_id = row["id"]
 
@@ -458,8 +481,51 @@ def get_article_meta(article_id: int, format: str = Query("json")):
         "license": row["license"],
         "license_url": row["license_url"],
         "keywords": row["keywords"],
+        "version": row["version"],
         "authors": authors,
         "published_at": row["published_at"].isoformat() if row["published_at"] else None,
+    }
+
+
+@router.get("/api/articles/{article_id}/versions")
+def article_versions(article_id: int):
+    """Get version history for an article."""
+    with get_conn().connection() as conn:
+        # Find the root article (the one with no supersedes_id in the chain)
+        row = conn.execute(
+            "SELECT id, ark, supersedes_id FROM articles WHERE id = %s", (article_id,)
+        ).fetchone()
+        if not row:
+            raise HTTPException(404, "Article not found")
+
+        # Find the root of the version chain
+        root_id = row["supersedes_id"] or article_id
+        ark = row["ark"]
+
+        # Get all versions in the chain
+        versions = conn.execute(
+            """SELECT id, version, title, status, published_at, submitted_at,
+                      supersedes_id
+               FROM articles
+               WHERE id = %s OR supersedes_id = %s
+               ORDER BY version DESC""",
+            (root_id, root_id),
+        ).fetchall()
+
+    return {
+        "ark": ark,
+        "versions": [
+            {
+                "id": v["id"],
+                "version": v["version"],
+                "title": v["title"],
+                "status": v["status"],
+                "published_at": v["published_at"].isoformat() if v["published_at"] else None,
+                "submitted_at": v["submitted_at"].isoformat() if v["submitted_at"] else None,
+                "is_current": v["status"] == "published",
+            }
+            for v in versions
+        ],
     }
 
 
@@ -562,7 +628,7 @@ def moderate_article(
     """Approve or reject a submission."""
     with get_conn().connection() as conn:
         row = conn.execute(
-            "SELECT id, status, source_markdown FROM articles WHERE id = %s", (article_id,)
+            "SELECT id, title, status, source_markdown, version FROM articles WHERE id = %s", (article_id,)
         ).fetchone()
         if not row:
             raise HTTPException(404, "Article not found")
@@ -570,7 +636,28 @@ def moderate_article(
             raise HTTPException(400, f"Article is already {row['status']}")
 
         if action.action == "approve":
-            ark = assign_ark(article_id)
+            # If this is a new version, transfer the ARK from the previous version
+            existing = conn.execute(
+                "SELECT ark, supersedes_id FROM articles WHERE id = %s", (article_id,)
+            ).fetchone()
+            if existing and existing["supersedes_id"]:
+                # Get the ARK from the previous version
+                prev = conn.execute(
+                    "SELECT ark FROM articles WHERE id = %s", (existing["supersedes_id"],)
+                ).fetchone()
+                if prev and prev["ark"]:
+                    ark = prev["ark"]
+                    # Mark the previous version as superseded and clear its ARK
+                    # so the new version is the only one with this ARK
+                    conn.execute(
+                        "UPDATE articles SET status = 'superseded', ark = NULL WHERE id = %s",
+                        (existing["supersedes_id"],),
+                    )
+                else:
+                    ark = assign_ark(article_id)
+            else:
+                ark = assign_ark(article_id)
+
             # Render HTML and PDF
             html = render_html(row["source_markdown"])
             pdf = render_pdf(row["source_markdown"])
@@ -586,7 +673,8 @@ def moderate_article(
                 (ark, html_path, pdf_path, admin["id"], action.note or None, article_id),
             )
             conn.commit()
-            return {"id": article_id, "ark": ark, "status": "published"}
+            notify_approved(article_id, ark, row["title"], action.note)
+            return {"id": article_id, "ark": ark, "status": "published", "version": row["version"]}
 
         elif action.action == "reject":
             conn.execute(
@@ -597,6 +685,7 @@ def moderate_article(
                 (admin["id"], action.note or None, article_id),
             )
             conn.commit()
+            notify_rejected(article_id, row["title"], action.note)
             return {"id": article_id, "status": "rejected"}
 
         else:
