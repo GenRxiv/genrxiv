@@ -185,26 +185,34 @@ def _footer_html() -> str:
 </footer>"""
 
 
-def _page(title: str, body: str, author: dict | None = None) -> HTMLResponse:
+def _page(
+    title: str,
+    body: str,
+    author: dict | None = None,
+    extra_css: str = "",
+    extra_js: str = "",
+    raw_title: bool = False,
+) -> HTMLResponse:
     """Render a full HTML page."""
+    page_title = title if raw_title else f"{title} &middot; {config.site_name}"
     html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{title} &middot; {config.site_name}</title>
+<title>{page_title}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@400;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="icon" href="/mark.svg" type="image/svg+xml">
 <link rel="alternate" type="application/atom+xml" title="{config.site_name} — Recent Articles" href="/feed.xml">
-<style>{PAGE_CSS}</style>
+<style>{PAGE_CSS}{extra_css}</style>
 </head>
 <body>
 {_header_html(author)}
-<div class="container">
 {body}
-</div>
 {_footer_html()}
+{f"<script>{extra_js}</script>" if extra_js else ""}
 </body>
 </html>"""
     return HTMLResponse(html)
@@ -242,6 +250,252 @@ def _article_card(article: dict, show_endorsements: bool = False) -> str:
 {f'<div class="keywords">{kw_html}</div>' if kw_html else ''}
 <div class="meta">Published {published} &middot; ARK: {ark}</div>
 </div>"""
+
+
+# ─── Splash page ───────────────────────────────────────────────────────────
+
+SPLASH_CSS = """
+.splash { max-width: 720px; margin: 0 auto; padding: 3rem 1.5rem 4rem; }
+@media (max-width: 520px) { .splash { padding: 2rem 1.25rem 3rem; } }
+.masthead { animation: rise 0.6s ease-out both; }
+@keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+.masthead h1 { font-family: 'Fraunces', serif; font-weight: 500; font-size: clamp(2.6rem, 8vw, 3.6rem); letter-spacing: -0.01em; margin: 0; }
+.masthead .tagline { font-family: 'Fraunces', serif; font-style: italic; font-weight: 400; font-size: 1.1rem; color: var(--ink-soft); margin: 0.35rem 0 0; }
+.splash .rule { border: none; border-top: 1px solid var(--rule); margin: 1.6rem 0 2.6rem; }
+.splash .status { font-size: 0.8rem; letter-spacing: 0.02em; color: var(--muted); margin: 0 0 2.6rem; }
+.splash .status .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); margin-right: 0.5em; animation: pulse 2s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+.splash p { font-size: 1.02rem; color: var(--ink); max-width: 34em; }
+.splash h2 { font-family: 'Fraunces', serif; font-weight: 500; font-size: 1.3rem; margin: 2.8rem 0 0.6rem; }
+.splash h3 { font-family: 'IBM Plex Sans', sans-serif; font-weight: 600; font-size: 0.95rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin: 2.6rem 0 1rem; }
+.subjects { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1rem 0 0; }
+.subject-tag { font-size: 0.85rem; font-weight: 500; padding: 0.35rem 0.8rem; background: var(--paper-warm); border: 1px solid var(--rule); border-radius: 999px; color: var(--ink-soft); }
+.paper-card { background: var(--card); border: 1px solid var(--rule); border-radius: 6px; padding: 1.4rem 1.5rem; margin: 1rem 0; }
+.paper-card .paper-meta { font-family: 'IBM Plex Mono', monospace; font-size: 0.78rem; color: var(--muted); margin-bottom: 0.5rem; }
+.paper-card h4 { font-family: 'Fraunces', serif; font-weight: 500; font-size: 1.15rem; margin: 0 0 0.4rem; line-height: 1.3; }
+.paper-card .paper-authors { font-size: 0.9rem; color: var(--ink-soft); margin: 0 0 0.6rem; }
+.paper-card .paper-abstract { font-size: 0.92rem; color: var(--ink-soft); margin: 0 0 0.8rem; }
+.paper-card .paper-badges { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.badge { font-size: 0.75rem; font-weight: 500; padding: 0.2rem 0.6rem; border-radius: 3px; }
+.badge-ai { background: var(--badge-ai-soft); color: var(--badge-ai); }
+.badge-format { background: var(--accent-soft); color: var(--accent); }
+.badge-status { background: var(--paper-warm); color: var(--muted); border: 1px solid var(--rule); }
+.standards { margin: 1rem 0; padding: 0; }
+.standards li { font-size: 0.95rem; color: var(--ink); padding: 0.5rem 0 0.5rem 1.6rem; position: relative; list-style: none; }
+.standards li::before { content: "\\2192"; position: absolute; left: 0; color: var(--accent); font-weight: 600; }
+.splash form { margin-top: 1.2rem; }
+.splash label.field-label { display: block; font-size: 0.92rem; color: var(--ink-soft); margin-bottom: 0.5rem; }
+.splash input[type="email"] { width: 100%; font-family: 'IBM Plex Sans', sans-serif; font-size: 1rem; padding: 0.75rem 0.85rem; border: 1px solid var(--rule); background: #fff; color: var(--ink); border-radius: 3px; }
+.splash input[type="email"]:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
+.checkbox-row { display: flex; align-items: flex-start; gap: 0.6rem; margin-top: 1rem; }
+.checkbox-row input[type="checkbox"] { margin-top: 0.2rem; width: 16px; height: 16px; accent-color: var(--accent); flex-shrink: 0; }
+.checkbox-row label { font-size: 0.95rem; color: var(--ink); }
+.splash button[type="submit"] { margin-top: 1.4rem; font-family: 'IBM Plex Sans', sans-serif; font-weight: 500; font-size: 0.95rem; background: var(--ink); color: var(--paper); border: none; padding: 0.75rem 1.5rem; border-radius: 3px; cursor: pointer; transition: background 0.15s ease; }
+.splash button[type="submit"]:hover { background: var(--accent); }
+.splash button[type="submit"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.confirm { display: none; margin-top: 1rem; padding: 0.85rem 1rem; background: var(--accent-soft); border-left: 3px solid var(--accent); font-size: 0.92rem; color: var(--ink); }
+.confirm.error { background: #FDE8E8; border-left-color: #C53030; }
+.roadmap { margin: 1rem 0; }
+.roadmap-item { display: flex; gap: 1rem; padding: 0.6rem 0; border-bottom: 1px solid var(--rule); }
+.roadmap-item:last-child { border-bottom: none; }
+.roadmap-status { font-family: 'IBM Plex Mono', monospace; font-size: 0.78rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; min-width: 70px; padding-top: 0.15rem; }
+.roadmap-status.done { color: #2D7A3E; }
+.roadmap-status.active { color: var(--accent); }
+.roadmap-status.planned { color: var(--muted); }
+.roadmap-label { font-size: 0.95rem; color: var(--ink); }
+.support { margin-top: 2.6rem; padding-top: 1.8rem; border-top: 1px solid var(--rule); }
+.support p { color: var(--ink-soft); font-size: 0.96rem; }
+.support-links { display: flex; flex-wrap: wrap; gap: 1.2rem; margin-top: 0.8rem; }
+.support-link { display: inline-block; font-size: 0.95rem; font-weight: 500; color: var(--accent); text-decoration: none; border-bottom: 1px solid var(--accent); padding-bottom: 1px; }
+.support-link:hover { color: var(--ink); border-color: var(--ink); }
+.github-link { margin-top: 1.6rem; font-size: 0.9rem; color: var(--muted); }
+.github-link a { color: var(--ink-soft); text-decoration: none; border-bottom: 1px solid var(--rule); }
+.github-link a:hover { color: var(--accent); border-color: var(--accent); }
+.splash footer { margin-top: 3.5rem; font-size: 0.8rem; color: var(--muted); }
+"""
+
+SPLASH_JS = """
+const form = document.getElementById('interest-form');
+const confirmMsg = document.getElementById('confirm-message');
+form.addEventListener('submit', async function (e) {
+    e.preventDefault();
+    const email = document.getElementById('email').value;
+    const notify = document.getElementById('notify').checked;
+    confirmMsg.classList.remove('error');
+    confirmMsg.style.display = 'block';
+    confirmMsg.textContent = 'Sending\\u2026';
+    try {
+        const resp = await fetch('/api/signup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: email, notify_on_launch: notify }),
+        });
+        if (resp.ok) {
+            confirmMsg.textContent = 'Thanks \\u2014 we\\'ll be in touch.';
+            form.reset();
+        } else {
+            confirmMsg.classList.add('error');
+            confirmMsg.textContent = 'Something went wrong. Please try again.';
+        }
+    } catch (err) {
+        confirmMsg.classList.add('error');
+        confirmMsg.textContent = 'Network error. Please try again.';
+    }
+});
+"""
+
+
+@router.get("/", response_class=HTMLResponse)
+def splash_page(request: Request):
+    """Splash page — served through FastAPI so it shares the nav with all pages."""
+    author = get_current_author(request)
+    body = """
+<div class="splash">
+    <div class="masthead">
+        <h1>GenRxiv</h1>
+        <p class="tagline">An open archive for AI-generated research</p>
+        <div style="margin-top:1rem;display:flex;gap:0.8rem;flex-wrap:wrap">
+            <a href="/browse" style="display:inline-block;padding:0.5rem 1.2rem;border:1px solid var(--accent);border-radius:4px;color:var(--accent);font-size:0.95rem;text-decoration:none">Browse articles</a>
+            <a href="/submit" style="display:inline-block;padding:0.5rem 1.2rem;background:var(--accent);color:#fff;border:1px solid var(--accent);border-radius:4px;font-size:0.95rem;text-decoration:none">Submit a paper</a>
+            <a href="/feed.xml" style="display:inline-block;padding:0.5rem 1.2rem;border:1px solid var(--rule);border-radius:4px;color:var(--ink);font-size:0.95rem;text-decoration:none">RSS feed</a>
+        </div>
+    </div>
+
+    <hr class="rule">
+
+    <p class="status"><span class="dot"></span>Now accepting submissions &mdash; building in the open</p>
+
+    <p>
+        GenRxiv is a preprint archive for research substantially generated or
+        co-generated by AI, submitted in Markdown and openly available to
+        human and machine readers alike. We're building the archive itself
+        before we open submissions, and we'd like the community involved from
+        here, not just after launch.
+    </p>
+
+    <h3>Planned subject areas</h3>
+    <div class="subjects">
+        <span class="subject-tag">Life Sciences</span>
+        <span class="subject-tag">Physical Sciences</span>
+        <span class="subject-tag">Computer Science</span>
+        <span class="subject-tag">Social Sciences</span>
+        <span class="subject-tag">Humanities</span>
+        <span class="subject-tag">Interdisciplinary</span>
+    </div>
+
+    <h3>What a GenRxiv preprint looks like</h3>
+    <div class="paper-card">
+        <div class="paper-meta">genrxiv:2026.00001 &middot; posted 2026-01-15</div>
+        <h4>Emergent Symbolic Reasoning in Multi-Agent LLM Systems Under Constrained Communication Bandwidth</h4>
+        <p class="paper-authors">A. Chen, R. Okafor, with assistance from Claude 3.5 (Anthropic)</p>
+        <p class="paper-abstract">
+            We demonstrate that groups of large language models, when restricted to
+            low-bandwidth symbolic channels, spontaneously develop compositional
+            protocols resembling human mathematical notation. We characterize the
+            conditions under which this emergence occurs and propose a framework&hellip;
+        </p>
+        <div class="paper-badges">
+            <span class="badge badge-ai">AI co-generated</span>
+            <span class="badge badge-format">Markdown</span>
+            <span class="badge badge-status">Preprint</span>
+        </div>
+    </div>
+
+    <h3>Submission standards</h3>
+    <p>
+        GenRxiv starts from the assumption that AI was involved. That's the
+        premise, not the exception. So there's one rule: state plainly what
+        the AI did. A single honest sentence is enough &mdash; "drafted by an LLM,
+        verified and revised by the authors" or "fully generated, checked for
+        accuracy." The disclosure is about honesty, not paperwork.
+    </p>
+    <p>
+        Beyond that: submit in Markdown (there's a ready-made
+        <a href="https://github.com/GenRxiv/genrxiv/blob/main/docs/AUTHOR_PROMPT.md">author prompt</a>
+        that produces the right format from any LLM), attribute authorship to
+        humans with an ORCID iD, and license the work openly.
+    </p>
+
+    <h3>Roadmap</h3>
+    <div class="roadmap">
+        <div class="roadmap-item">
+            <span class="roadmap-status done">Done</span>
+            <span class="roadmap-label">Platform infrastructure (FastAPI, PostgreSQL, conversion service)</span>
+        </div>
+        <div class="roadmap-item">
+            <span class="roadmap-status done">Done</span>
+            <span class="roadmap-label">Markdown to HTML &amp; PDF rendering (KaTeX math, print-ready)</span>
+        </div>
+        <div class="roadmap-item">
+            <span class="roadmap-status done">Done</span>
+            <span class="roadmap-label">ORCID author identity and OAuth login</span>
+        </div>
+        <div class="roadmap-item">
+            <span class="roadmap-status done">Done</span>
+            <span class="roadmap-label">Machine-readable access (OAI-PMH, sitemap, JSON-LD, ARK identifiers)</span>
+        </div>
+        <div class="roadmap-item">
+            <span class="roadmap-status done">Done</span>
+            <span class="roadmap-label">Nightly backups, email delivery, submission policies</span>
+        </div>
+        <div class="roadmap-item">
+            <span class="roadmap-status active">Active</span>
+            <span class="roadmap-label">End-to-end submission testing</span>
+        </div>
+        <div class="roadmap-item">
+            <span class="roadmap-status planned">Planned</span>
+            <span class="roadmap-label">Open submissions go live</span>
+        </div>
+        <div class="roadmap-item">
+            <span class="roadmap-status planned">Planned</span>
+            <span class="roadmap-label">Community moderation and endorsement system</span>
+        </div>
+    </div>
+
+    <h2>Get involved</h2>
+    <p>
+        Leave your email if you'd like to help shape GenRxiv &mdash; as an early
+        contributor, reviewer, or just a second pair of eyes.
+    </p>
+
+    <form id="interest-form">
+        <label class="field-label" for="email">Email</label>
+        <input type="email" id="email" name="email" placeholder="you@example.com" required>
+        <div class="checkbox-row">
+            <input type="checkbox" id="notify" name="notify_on_launch" value="yes">
+            <label for="notify">Notify me when GenRxiv goes live</label>
+        </div>
+        <button type="submit">Send</button>
+        <div class="confirm" id="confirm-message">Thanks &mdash; we'll be in touch.</div>
+    </form>
+
+    <div class="support">
+        <p>
+            GenRxiv is self-hosted and self-funded. If you'd like to help cover
+            hosting and infrastructure costs as we grow, contributions are
+            welcome.
+        </p>
+        <div class="support-links">
+            <a class="support-link" href="https://github.com/sponsors/GenRxiv">GitHub Sponsors &rarr;</a>
+            <a class="support-link" href="https://opencollective.com/genrxiv">Open Collective &rarr;</a>
+        </div>
+    </div>
+
+    <p class="github-link">
+        We're building in the open. Watch the repo: <a href="https://github.com/GenRxiv/genrxiv">github.com/GenRxiv/genrxiv</a>
+    </p>
+
+    <footer>GenRxiv &middot; est. 2026</footer>
+</div>
+"""
+    return _page(
+        "GenRxiv — an open archive for AI-generated research",
+        body,
+        author,
+        extra_css=SPLASH_CSS,
+        extra_js=SPLASH_JS,
+        raw_title=True,
+    )
 
 
 # ─── Browse page ───────────────────────────────────────────────────────────
