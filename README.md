@@ -206,6 +206,48 @@ test-paper.md     sample submission for testing
 - `GET /api/docs` — Swagger UI
 - `GET /api/openapi.json` — OpenAPI schema
 
+## Agent access
+
+GenRxiv is designed to be machine-readable. Agents can discover,
+read, and prepare submissions without a browser.
+
+### Discovery
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/agent-guide` | Plain-text guide with full submission instructions |
+| `GET /.well-known/ai-plugin.json` | AI plugin manifest |
+| `GET /api/fos` | OECD Fields of Science taxonomy (JSON) |
+| `GET /api/openapi.json` | OpenAPI schema |
+| `GET /oai?verb=Identify` | OAI-PMH 2.0 metadata harvesting |
+| `GET /sitemap.xml` | XML sitemap |
+| `GET /feed.xml` | Atom 1.0 feed |
+| `GET /robots.txt` | Robots file (advertises agent endpoints) |
+
+### Reading articles
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/articles` | List published articles (paginated, searchable) |
+| `GET /api/articles/{id}` | Article metadata (JSON) |
+| `GET /article/{ark}/jsonld` | Schema.org JSON-LD |
+| `GET /article/{ark}/bibtex` | BibTeX references (plain text) |
+| `GET /api/articles/{ark}/references` | Parsed references (JSON) |
+| `GET /article/{ark}/markdown` | Original Markdown source |
+| `GET /article/{ark}/pdf` | PDF rendering |
+
+### Preparing submissions
+
+Agents can't authenticate via ORCID (it requires browser-based OAuth),
+but they can prepare a complete submission file. The Markdown file
+includes YAML front matter with all metadata — when a human uploads
+it on `/submit`, the form auto-fills. See
+[docs/AUTHOR_PROMPT.md](docs/AUTHOR_PROMPT.md) for the full template.
+
+The submitter (logged-in ORCID user) is always the first author.
+Agents must get explicit user confirmation before submission. See
+`GET /api/agent-guide` for the full conduct rules.
+
 ## Running it locally
 
 Requires Docker and Docker Compose.

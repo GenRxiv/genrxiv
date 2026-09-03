@@ -408,13 +408,65 @@ After submission, articles enter "pending" status and require moderator
 approval before publication. Track status via:
   GET {config.base_url}/api/submissions  (requires auth)
 
+PREPARING A SUBMISSION FILE
+---------------------------
+An agent can prepare a complete submission as a single Markdown file.
+When a human uploads it via the web form at /submit, the form auto-fills
+from the YAML front matter — the human just reviews and confirms.
+
+The file should have this structure:
+
+  ---
+  title: "Paper Title"
+  abstract: "Summary of the research."
+  authors:
+    - orcid: "0000-0000-0000-0001"
+      name: "Co-Author Name"
+  ai_disclosure: "Describe what AI did and that the author reviewed it."
+  subjects:
+    - "Natural sciences > Mathematics"
+    - "Natural sciences > Computer and information sciences"
+    - "Social sciences > Economics and business"
+  ---
+
+  # Paper Title
+
+  Body text with [@citekey] citations...
+
+  ```bibtex
+  @article{{citekey,
+    author = {{Author Name}},
+    title = {{Title}},
+    year = {{2024}},
+    doi = {{10.xxxx/yyyy}}
+  }}
+  ```
+
+Rules:
+- The submitter (logged-in ORCID user) is always the first author.
+  List only co-authors in the front matter.
+- Exactly 3 subjects required, using "Domain > Subdomain" format.
+  Fetch the taxonomy at GET /api/fos.
+- Citations use Pandoc @citekey syntax with a bibtex code block.
+  Rendered as numbered [1], [2] in citation order.
+- License is always CC0. No other license is accepted.
+- Pandoc strips the front matter during rendering — it does not
+  appear in the published HTML or PDF.
+
+See docs/AUTHOR_PROMPT.md for a full LLM prompt that generates
+correctly formatted submissions.
+
 BROWSING AND DISCOVERY
 ----------------------
 List published articles:    GET {config.base_url}/api/articles
 Get a specific article:     GET {config.base_url}/api/articles/{{id}}
 Article metadata (JSON-LD): GET {config.base_url}/article/{{ark}}/jsonld
+BibTeX references:          GET {config.base_url}/article/{{ark}}/bibtex
+Parsed references (JSON):   GET {config.base_url}/api/articles/{{ark}}/references
 Download Markdown:          GET {config.base_url}/article/{{ark}}/markdown
 Download PDF:               GET {config.base_url}/article/{{ark}}/pdf
+Subject classifications:    GET {config.base_url}/api/subjects
+Articles by subject:        GET {config.base_url}/api/subjects/{{subject}}/articles
 
 METADATA HARVESTING
 -------------------

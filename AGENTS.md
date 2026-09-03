@@ -34,18 +34,26 @@ docker logs deploy-api-1 -f --tail 50
 ## Tests
 
 ```bash
-# Conversion service (requires pandoc + tectonic):
-cd convert-service && pip install -r requirements-dev.txt && pytest test_app.py -v
-
-# API tests (requires PostgreSQL):
+# API tests (94 tests, requires PostgreSQL):
 cd api && pip install -r requirements-dev.txt
 export DATABASE_URL_TEST="postgresql://user:pass@localhost:5432/genrxiv_test"
+export RATE_LIMIT_ENABLED=false
 pytest test_api.py -v
 
+# Browser tests (16 Playwright tests, requires running API):
+cd tests/browser && pip install -r requirements.txt
+playwright install chromium
+pytest test_submit_form.py -v
+
+# Conversion service tests (20 tests, requires pandoc + tectonic):
+cd convert-service && pip install -r requirements-dev.txt
+pytest test_app.py -v
+
 # Without DATABASE_URL_TEST, DB-dependent tests are skipped automatically.
+# Total: 130 tests (94 API + 16 browser + 20 convert service).
 ```
 
-CI runs both suites on every push/PR (`.github/workflows/tests.yml`).
+CI runs all suites on every push/PR (`.github/workflows/tests.yml`).
 
 ## Key paths
 
@@ -181,7 +189,7 @@ The workflow:
 4. Pull latest code
 5. Rebuild and restart the API container
 6. Run database migrations
-7. Run the full test suite (91 API tests + 13 browser tests)
+7. Run the full test suite (94 API tests + 16 browser tests)
 8. If tests pass → disable maintenance mode → site is live
 9. If tests fail → maintenance mode stays on → investigate
 
@@ -206,7 +214,7 @@ scripts/test-after-restore.sh
 ```
 
 This creates a fresh `genrxiv_test` database, copies test files into the
-API container, and runs all 91 API tests. Exits 0 if all pass.
+API container, and runs all 94 API tests. Exits 0 if all pass.
 
 ## API structure
 
@@ -214,10 +222,110 @@ API container, and runs all 91 API tests. Exits 0 if all pass.
 - Auth dependencies: `get_current_author` (optional), `require_author`
   (401 if not logged in), `require_admin` (403 if not admin)
 - Article routes use `{ark:path}` to capture ARKs containing slashes
-- Specific routes (`/pdf`, `/markdown`, `/jsonld`) are registered before
-  the catch-all `/{ark:path}` route
+- Specific routes (`/pdf`, `/markdown`, `/jsonld`, `/bibtex`) are
+  registered before the catch-all `/{ark:path}` route
 - Rate limiting via SlowAPI: 5/min for submissions, 10/min for ORCID
   callback, 200/min global default
+
+## Submission format
+
+Submissions are Markdown files with optional YAML front matter for
+metadata and a BibTeX block for citations.
+
+### YAML front matter
+
+Authors embed metadata at the top of the Markdown file:
+
+```yaml
+---
+title: "Paper Title"
+abstract: "Summary of the research."
+authors:
+  - orcid: "0000-0000-0000-0001"
+    name: "Co-Author Name"
+ai_disclosure: "AI-generated, reviewed by authors."
+subjects:
+  - "Natural sciences > Mathematics"
+  - "Natural sciences > Computer and information sciences"
+  - "Social sciences > Economics and business"
+---
+```
+
+When uploaded via the web form, the form auto-fills from the front
+matter. The submitter (logged-in ORCID user) is always the first
+author — front matter `authors` are co-authors only. Pandoc strips
+the front matter during rendering.
+
+### Citations
+
+Authors use Pandoc's `@citekey` syntax for inline citations and
+include a `bibtex` fenced code block:
+
+````markdown
+As shown by Smith et al. [@smith2023], the method converges.
+
+```bibtex
+@article{smith2023,
+  author = {Smith, Jane},
+  title = {A Test Paper},
+  journal = {Journal of Testing},
+  year = {2023},
+  doi = {10.1234/example}
+}
+```
+````
+
+The conversion service extracts the BibTeX, renders citations as
+numbered references [1], [2] in citation order (IEEE style), and
+strips the raw BibTeX from the HTML.
+
+### License
+
+All submissions are CC0 (Public Domain Dedication). No other license
+is accepted.
+
+### Subject classifications
+
+Exactly 3 OECD Fields of Science classifications are required.
+Fetch the taxonomy at `GET /api/fos`. Format: "Domain > Subdomain".
+
+## Agent discovery endpoints
+
+Agents can discover and interact with GenRxiv via:
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/agent-guide` | Plain-text guide for agents (submission, auth, discovery) |
+| `GET /.well-known/ai-plugin.json` | AI plugin manifest |
+| `GET /api/fos` | OECD FOS taxonomy (JSON) |
+| `GET /api/openapi.json` | OpenAPI schema |
+| `GET /api/docs` | Interactive Swagger UI |
+| `GET /oai?verb=Identify` | OAI-PMH 2.0 endpoint |
+| `GET /sitemap.xml` | XML sitemap |
+| `GET /feed.xml` | Atom 1.0 feed |
+| `GET /robots.txt` | Robots file (advertises agent endpoints) |
+
+### Per-article endpoints for agents
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/articles/{id}` | Article metadata (JSON) |
+| `GET /article/{ark}/jsonld` | Schema.org JSON-LD |
+| `GET /article/{ark}/bibtex` | BibTeX references (plain text) |
+| `GET /api/articles/{ark}/references` | Parsed references (JSON) |
+| `GET /article/{ark}/markdown` | Original Markdown source |
+| `GET /article/{ark}/pdf` | PDF rendering |
+
+### Agent conduct
+
+Before submitting on behalf of a user, an agent MUST:
+1. Verify the user is authenticated via ORCID (check `GET /auth/me`)
+2. Confirm the user has explicitly agreed to the submission
+3. Show a preview of what will be submitted
+4. Get explicit confirmation before calling `POST /api/submit`
+5. Never submit on behalf of a user who is not present and authenticated
+
+See the full agent guide at `GET /api/agent-guide` for details.
 
 ## Security notes
 
