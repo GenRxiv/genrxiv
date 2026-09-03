@@ -155,7 +155,7 @@ def _header_html(author: dict | None) -> str:
     """Render the site header with nav."""
     nav_links = '<a href="/browse">Browse</a><a href="/keywords">Keywords</a><a href="/api/stats">Stats</a>'
     if author:
-        auth_links = f'<a href="/dashboard">My Submissions</a><a href="/submit" class="btn btn-primary">Submit</a><a href="/auth/me" style="font-size:0.85rem">{author["name"]}</a><a href="/auth/logout" style="font-size:0.85rem">Sign out</a>'
+        auth_links = f'<a href="/dashboard">My Submissions</a><a href="/submit" class="btn btn-primary">Submit</a><a href="/auth/me" style="font-size:0.85rem">{author["name"]}</a><form method="post" action="/auth/logout" style="display:inline"><button type="submit" style="background:none;border:none;color:var(--cobalt);font-size:0.85rem;cursor:pointer;padding:0;text-decoration:underline">Sign out</button></form>'
     else:
         auth_links = f'<a href="/auth/orcid?redirect=/browse" class="btn">Sign in with ORCID</a><a href="/submit" class="btn btn-primary">Submit</a>'
     return f"""<header>
