@@ -65,6 +65,13 @@ object.__setattr__(config, "smtp_host", "")
 object.__setattr__(config, "smtp_username", "")
 object.__setattr__(config, "smtp_password", "")
 
+# Mock the conversion service so tests don't need a running convert-service.
+# The approve endpoint calls render_html/render_pdf; without these mocks,
+# tests that approve articles would fail trying to connect to the service.
+import articles as articles_module
+articles_module.render_html = lambda md: f"<html><body><h1>Test</h1><pre>{md}</pre></body></html>"
+articles_module.render_pdf = lambda md: b"%PDF-1.4\n%test pdf content\n%%EOF\n"
+
 
 # ─── Skip marker ────────────────────────────────────────────────────────────
 
