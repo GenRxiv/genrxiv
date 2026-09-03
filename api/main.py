@@ -5,7 +5,6 @@ Mounts all routers: auth, articles, OAI-PMH, sitemap, web UI.
 Initializes database schema on startup.
 """
 import os
-import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -28,10 +27,8 @@ from web import router as web_router
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize DB pool and schema on startup."""
-    logger = logging.getLogger("genrxiv")
     init_pool()
     init_schema()
-    logger.info("Database schema initialized")
     os.makedirs(config.files_dir, exist_ok=True)
     yield
 

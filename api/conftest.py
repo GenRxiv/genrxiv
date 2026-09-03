@@ -27,7 +27,9 @@ TEST_DB_URL = os.environ.get("DATABASE_URL_TEST", "")
 no_db = not bool(TEST_DB_URL)
 
 if TEST_DB_URL:
-    os.environ.setdefault("DATABASE_URL", TEST_DB_URL)
+    # Force-override DATABASE_URL so tests always use the test database,
+    # never the production database (which may be set in the environment).
+    os.environ["DATABASE_URL"] = TEST_DB_URL
 else:
     # Fall back to a harmless placeholder so Config.from_env() does not blow up
     # when the api modules are imported in a database-less environment.
