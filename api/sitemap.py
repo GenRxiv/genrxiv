@@ -109,11 +109,18 @@ def atom_feed():
 
 @router.get("/robots.txt", response_class=PlainTextResponse)
 def robots():
-    """robots.txt — allow all, point to sitemap."""
+    """robots.txt — allow all, point to sitemap and API discovery."""
     return f"""User-agent: *
 Allow: /
 Disallow: /admin/
 Disallow: /api/submit
 
 Sitemap: {config.base_url}/sitemap.xml
+
+# API discovery for agents
+OpenAPI-Schema: {config.base_url}/api/openapi.json
+Agent-Guide: {config.base_url}/api/agent-guide
+AI-Plugin-Manifest: {config.base_url}/.well-known/ai-plugin.json
+OAI-PMH-Endpoint: {config.base_url}/oai
+Atom-Feed: {config.base_url}/feed.xml
 """
