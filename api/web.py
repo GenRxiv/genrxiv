@@ -792,12 +792,26 @@ def profile_page(request: Request):
     affiliation_value = row["affiliation"] if row and row["affiliation"] else ""
     is_admin = author["orcid"] in config.admin_orcids
 
+    AFFILIATION_OPTIONS = [
+        "Independent Researcher",
+        "Academic",
+        "Industry",
+        "Government",
+        "Non-profit",
+    ]
+
     saved = request.query_params.get("saved")
     saved_msg = ""
     if saved == "email":
         saved_msg = '<div class="card" style="background:#e8f5e9;border:1px solid #4caf50;margin-bottom:1.5rem;padding:1rem">Email saved successfully.</div>'
     elif saved == "affiliation":
         saved_msg = '<div class="card" style="background:#e8f5e9;border:1px solid #4caf50;margin-bottom:1.5rem;padding:1rem">Affiliation saved successfully.</div>'
+
+    # Build affiliation dropdown
+    aff_options_html = ""
+    for opt in AFFILIATION_OPTIONS:
+        selected = " selected" if opt == affiliation_value else ""
+        aff_options_html += f'<option value="{opt}"{selected}>{opt}</option>'
 
     body = f"""
     <h1>{author['name']}</h1>
@@ -837,8 +851,11 @@ def profile_page(request: Request):
         <h2 style="font-size:1.1rem">Affiliation</h2>
         <form method="post" action="/profile/affiliation">
             <div class="form-group">
-                <label>Your affiliation (optional)</label>
-                <input type="text" name="affiliation" value="{affiliation_value}" placeholder="University / Organization">
+                <label>Your affiliation</label>
+                <select name="affiliation">
+                    <option value="">— Select —</option>
+                    {aff_options_html}
+                </select>
             </div>
             <button type="submit" class="btn btn-primary">Save affiliation</button>
         </form>
