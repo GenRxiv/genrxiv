@@ -76,6 +76,49 @@ def validate_title(title: str) -> str:
     return title
 
 
+# ─── BibTeX extraction ──────────────────────────────────────────────────────
+
+_BIBTEX_BLOCK_RE = re.compile(r"```bibtex\n(.*?)```", re.DOTALL)
+
+
+def extract_bibtex(markdown: str) -> str | None:
+    """Extract BibTeX content from a ```bibtex fenced code block in Markdown.
+
+    Returns the raw BibTeX text, or None if no block is found.
+    """
+    match = _BIBTEX_BLOCK_RE.search(markdown)
+    if not match:
+        return None
+    return match.group(1).strip()
+
+
+def parse_bibtex_entries(bibtex: str) -> list[dict]:
+    """Parse BibTeX entries into a list of dicts with key fields.
+
+    This is a lightweight parser — it extracts entry type, key, author,
+    title, year, journal/publisher, and volume/pages. It does not
+    implement the full BibTeX spec.
+    """
+    entries = []
+    # Match @type{key, ... }
+    for m in re.finditer(r"@(\w+)\s*\{([^,]+),\s*(.*?)\n\}", bibtex, re.DOTALL):
+        entry_type = m.group(1).lower()
+        key = m.group(2).strip()
+        body = m.group(3)
+        entry = {"type": entry_type, "key": key}
+
+        for field_match in re.finditer(r'(\w+)\s*=\s*[\{"]([^}"]*)[}"]', body):
+            field = field_match.group(1).lower()
+            value = field_match.group(2).strip()
+            if field in ("author", "title", "year", "journal",
+                         "publisher", "volume", "pages", "booktitle",
+                         "doi", "url"):
+                entry[field] = value
+
+        entries.append(entry)
+    return entries
+
+
 def validate_subjects(subjects: list[str]) -> list[str]:
     """Validate subject classification list."""
     if len(subjects) > MAX_SUBJECTS:
@@ -591,6 +634,42 @@ def article_jsonld(ark: str):
         raise HTTPException(404, "Article not found")
     authors = get_article_authors(article["id"])
     return build_jsonld(article, authors)
+
+
+@router.get("/article/{ark:path}/bibtex")
+def article_bibtex(ark: str):
+    """Get article's BibTeX references as plain text.
+
+    Returns the raw BibTeX block extracted from the article's Markdown source.
+    If the article has no BibTeX references, returns 404.
+    """
+    ark = unquote(ark)
+    article = get_article_by_ark(ark)
+    if not article:
+        raise HTTPException(404, "Article not found")
+    bibtex = extract_bibtex(article["source_markdown"])
+    if not bibtex:
+        raise HTTPException(404, "No BibTeX references found for this article")
+    return Response(content=bibtex, media_type="text/plain",
+                    headers={"Content-Disposition": f"inline; filename={ark}.bib"})
+
+
+@router.get("/api/articles/{ark:path}/references")
+def article_references(ark: str):
+    """Get article's references as structured JSON.
+
+    Returns a list of parsed BibTeX entries with type, key, author,
+    title, year, and other fields. Useful for agents and harvesting.
+    """
+    ark = unquote(ark)
+    article = get_article_by_ark(ark)
+    if not article:
+        raise HTTPException(404, "Article not found")
+    bibtex = extract_bibtex(article["source_markdown"])
+    if not bibtex:
+        return {"references": []}
+    entries = parse_bibtex_entries(bibtex)
+    return {"references": entries}
 
 
 @router.get("/article/{ark:path}/versions", response_class=HTMLResponse)

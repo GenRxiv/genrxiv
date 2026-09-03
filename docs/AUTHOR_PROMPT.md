@@ -24,8 +24,34 @@ Formatting requirements:
   Prefer SVG for figures and diagrams. If you cannot produce SVG,
   describe the figure in text and note where an image should be
   inserted.
-- Include a references section at the end. Use any consistent
-  citation style.
+- Cite references inline using Pandoc's @citekey syntax:
+  "As shown by Smith et al. [@smith2023], the method converges."
+  Multiple citations: [@smith2023; @jones2024].
+- Include a references section at the end as a fenced BibTeX code block:
+
+  ```bibtex
+  @article{smith2023,
+    author = {Smith, Jane and Doe, John},
+    title = {A Method for Testing},
+    journal = {Journal of Testing},
+    year = {2023},
+    volume = {1},
+    pages = {1--10},
+    doi = {10.1234/example}
+  }
+
+  @book{jones2024,
+    author = {Jones, Bob},
+    title = {Another Reference},
+    publisher = {Academic Press},
+    year = {2024}
+  }
+  ```
+
+  The server extracts the BibTeX block, renders citations as
+  numbered references [1], [2] in citation order, and hides the
+  raw BibTeX from the rendered HTML. The BibTeX is also exposed
+  via /article/{ark}/bibtex for machine-readable access.
 - Include a section titled "AI Involvement" describing what parts of
   the work were AI-generated or co-generated, and with what tools.
   Be specific and honest — this is the point of GenRxiv.

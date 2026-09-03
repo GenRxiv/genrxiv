@@ -39,6 +39,7 @@ is the signal layer, not editorial gatekeeping.
 | **Discovery** | Browse, search, subject pages, author pages |
 | **Endorsements** | ORCID-identified authors can endorse papers (community signal) |
 | **Versioning** | Authors can submit revised versions; ARK persists across versions |
+| **Citations** | BibTeX in Markdown, rendered as numbered references [1] in citation order |
 | **Notifications** | Authors notified by email when submissions are approved or rejected |
 
 Authors prepare papers by pasting
@@ -147,6 +148,8 @@ test-paper.md     sample submission for testing
 | GET | `/article/{ark}/pdf` | Download article as PDF |
 | GET | `/article/{ark}/markdown` | Download original Markdown |
 | GET | `/article/{ark}/jsonld` | Schema.org JSON-LD |
+| GET | `/article/{ark}/bibtex` | BibTeX references (plain text) |
+| GET | `/api/articles/{ark}/references` | Parsed references (JSON) |
 | GET | `/oai` | OAI-PMH 2.0 endpoint |
 | GET | `/sitemap.xml` | XML sitemap |
 | GET | `/feed.xml` | Atom 1.0 feed (20 most recent articles) |

@@ -242,6 +242,54 @@ class TestSubjectsAPI:
         assert "AI" in subjects
 
 
+# ─── 11b. BibTeX / references ──────────────────────────────────────────────
+
+class TestBibtexExtraction:
+    """Test BibTeX extraction and parsing utilities."""
+
+    def test_extract_bibtex_finds_block(self):
+        from articles import extract_bibtex
+        md = "Text\n\n```bibtex\n@article{key1, title={Test}}\n```\n"
+        result = extract_bibtex(md)
+        assert result is not None
+        assert "@article{key1" in result
+
+    def test_extract_bibtex_no_block(self):
+        from articles import extract_bibtex
+        md = "Just text, no bibtex."
+        assert extract_bibtex(md) is None
+
+    def test_parse_bibtex_entries(self):
+        from articles import parse_bibtex_entries
+        bibtex = """@article{smith2023,
+  author = {Smith, Jane},
+  title = {A Test Paper},
+  journal = {Journal of Testing},
+  year = {2023},
+  volume = {1},
+  pages = {1--10},
+  doi = {10.1234/example}
+}
+
+@book{jones2024,
+  author = {Jones, Bob},
+  title = {Another Book},
+  publisher = {Academic Press},
+  year = {2024}
+}"""
+        entries = parse_bibtex_entries(bibtex)
+        assert len(entries) == 2
+        assert entries[0]["type"] == "article"
+        assert entries[0]["key"] == "smith2023"
+        assert entries[0]["author"] == "Smith, Jane"
+        assert entries[0]["title"] == "A Test Paper"
+        assert entries[0]["year"] == "2023"
+        assert entries[0]["doi"] == "10.1234/example"
+        assert entries[1]["type"] == "book"
+        assert entries[1]["key"] == "jones2024"
+        assert entries[1]["publisher"] == "Academic Press"
+
+
 # ─── 12. Public stats ───────────────────────────────────────────────────────
 
 class TestStatsAPI:

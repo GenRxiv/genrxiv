@@ -111,6 +111,87 @@ def _check_image_limits(tmp_path: Path):
         )
 
 
+# ─── Citation handling ──────────────────────────────────────────────────────
+
+# IEEE-style numbered citations (citation-order)
+IEEE_CSL = """<?xml version="1.0" encoding="utf-8"?>
+<style xmlns="http://purl.org/net/xbib/CSL" class="in-text" version="1.0" default-locale="en-US">
+  <citation collapse="citation-number">
+    <sort>
+      <key variable="citation-number"/>
+    </sort>
+    <layout prefix="[" suffix="]" delimiter=", ">
+      <text variable="citation-number"/>
+    </layout>
+  </citation>
+  <bibliography entry-spacing="0" second-field-align="flush">
+    <layout suffix=".">
+      <text variable="citation-number" prefix="[" suffix="] "/>
+      <names variable="author">
+        <name sort-separator=", " initialize-with=". " delimiter=", " and="text" delimiter-precedes-last="always"/>
+        <label form="short" prefix=", "/>
+        <substitute>
+          <text variable="title"/>
+        </substitute>
+      </names>
+      <text variable="title" prefix=", " quotes="true"/>
+      <text variable="container-title" prefix=", " font-style="italic"/>
+      <date variable="issued" prefix=", ">
+        <date-part name="year"/>
+      </date>
+      <text variable="volume" prefix=", vol. "/>
+      <text variable="page" prefix=", pp. "/>
+      <text variable="publisher" prefix=", "/>
+    </layout>
+  </bibliography>
+</style>"""
+
+import re as _re
+
+BIBTEX_BLOCK_RE = _re.compile(r"```bibtex\n(.*?)```", _re.DOTALL)
+
+
+def _extract_bibtex(md_text: str) -> tuple[str, str | None]:
+    """Extract BibTeX from a ```bibtex fenced code block.
+
+    Returns (markdown_without_bibtex_block, bibtex_content).
+    If no BibTeX block is found, returns (original_markdown, None).
+    """
+    match = BIBTEX_BLOCK_RE.search(md_text)
+    if not match:
+        return md_text, None
+    bibtex = match.group(1).strip()
+    # Remove the bibtex code block from the markdown
+    # Also remove the preceding "## References" heading if it's
+    # immediately before the block and there's nothing else
+    cleaned = BIBTEX_BLOCK_RE.sub("", md_text)
+    # Clean up any empty references heading left behind
+    cleaned = _re.sub(r"## References\s*\n\s*\n", "", cleaned)
+    return cleaned, bibtex
+
+
+def _prepare_citations(tmp_path: Path, md_text: str) -> list[str]:
+    """Extract BibTeX and write .bib and .csl files if citations are present.
+
+    Returns extra Pandoc args to add. If no BibTeX block is found,
+    returns an empty list (no citeproc).
+    """
+    cleaned_md, bibtex = _extract_bibtex(md_text)
+    if not bibtex:
+        return []
+
+    bib_path = tmp_path / "refs.bib"
+    bib_path.write_text(bibtex, encoding="utf-8")
+
+    csl_path = tmp_path / "ieee.csl"
+    csl_path.write_text(IEEE_CSL, encoding="utf-8")
+
+    # Write the cleaned markdown back (without the bibtex block)
+    (tmp_path / "input.md").write_text(cleaned_md, encoding="utf-8")
+
+    return ["--citeproc", f"--bibliography={bib_path}", f"--csl={csl_path}"]
+
+
 async def _run_with_timeout(cmd: list[str], cwd: Path, timeout: int):
     proc = await asyncio.create_subprocess_exec(
         *cmd,
@@ -141,10 +222,15 @@ async def convert_markdown(request: Request, file: UploadFile = File(...)):
     with tempfile.TemporaryDirectory(prefix=f"genrxiv-md-{job_id}-") as tmp:
         tmp_path = Path(tmp)
         md_path = tmp_path / "input.md"
-        md_path.write_bytes(await file.read())
+        md_bytes = await file.read()
+        md_path.write_bytes(md_bytes)
         out_pdf = tmp_path / "output.pdf"
 
-        cmd = ["pandoc", str(md_path), "-o", str(out_pdf), "--pdf-engine=tectonic"]
+        # Extract BibTeX citations if present
+        md_text = md_bytes.decode("utf-8", errors="replace")
+        cite_args = _prepare_citations(tmp_path, md_text)
+
+        cmd = ["pandoc", str(md_path), "-o", str(out_pdf), "--pdf-engine=tectonic"] + cite_args
         await _run_with_timeout(cmd, cwd=tmp_path, timeout=COMPILE_TIMEOUT_SECONDS)
 
         result_path = Path(tempfile.gettempdir()) / f"genrxiv-result-{job_id}.pdf"
@@ -270,7 +356,8 @@ async def render_html(request: Request, file: UploadFile = File(...)):
         tmp_path = Path(tmp)
 
         src_path = tmp_path / "input.md"
-        src_path.write_bytes(await file.read())
+        md_bytes = await file.read()
+        src_path.write_bytes(md_bytes)
 
         # Verify it's Markdown
         ext = Path(file.filename or "input.md").suffix.lower()
@@ -279,6 +366,10 @@ async def render_html(request: Request, file: UploadFile = File(...)):
 
         # Check image size limits (covers embedded data-URI images too)
         _check_image_limits(tmp_path)
+
+        # Extract BibTeX citations if present and prepare citeproc args
+        md_text = md_bytes.decode("utf-8", errors="replace")
+        cite_args = _prepare_citations(tmp_path, md_text)
 
         # Render to HTML fragment via Pandoc
         # --katex wraps math in spans that KaTeX auto-render processes
@@ -289,7 +380,7 @@ async def render_html(request: Request, file: UploadFile = File(...)):
             "-t", "html5",
             "--katex",
             "--wrap=none",
-        ]
+        ] + cite_args
         stdout, _ = await _run_with_timeout(cmd, cwd=tmp_path, timeout=COMPILE_TIMEOUT_SECONDS)
         html_fragment = stdout.decode("utf-8", errors="replace")
 

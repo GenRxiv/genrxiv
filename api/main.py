@@ -367,6 +367,13 @@ Required fields:
   license        - License identifier ("CC0")
   license_url    - License URL (CC0 URL: https://creativecommons.org/publicdomain/zero/1.0/)
 
+Citations:
+  Use Pandoc @citekey syntax in the Markdown for inline citations.
+  Include a ```bibtex fenced code block with all references.
+  Citations are rendered as numbered references [1], [2] in citation order.
+  BibTeX is available at /article/{{ark}}/bibtex and parsed references
+  at /api/articles/{{ark}}/references.
+
 Versioning:
   supersedes_id  - ID of article this is a new version of (only for new versions)
 

@@ -95,6 +95,23 @@ def _dc_record(article: dict, authors: list[dict]) -> str:
     lines.append(f"  <dc:identifier>{config.base_url}/article/{escape(article['ark'])}</dc:identifier>")
     lines.append(f"  <dc:rights>{escape(article.get('license_url', ''))}</dc:rights>")
     lines.append("  <dc:language>en</dc:language>")
+    # Include citation references as dc:relation entries
+    from articles import extract_bibtex, parse_bibtex_entries
+    bibtex = extract_bibtex(article.get("source_markdown", ""))
+    if bibtex:
+        for entry in parse_bibtex_entries(bibtex):
+            ref_parts = []
+            if entry.get("author"):
+                ref_parts.append(entry["author"])
+            if entry.get("title"):
+                ref_parts.append(entry["title"])
+            if entry.get("year"):
+                ref_parts.append(entry["year"])
+            if entry.get("doi"):
+                ref_parts.append(f"doi:{entry['doi']}")
+            ref = ", ".join(ref_parts) if ref_parts else entry.get("key", "")
+            if ref:
+                lines.append(f"  <dc:relation>Cites: {escape(ref)}</dc:relation>")
     lines.append("</oai_dc:dc>")
     return "\n".join(lines)
 

@@ -171,3 +171,105 @@ class TestRateLimit:
         for _ in range(10):
             r = client.post("/render/html", files={"file": md_file})
             assert r.status_code == 200
+
+
+# ─── Citation handling ──────────────────────────────────────────────────────
+
+class TestCitations:
+    """Tests for BibTeX citation extraction and rendering."""
+
+    def test_extract_bibtex_from_markdown(self):
+        """_extract_bibtex should find and extract a ```bibtex block."""
+        md = """Some text [@smith2023].
+
+## References
+
+```bibtex
+@article{smith2023,
+  author = {Smith, Jane},
+  title = {A Test Paper},
+  year = {2023}
+}
+```
+"""
+        cleaned, bibtex = app_module._extract_bibtex(md)
+        assert bibtex is not None
+        assert "@article{smith2023" in bibtex
+        assert "```bibtex" not in cleaned
+        assert "## References" not in cleaned
+
+    def test_extract_bibtex_no_block(self):
+        """_extract_bibtex returns None when no bibtex block exists."""
+        md = "Just some text without citations."
+        cleaned, bibtex = app_module._extract_bibtex(md)
+        assert bibtex is None
+        assert cleaned == md
+
+    def test_prepare_citations_no_bibtex(self, tmp_path):
+        """_prepare_citations returns empty list when no bibtex present."""
+        md = "No citations here."
+        args = app_module._prepare_citations(tmp_path, md)
+        assert args == []
+
+    def test_prepare_citations_with_bibtex(self, tmp_path):
+        """_prepare_citations returns citeproc args when bibtex is present."""
+        md = """Text with [@smith2023].
+
+```bibtex
+@article{smith2023,
+  author = {Smith, Jane},
+  title = {Test},
+  year = {2023}
+}
+```
+"""
+        args = app_module._prepare_citations(tmp_path, md)
+        assert "--citeproc" in args
+        assert any("refs.bib" in a for a in args)
+        assert any("ieee.csl" in a for a in args)
+        # The .bib file should exist
+        assert (tmp_path / "refs.bib").exists()
+        # The cleaned markdown should not contain the bibtex block
+        cleaned = (tmp_path / "input.md").read_text()
+        assert "```bibtex" not in cleaned
+
+    def test_render_html_with_citations(self, client):
+        """Rendering Markdown with BibTeX citations should produce numbered refs."""
+        md_content = """# Test Paper
+
+This cites [@smith2023] and also [@jones2024].
+
+```bibtex
+@article{smith2023,
+  author = {Smith, Jane},
+  title = {A Test Paper},
+  journal = {Journal of Testing},
+  year = {2023}
+}
+
+@book{jones2024,
+  author = {Jones, Bob},
+  title = {Another Book},
+  publisher = {Academic Press},
+  year = {2024}
+}
+```
+"""
+        r = client.post("/render/html", files={
+            "file": ("test.md", md_content.encode(), "text/markdown"),
+        })
+        assert r.status_code == 200
+        html = r.text
+        # Citations should be rendered as numbered [1] and [2]
+        assert "[1]" in html or "citation-number" in html or "csl-entry" in html
+        # The raw bibtex block should NOT appear in the rendered HTML
+        assert "@article{smith2023" not in html
+        assert "@book{jones2024" not in html
+        # The references section should be present
+        assert "references" in html.lower() or "csl-bib-body" in html
+
+    def test_render_html_without_citations_works(self, client, md_file):
+        """Papers without BibTeX should still render normally."""
+        r = client.post("/render/html", files={"file": md_file})
+        assert r.status_code == 200
+        assert "<html" in r.text.lower()
