@@ -42,5 +42,68 @@ if (preg_match('/^app_key =\s*$/m', $c)) {
     $c = preg_replace('/^app_key =\s*$/m', "app_key = $key", $c);
 }
 
+// SMTP email settings from env (Resend or any SMTP relay)
+$smtpHost = getenv('SMTP_HOST');
+$smtpPort = getenv('SMTP_PORT');
+$smtpUser = getenv('SMTP_USERNAME');
+$smtpPass = getenv('SMTP_PASSWORD');
+$smtpAuth = getenv('SMTP_AUTH');
+
+if ($smtpHost) {
+    // Switch from sendmail to smtp
+    $c = preg_replace('/^default = sendmail/m', 'default = smtp', $c);
+
+    // Enable SMTP
+    if (preg_match('/^;\s*smtp = On/m', $c)) {
+        $c = preg_replace('/^;\s*smtp = On/m', 'smtp = On', $c);
+    } elseif (!preg_match('/^smtp = On/m', $c)) {
+        $c = preg_replace('/^(default = smtp)/m', "$1\nsmtp = On", $c);
+    }
+
+    // SMTP server
+    $c = preg_replace('/^;\s*smtp_server = .*/m', "smtp_server = $smtpHost", $c);
+    if (!preg_match('/^smtp_server = /m', $c)) {
+        $c = preg_replace('/^(smtp = On)/m', "$1\nsmtp_server = $smtpHost", $c);
+    }
+
+    // SMTP port
+    $c = preg_replace('/^;\s*smtp_port = .*/m', "smtp_port = $smtpPort", $c);
+    if (!preg_match('/^smtp_port = /m', $c)) {
+        $c = preg_replace('/^(smtp_server = .*)/m', "$1\nsmtp_port = $smtpPort", $c);
+    }
+
+    // SMTP auth
+    if ($smtpAuth) {
+        $c = preg_replace('/^;\s*smtp_auth = .*/m', "smtp_auth = $smtpAuth", $c);
+        if (!preg_match('/^smtp_auth = /m', $c)) {
+            $c = preg_replace('/^(smtp_port = .*)/m', "$1\nsmtp_auth = $smtpAuth", $c);
+        }
+    }
+
+    // SMTP username
+    if ($smtpUser) {
+        $c = preg_replace('/^;\s*smtp_username = .*/m', "smtp_username = $smtpUser", $c);
+        if (!preg_match('/^smtp_username = /m', $c)) {
+            $c = preg_replace('/^(smtp_auth = .*)/m', "$1\nsmtp_username = $smtpUser", $c);
+        }
+    }
+
+    // SMTP password
+    if ($smtpPass) {
+        $c = preg_replace('/^;\s*smtp_password = .*/m', "smtp_password = $smtpPass", $c);
+        if (!preg_match('/^smtp_password = /m', $c)) {
+            $c = preg_replace('/^(smtp_username = .*)/m', "$1\nsmtp_password = $smtpPass", $c);
+        }
+    }
+
+    // Envelope sender — use a no-reply at genrxiv.org
+    $c = preg_replace('/^;\s*allow_envelope_sender = Off/m', 'allow_envelope_sender = On', $c);
+    $c = preg_replace('/^;\s*default_envelope_sender = .*/m', 'default_envelope_sender = no-reply@genrxiv.org', $c);
+    $c = preg_replace('/^;\s*force_default_envelope_sender = Off/m', 'force_default_envelope_sender = On', $c);
+    $c = preg_replace('/^;\s*force_dmarc_compliant_from = Off/m', 'force_dmarc_compliant_from = On', $c);
+
+    echo "[OJS Config Patch] Configured SMTP: $smtpHost:$smtpPort\n";
+}
+
 file_put_contents($conf, $c);
 echo "[OJS Config Patch] Applied database and host settings to $conf\n";

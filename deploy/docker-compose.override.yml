@@ -13,6 +13,11 @@ services:
       ORCID_CLIENT_ID: ${ORCID_CLIENT_ID}
       ORCID_CLIENT_SECRET: ${ORCID_CLIENT_SECRET}
       ARK_NAAN: ${ARK_NAAN:-99999}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_AUTH: ${SMTP_AUTH:-tls}
     volumes:
       - ./deploy/ojs-config-patch.sh:/usr/local/bin/ojs-config-patch.sh:ro
       - ./deploy/ojs-config-patch.php:/usr/local/bin/ojs-config-patch.php:ro
