@@ -27,10 +27,19 @@ router = APIRouter()
 PAGE_CSS = """
 :root {
     --paper: #EDEAE2;
+    --paper-warm: #F5F2EB;
     --ink: #1B1E27;
+    --ink-soft: #4A4A45;
+    --muted: #8A8578;
+    --rule: #C9C3B5;
+    --border: #C9C3B5;
+    --accent: #2F5CFF;
+    --accent-soft: #E4E9FF;
+    --accent-dim: #6B8AFA;
+    --card: #FFFFFF;
+    --badge-ai: #6B4FBB;
+    --badge-ai-soft: #EEEAF7;
     --cobalt: #2F5CFF;
-    --muted: #C9C3B5;
-    --border: #D8D2C4;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
@@ -39,37 +48,25 @@ body {
     background: var(--paper);
     line-height: 1.7;
     font-size: 1.05rem;
+    -webkit-font-smoothing: antialiased;
 }
-a { color: var(--cobalt); text-decoration: none; }
+a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 h1, h2, h3, h4 { font-family: 'Fraunces', Georgia, serif; line-height: 1.3; }
 .container { max-width: 52rem; margin: 0 auto; padding: 2rem 1.5rem; }
-header {
-    border-bottom: 1px solid var(--border);
-    padding: 1rem 1.5rem;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 1rem;
-}
-header .brand { font-family: 'Fraunces', Georgia, serif; font-size: 1.4rem; font-weight: 600; }
-header .brand a { color: var(--ink); }
-header nav { display: flex; gap: 1.2rem; flex-wrap: wrap; }
-header nav a { color: var(--ink); font-size: 0.95rem; }
 .btn {
     display: inline-block;
     padding: 0.5rem 1.2rem;
-    border: 1px solid var(--cobalt);
+    border: 1px solid var(--accent);
     border-radius: 4px;
-    color: var(--cobalt);
+    color: var(--accent);
     font-size: 0.95rem;
     cursor: pointer;
     background: transparent;
     transition: all 0.15s;
 }
-.btn:hover { background: var(--cobalt); color: #fff; text-decoration: none; }
-.btn-primary { background: var(--cobalt); color: #fff; }
+.btn:hover { background: var(--accent); color: #fff; text-decoration: none; }
+.btn-primary { background: var(--accent); color: #fff; }
 .btn-primary:hover { background: #1a40d0; }
 .btn-danger { border-color: #c0392b; color: #c0392b; }
 .btn-danger:hover { background: #c0392b; color: #fff; }
@@ -152,17 +149,33 @@ footer { border-top: 1px solid var(--border); padding: 1.5rem; text-align: cente
 
 
 def _header_html(author: dict | None) -> str:
-    """Render the site header with nav."""
-    nav_links = '<a href="/browse">Browse</a><a href="/keywords">Keywords</a><a href="/stats">Stats</a>'
+    """Render the site header with nav — matches the splash page top nav."""
     if author:
-        auth_links = f'<a href="/dashboard">My Submissions</a><a href="/submit" class="btn btn-primary">Submit</a><a href="/profile" style="font-size:0.85rem">{author["name"]}</a><form method="post" action="/auth/logout" style="display:inline"><button type="submit" style="background:none;border:none;color:var(--cobalt);font-size:0.85rem;cursor:pointer;padding:0;text-decoration:underline">Sign out</button></form>'
+        auth_area = (
+            f'<a href="/dashboard" style="color:var(--ink);text-decoration:none">My Submissions</a>'
+            f'<a href="/profile" style="color:var(--ink);text-decoration:none">{author["name"]}</a>'
+            f'<a href="/submit" style="display:inline-block;padding:0.3rem 0.9rem;background:var(--accent);color:#fff;border-radius:4px;text-decoration:none;font-size:0.85rem">Submit</a>'
+            f'<form method="post" action="/auth/logout" style="display:inline">'
+            f'<button type="submit" style="background:none;border:none;color:var(--ink);cursor:pointer;font-size:0.85rem;text-decoration:underline">Sign out</button>'
+            f'</form>'
+        )
     else:
-        auth_links = f'<a href="/auth/orcid?redirect=/browse" class="btn">Sign in with ORCID</a><a href="/submit" class="btn btn-primary">Submit</a>'
-    return f"""<header>
-<div class="brand"><a href="/">{config.site_name}</a></div>
-<nav>{nav_links}</nav>
-<nav>{auth_links}</nav>
-</header>"""
+        auth_area = (
+            f'<a href="/auth/orcid?redirect=/dashboard" style="color:var(--ink);text-decoration:none">Sign in with ORCID</a>'
+            f'<a href="/submit" style="display:inline-block;padding:0.3rem 0.9rem;background:var(--accent);color:#fff;border-radius:4px;text-decoration:none;font-size:0.85rem">Submit</a>'
+        )
+    return f"""<nav style="display:flex;justify-content:space-between;align-items:center;padding:0.6rem 1.5rem;border-bottom:1px solid var(--rule);font-size:0.9rem">
+<div style="display:flex;gap:1.2rem;align-items:center">
+<a href="/" style="font-weight:600;color:var(--accent);text-decoration:none">{config.site_name}</a>
+<a href="/browse" style="color:var(--ink);text-decoration:none">Browse</a>
+<a href="/keywords" style="color:var(--ink);text-decoration:none">Keywords</a>
+<a href="/stats" style="color:var(--ink);text-decoration:none">Stats</a>
+<a href="/feed.xml" style="color:var(--ink);text-decoration:none">Feed</a>
+</div>
+<div style="display:flex;gap:0.8rem;align-items:center">
+{auth_area}
+</div>
+</nav>"""
 
 
 def _footer_html() -> str:
