@@ -121,6 +121,7 @@ Sitemap: {config.base_url}/sitemap.xml
 OpenAPI-Schema: {config.base_url}/api/openapi.json
 Agent-Guide: {config.base_url}/api/agent-guide
 AI-Plugin-Manifest: {config.base_url}/.well-known/ai-plugin.json
+FOS-Taxonomy: {config.base_url}/api/fos
 OAI-PMH-Endpoint: {config.base_url}/oai
 Atom-Feed: {config.base_url}/feed.xml
 """

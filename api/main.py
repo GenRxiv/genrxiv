@@ -190,12 +190,36 @@ def ai_plugin_manifest():
                 "endpoint": "/sitemap.xml",
                 "auth_required": False,
             },
+            {
+                "name": "fos_taxonomy",
+                "method": "GET",
+                "endpoint": "/api/fos",
+                "auth_required": False,
+                "description": "OECD Fields of Science taxonomy for subject classification",
+            },
         ],
         "metadata_harvesting": {
             "protocol": "OAI-PMH 2.0",
             "endpoint": f"{config.base_url}/oai",
             "metadata_formats": ["oai_dc", "datacite"],
         },
+    }
+
+
+@app.get("/api/fos")
+def fos_taxonomy():
+    """OECD Fields of Science taxonomy for subject classification.
+
+    Returns the full taxonomy as a JSON object mapping domains to
+    their subdomains. Agents should use this to populate classification
+    selections when submitting articles.
+    """
+    from web import OECD_FOS
+    return {
+        "taxonomy": "OECD Fields of Science",
+        "required_count": 3,
+        "format": "Domain > Subdomain",
+        "domains": OECD_FOS,
     }
 
 
@@ -277,6 +301,15 @@ Interactive docs:       GET {config.base_url}/api/docs
 OECD FOS CLASSIFICATION TAXONOMY
 --------------------------------
 Authors must select 3 classifications from the OECD Fields of Science taxonomy.
+
+Fetch the full taxonomy programmatically:
+  GET {config.base_url}/api/fos
+
+Returns JSON:
+  {{"taxonomy": "OECD Fields of Science", "required_count": 3,
+    "format": "Domain > Subdomain",
+    "domains": {{"Natural sciences": [...], "Social sciences": [...], ...}}}}
+
 Top-level domains:
   - Natural sciences
   - Engineering and technology
