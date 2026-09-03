@@ -1221,6 +1221,24 @@ document.addEventListener('DOMContentLoaded', function() {
     form.addEventListener('input', updatePreviewState);
     form.addEventListener('change', updatePreviewState);
 
+    // Warn before leaving if the user has started filling in the form
+    var formDirty = false;
+    form.addEventListener('input', function() { formDirty = true; });
+    form.addEventListener('change', function() { formDirty = true; });
+
+    window.addEventListener('beforeunload', function(e) {
+        if (formDirty) {
+            e.preventDefault();
+            e.returnValue = '';
+        }
+    });
+
+    // Clear the flag when the confirm form is submitted
+    var confirmForm = document.getElementById('confirm-form');
+    if (confirmForm) {
+        confirmForm.addEventListener('submit', function() { formDirty = false; });
+    }
+
     // Initial state
     updatePreviewState();
 });
