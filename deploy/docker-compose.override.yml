@@ -12,6 +12,7 @@ services:
       PKP_BASE_URL: https://genrxiv.org
       ORCID_CLIENT_ID: ${ORCID_CLIENT_ID}
       ORCID_CLIENT_SECRET: ${ORCID_CLIENT_SECRET}
+      ARK_NAAN: ${ARK_NAAN:-99999}
     volumes:
       - ./deploy/ojs-config-patch.sh:/usr/local/bin/ojs-config-patch.sh:ro
       - ./deploy/ojs-config-patch.php:/usr/local/bin/ojs-config-patch.php:ro
@@ -29,6 +30,7 @@ services:
       - ./ojs-plugins/aiDisclosure:/var/www/html/plugins/generic/aiDisclosure:ro
       - ./ojs-plugins/latexCompiler:/var/www/html/plugins/generic/latexCompiler:ro
       - ./ojs-plugins/submissionPolicy:/var/www/html/plugins/generic/submissionPolicy:ro
+      - ./ojs-plugins/arkIdentifier:/var/www/html/plugins/generic/arkIdentifier:ro
     entrypoint: ["/bin/sh", "/usr/local/bin/ojs-entrypoint.sh"]
     ports: !reset []
 

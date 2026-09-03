@@ -1,0 +1,11 @@
+msgid "plugins.generic.arkIdentifier.name"
+msgstr "ARK Persistent Identifiers"
+
+msgid "plugins.generic.arkIdentifier.description"
+msgstr "Generates ARK (Archival Resource Key) persistent identifiers for published preprints. ARKs are free, resolvable through n2t.net, and can be upgraded to DOIs later."
+
+msgid "plugins.generic.arkIdentifier.arkLabel"
+msgstr "ARK"
+
+msgid "plugins.generic.arkIdentifier.arkDescription"
+msgstr "Archival Resource Key — a persistent identifier that resolves through n2t.net."
