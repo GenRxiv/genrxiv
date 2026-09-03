@@ -220,6 +220,8 @@ class TestWebPages:
         assert "Subject classifications" in r.text
         assert "CC0" in r.text
         assert "reviewed and verified" in r.text
+        assert "classification-rows" in r.text
+        assert "Preview submission" in r.text
 
     @requires_db
     def test_submit_rejects_missing_abstract(self, authed_client):

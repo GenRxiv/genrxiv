@@ -934,9 +934,36 @@ SUBMIT_CSS = """
 .confirm-checkbox { display:flex; align-items:flex-start; gap:0.6rem; margin:1rem 0; }
 .confirm-checkbox input[type="checkbox"] { margin-top:0.2rem; width:18px; height:18px; accent-color:var(--accent); flex-shrink:0; }
 .confirm-checkbox label { font-size:0.95rem; color:var(--ink); }
+/* Classification rows */
+.class-row { display:flex; gap:0.5rem; align-items:center; margin-bottom:0.6rem; }
+.class-row select {
+    flex:1; padding:0.5rem; border:1px solid var(--border); border-radius:4px;
+    font-size:0.9rem; font-family:inherit; background:#fff; color:var(--ink);
+    transition: border-color 0.2s, background 0.2s;
+}
+.class-row select.complete {
+    border-color:#2D7A3E; background:#F0F7F1;
+}
+.class-row .class-num {
+    font-size:0.8rem; font-weight:600; color:var(--muted); min-width:1.2rem; text-align:right;
+}
+/* Preview button states */
+.btn-preview {
+    display:inline-block; padding:0.6rem 1.5rem; border-radius:4px;
+    font-size:0.95rem; font-family:inherit; cursor:pointer; border:none;
+    transition: background 0.2s, opacity 0.2s;
+}
+.btn-preview.ready { background:var(--accent); color:#fff; cursor:pointer; }
+.btn-preview.ready:hover { background:#1a40d0; }
+.btn-preview.disabled { background:var(--muted); color:#fff; cursor:not-allowed; opacity:0.6; }
+.preview-hints { margin-top:0.6rem; font-size:0.85rem; color:#888; min-height:1.2rem; }
+.preview-hints .missing-item { color:#c0392b; }
+.preview-hints .all-ready { color:#2D7A3E; }
 """
 
 SUBMIT_JS = """
+var OECD_DATA = __OECD_JSON__;
+
 // Co-author ORCID lookup
 function normalizeOrcid(id) {
     id = id.trim().replace(/\\s/g, '');
@@ -961,11 +988,11 @@ function lookupOrcid(input, nameSpan) {
         .then(r => r.ok ? r.json() : null)
         .then(data => {
             if (data) {
-                nameSpan.textContent = data.name + (data.affiliation ? ' · ' + data.affiliation : '');
+                nameSpan.textContent = data.name + (data.affiliation ? ' \\u00b7 ' + data.affiliation : '');
                 nameSpan.className = 'author-name';
                 input.dataset.name = data.name;
             } else {
-                nameSpan.textContent = 'Not found — check the ORCID iD';
+                nameSpan.textContent = 'Not found \\u2014 check the ORCID iD';
                 nameSpan.className = 'author-name not-found';
                 delete input.dataset.name;
             }
@@ -975,6 +1002,7 @@ function lookupOrcid(input, nameSpan) {
             nameSpan.className = 'author-name not-found';
             delete input.dataset.name;
         });
+    updatePreviewState();
 }
 
 function addAuthorRow(orcid, name) {
@@ -996,7 +1024,7 @@ function addAuthorRow(orcid, name) {
     removeBtn.type = 'button';
     removeBtn.className = 'remove-author';
     removeBtn.textContent = 'Remove';
-    removeBtn.onclick = function() { div.remove(); };
+    removeBtn.onclick = function() { div.remove(); updatePreviewState(); };
     input.addEventListener('input', function() {
         clearTimeout(input.timer);
         input.timer = setTimeout(function() { lookupOrcid(input, nameSpan); }, 400);
@@ -1008,42 +1036,133 @@ function addAuthorRow(orcid, name) {
     if (orcid) lookupOrcid(input, nameSpan);
 }
 
-document.addEventListener('DOMContentLoaded', function() {
-    document.getElementById('add-author-btn').addEventListener('click', function() {
-        addAuthorRow('', '');
-    });
-    // Trigger initial lookup for pre-filled submitter
-    document.querySelectorAll('#co-authors .author-entry input').forEach(function(input) {
-        const nameSpan = input.parentElement.querySelector('.author-name');
-        if (input.value) lookupOrcid(input, nameSpan);
-    });
-});
+// ─── Classification rows: domain → subdomain ─────────────────────────────
+function buildClassRow(num) {
+    var row = document.createElement('div');
+    row.className = 'class-row';
 
-// Preview step: gather form data, look up all ORCIDs, show confirmation
+    var label = document.createElement('span');
+    label.className = 'class-num';
+    label.textContent = num + '.';
+
+    var domainSel = document.createElement('select');
+    domainSel.className = 'class-domain';
+    domainSel.dataset.row = num;
+    domainSel.innerHTML = '<option value="">Select domain...</option>' +
+        Object.keys(OECD_DATA).map(function(k) { return '<option value="' + k + '">' + k + '</option>'; }).join('');
+
+    var subSel = document.createElement('select');
+    subSel.className = 'class-subdomain';
+    subSel.dataset.row = num;
+    subSel.disabled = true;
+    subSel.innerHTML = '<option value="">Select subdomain...</option>';
+
+    domainSel.addEventListener('change', function() {
+        var domain = domainSel.value;
+        subSel.innerHTML = '<option value="">Select subdomain...</option>';
+        if (domain) {
+            var subs = OECD_DATA[domain];
+            subSel.innerHTML += subs.map(function(s) { return '<option value="' + domain + ' > ' + s + '">' + s + '</option>'; }).join('');
+            subSel.disabled = false;
+        } else {
+            subSel.disabled = true;
+        }
+        updateClassRowState(row);
+        updatePreviewState();
+    });
+
+    subSel.addEventListener('change', function() {
+        updateClassRowState(row);
+        updatePreviewState();
+    });
+
+    row.appendChild(label);
+    row.appendChild(domainSel);
+    row.appendChild(subSel);
+    return row;
+}
+
+function updateClassRowState(row) {
+    var domainSel = row.querySelector('.class-domain');
+    var subSel = row.querySelector('.class-subdomain');
+    if (domainSel.value && subSel.value) {
+        domainSel.classList.add('complete');
+        subSel.classList.add('complete');
+    } else {
+        domainSel.classList.remove('complete');
+        subSel.classList.remove('complete');
+    }
+}
+
+function getSelectedClassifications() {
+    var rows = document.querySelectorAll('.class-row');
+    var selections = [];
+    rows.forEach(function(row) {
+        var sub = row.querySelector('.class-subdomain');
+        if (sub && sub.value) selections.push(sub.value);
+    });
+    return selections;
+}
+
+function getClassificationCount() {
+    return getSelectedClassifications().length;
+}
+
+// ─── Preview button state management ──────────────────────────────────────
+function getMissingItems() {
+    var missing = [];
+    var title = document.querySelector('[name="title"]').value.trim();
+    var abstract = document.querySelector('[name="abstract"]').value.trim();
+    var mdFile = document.querySelector('[name="markdown"]').files[0];
+    var classCount = getClassificationCount();
+    var reviewed = document.querySelector('[name="reviewed"]').checked;
+    var cc0 = document.querySelector('[name="cc0_agree"]').checked;
+
+    if (!title) missing.push('title');
+    if (!abstract) missing.push('abstract');
+    if (!mdFile) missing.push('Markdown file');
+    if (classCount < 3) missing.push((3 - classCount) + ' more classification' + ((3 - classCount) > 1 ? 's' : ''));
+    if (!reviewed) missing.push('review confirmation');
+    if (!cc0) missing.push('CC0 agreement');
+    return missing;
+}
+
+function updatePreviewState() {
+    var btn = document.getElementById('preview-btn');
+    var hints = document.getElementById('preview-hints');
+    var missing = getMissingItems();
+
+    if (missing.length === 0) {
+        btn.className = 'btn-preview ready';
+        btn.disabled = false;
+        hints.innerHTML = '<span class="all-ready">All requirements met \\u2014 ready to preview.</span>';
+    } else {
+        btn.className = 'btn-preview disabled';
+        btn.disabled = true;
+        hints.innerHTML = '<span class="missing-item">Still needed: ' + missing.join(', ') + '</span>';
+    }
+}
+
+// ─── Preview step ─────────────────────────────────────────────────────────
 function showPreview(e) {
     e.preventDefault();
+    if (getMissingItems().length > 0) return;
+
     var title = document.querySelector('[name="title"]').value.trim();
     var abstract = document.querySelector('[name="abstract"]').value.trim();
     var mdFile = document.querySelector('[name="markdown"]').files[0];
     var submitterOrcid = document.querySelector('[name="submitter_orcid"]').value;
     var submitterName = document.querySelector('[name="submitter_name"]').value;
     var coAuthorInputs = document.querySelectorAll('[name="co_author_orcids"]');
-    var keywords = Array.from(document.querySelectorAll('[name="keywords"] option:checked')).map(function(o) { return o.value; });
-    var reviewed = document.querySelector('[name="reviewed"]').checked;
-    var cc0 = document.querySelector('[name="cc0_agree"]').checked;
-
-    if (!title || !abstract || !mdFile) { alert('Title, abstract, and Markdown file are required.'); return; }
-    if (keywords.length !== 3) { alert('Please select exactly 3 subject classifications.'); return; }
-    if (!reviewed) { alert('Please confirm you have reviewed and verified the content.'); return; }
-    if (!cc0) { alert('Please agree to the CC0 public domain dedication.'); return; }
+    var keywords = getSelectedClassifications();
 
     // Gather all authors
     var authors = [{orcid: submitterOrcid, name: submitterName}];
     coAuthorInputs.forEach(function(input) {
         var orcid = normalizeOrcid(input.value);
         if (orcid && /^\\d{4}-\\d{4}-\\d{4}-\\d{4}$/.test(orcid)) {
-            var name = input.dataset.name || input.parentElement.querySelector('.author-name').textContent.split(' · ')[0] || 'Unknown';
-            if (!name.includes('Not found') && !name.includes('Looking') && !name.includes('Invalid') && !name.includes('failed')) {
+            var name = input.dataset.name || input.parentElement.querySelector('.author-name').textContent.split(' \\u00b7 ')[0] || 'Unknown';
+            if (name && !name.includes('Not found') && !name.includes('Looking') && !name.includes('Invalid') && !name.includes('failed')) {
                 authors.push({orcid: orcid, name: name});
             }
         }
@@ -1083,6 +1202,28 @@ function backToForm(e) {
     document.getElementById('submit-form').style.display = 'block';
     document.getElementById('preview-section').style.display = 'none';
 }
+
+// ─── Init ─────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', function() {
+    // Build 3 classification rows
+    var classContainer = document.getElementById('classification-rows');
+    for (var i = 1; i <= 3; i++) {
+        classContainer.appendChild(buildClassRow(i));
+    }
+
+    // Add co-author button
+    document.getElementById('add-author-btn').addEventListener('click', function() {
+        addAuthorRow('', '');
+    });
+
+    // Monitor all inputs for preview state updates
+    var form = document.getElementById('main-form');
+    form.addEventListener('input', updatePreviewState);
+    form.addEventListener('change', updatePreviewState);
+
+    // Initial state
+    updatePreviewState();
+});
 """
 
 
@@ -1100,7 +1241,10 @@ def submit_page(request: Request):
         """
         return _page("Submit", body, None)
 
-    oecd_select = _oecd_select_html()
+    import json as _json
+    oecd_json = _json.dumps(OECD_FOS)
+    submit_js = SUBMIT_JS.replace("__OECD_JSON__", oecd_json)
+
     body = f"""
     <h1>Submit a Paper</h1>
     <p style="color:#888;margin-bottom:1.5rem">GenRxiv accepts Markdown submissions only. Markdown is the version of record.</p>
@@ -1147,22 +1291,23 @@ def submit_page(request: Request):
 
             <div class="form-group">
                 <label>Subject classifications (select 3)</label>
-                {oecd_select}
-                <div class="hint">Select exactly 3 from the OECD Fields of Science taxonomy.</div>
+                <div id="classification-rows"></div>
+                <div class="hint">Select a domain then a subdomain for each row. Boxes turn green when both are selected.</div>
             </div>
 
             <div class="form-group">
                 <div class="confirm-checkbox">
-                    <input type="checkbox" name="reviewed" id="reviewed" required>
+                    <input type="checkbox" name="reviewed" id="reviewed">
                     <label for="reviewed">I confirm that this content was AI-generated, and I have reviewed and verified it for accuracy and integrity.</label>
                 </div>
                 <div class="confirm-checkbox">
-                    <input type="checkbox" name="cc0_agree" id="cc0_agree" required>
+                    <input type="checkbox" name="cc0_agree" id="cc0_agree">
                     <label for="cc0_agree">I dedicate this work to the public domain under <a href="https://creativecommons.org/publicdomain/zero/1.0/" target="_blank">CC0</a>.</label>
                 </div>
             </div>
 
-            <button type="button" class="btn btn-primary" onclick="showPreview(event)">Preview submission</button>
+            <button type="button" class="btn-preview disabled" id="preview-btn" disabled onclick="showPreview(event)">Preview submission</button>
+            <div class="preview-hints" id="preview-hints"></div>
         </form>
     </div>
 
@@ -1203,7 +1348,7 @@ def submit_page(request: Request):
         You'll be able to track its status from <a href="/dashboard">My Submissions</a>.</p>
     </div>
     """
-    return _page("Submit", body, author, extra_css=SUBMIT_CSS, extra_js=SUBMIT_JS)
+    return _page("Submit", body, author, extra_css=SUBMIT_CSS, extra_js=submit_js)
 
 
 @router.get("/submit-version/{article_id}", response_class=HTMLResponse)
