@@ -1907,6 +1907,7 @@ def view_article(ark: str, request: Request):
         filepath = safe_resolve_file(article["html_path"])
         if filepath:
             html = filepath.read_text(encoding="utf-8")
+            html = _inject_meta_tags(html, article, base_ark, version)
             if version_banner:
                 html = _inject_retraction_banner(html, version_banner)
             if retraction_banner:
@@ -1914,6 +1915,7 @@ def view_article(ark: str, request: Request):
             return HTMLResponse(html)
     # Fallback: render on the fly (front matter is in the stored markdown)
     html = render_html(article["source_markdown"])
+    html = _inject_meta_tags(html, article, base_ark, version)
     if version_banner:
         html = _inject_retraction_banner(html, version_banner)
     if retraction_banner:
@@ -1925,6 +1927,58 @@ def _inject_retraction_banner(html: str, banner: str) -> str:
     """Insert the retraction banner right after <body> in a rendered HTML doc."""
     import re as _re
     return _re.sub(r"(<body[^>]*>)", r"\1" + banner, html, count=1, flags=_re.IGNORECASE)
+
+
+def _inject_meta_tags(html: str, article: dict, base_ark: str, version: int | None) -> str:
+    """Inject title, meta description, Open Graph, Twitter Card, and JSON-LD
+    tags into the <head> of a pre-rendered article HTML page.
+
+    Also fixes the <title> tag to show the actual article title.
+    """
+    import re as _re
+    import json as _json
+    from html import escape
+
+    title = escape(article.get("title") or "Untitled")
+    abstract = escape(article.get("abstract") or "")
+    ark_display = f"{base_ark}.v{version}" if version is not None else base_ark
+    url = f"{config.base_url}/article/{ark_display}"
+    authors = get_article_authors(article["id"])
+    author_names = ", ".join(a["name"] for a in authors) if authors else ""
+    published = article.get("published_at")
+    published_str = published.strftime("%Y-%m-%d") if published else ""
+    jsonld = _json.dumps(build_jsonld(article, authors, display_ark=ark_display, version=version))
+
+    # Fix the <title> tag
+    html = _re.sub(
+        r"<title>[^<]*</title>",
+        f"<title>{title} · GenRxiv</title>",
+        html,
+        count=1,
+    )
+
+    meta_tags = (
+        f'<meta name="description" content="{abstract[:160]}">\n'
+        f'<meta property="og:type" content="article">\n'
+        f'<meta property="og:title" content="{title}">\n'
+        f'<meta property="og:description" content="{abstract[:200]}">\n'
+        f'<meta property="og:url" content="{url}">\n'
+        f'<meta property="og:site_name" content="GenRxiv">\n'
+        f'<meta name="twitter:card" content="summary">\n'
+        f'<meta name="twitter:title" content="{title}">\n'
+        f'<meta name="twitter:description" content="{abstract[:200]}">\n'
+        f'<link rel="canonical" href="{url}">\n'
+    )
+    if author_names:
+        meta_tags += f'<meta name="author" content="{escape(author_names)}">\n'
+    if published_str:
+        meta_tags += f'<meta property="article:published_time" content="{published_str}">\n'
+    meta_tags += f'<script type="application/ld+json">{jsonld}</script>'
+
+    # Insert meta tags right before </head> (use string replace, not regex,
+    # to avoid backslash escaping issues in the JSON-LD content).
+    html = html.replace("</head>", meta_tags + "\n</head>", 1)
+    return html
 
 
 # ─── Moderation (admin) ────────────────────────────────────────────────────
