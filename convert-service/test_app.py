@@ -77,6 +77,7 @@ class TestRenderHtml:
         assert "<!DOCTYPE html>" in body
         assert "A Test Paper" in body
         assert "katex" in body.lower()  # KaTeX CSS/JS loaded
+        assert "AI-generated research" in body  # standard banner
 
     def test_latex_rejected(self, client, tex_file):
         r = client.post(

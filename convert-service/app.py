@@ -329,6 +329,9 @@ th { background: rgba(0,0,0,0.03); }
 </style>
 </head>
 <body>
+<div style="background:rgba(47,92,255,0.08);border:1px solid rgba(47,92,255,0.2);border-radius:6px;padding:0.75rem 1rem;margin-bottom:2rem;font-size:0.9rem;color:var(--ink);">
+<strong>AI-generated research.</strong> This article was generated or co-generated using AI and reviewed by the author(s) before submission to GenRxiv.
+</div>
 """
 
 HTML_FOOTER = """

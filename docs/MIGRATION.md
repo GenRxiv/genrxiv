@@ -85,7 +85,6 @@ CREATE TABLE articles (
     ark TEXT UNIQUE NOT NULL,              -- ARK identifier (e.g. ark:/99999/genrxiv-XXXXX)
     title TEXT NOT NULL,
     abstract TEXT,
-    ai_disclosure TEXT NOT NULL,           -- "Drafted by GPT-4, verified by authors"
     license TEXT NOT NULL DEFAULT 'CC-BY-4.0',
     license_url TEXT NOT NULL DEFAULT 'https://creativecommons.org/licenses/by/4.0/',
     keywords TEXT[] DEFAULT '{}',
@@ -325,7 +324,6 @@ curl -X POST https://genrxiv.org/api/submit \
   -F "markdown=@paper.md" \
   -F "title=Test Paper" \
   -F "authors=[{\"orcid\":\"0000-...\",\"name\":\"Jane Doe\"}]" \
-  -F "ai_disclosure=Drafted by GPT-4, verified by authors" \
   -F "license=CC-BY-4.0" \
   -F "keywords=AI,testing"
 ```
@@ -345,7 +343,7 @@ Response:
 A simple form at `/submit` for human authors:
 1. ORCID login
 2. Upload Markdown file
-3. Fill in title, authors, AI disclosure, license, keywords
+3. Fill in title, authors, license, keywords
 4. Submit — single step, no wizard
 
 ### Moderation flow

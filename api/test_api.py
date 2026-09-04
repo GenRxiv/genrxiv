@@ -345,6 +345,7 @@ class TestWebPages:
         assert "Submit a Paper" in r.text
         assert "Subject classifications" in r.text
         assert "CC0" in r.text
+        assert "reviewed and verified" in r.text
         assert "classification-rows" in r.text
         assert "Preview submission" in r.text
 
@@ -360,7 +361,6 @@ class TestWebPages:
             data={
                 "title": "Test Paper",
                 "authors": json.dumps([{"orcid": "0000-0000-0000-0000", "name": "Test Author"}]),
-                "ai_disclosure": "AI drafted",
                 "abstract": "",
             },
         )
@@ -382,7 +382,6 @@ class TestSubmissionValidation:
         defaults = {
             "title": "Validation Test Paper",
             "authors": _json.dumps([{"orcid": "0000-0000-0000-0000", "name": "Test Author"}]),
-            "ai_disclosure": "AI drafted, reviewed by authors",
             "abstract": "A test abstract for validation testing.",
             "subjects": self.KWS_3,
             "license": "CC0",
@@ -459,7 +458,6 @@ class TestSubmissionValidation:
             data={
                 "title": "Test Paper",
                 "authors": '[{"orcid": "0000-0000-0000-0000", "name": "Test"}]',
-                "ai_disclosure": "AI drafted",
                 "abstract": "Test abstract.",
                 "subjects": self.KWS_3,
                 "license": "CC0",
@@ -480,7 +478,6 @@ class TestSubmissionValidation:
             data={
                 "title": "Test Paper",
                 "authors": '[{"orcid": "0000-0000-0000-0000", "name": "Test"}]',
-                "ai_disclosure": "AI drafted",
                 "abstract": "Test abstract.",
                 "subjects": self.KWS_3,
                 "license": "CC0",
@@ -681,7 +678,6 @@ class TestVersioning:
             data={
                 "title": "Second Paper",
                 "authors": json.dumps([{"orcid": "0000-0000-0000-0001", "name": "Admin"}]),
-                "ai_disclosure": "AI drafted",
                 "abstract": "A second paper for versioning tests.",
                 "subjects": "Natural sciences > Computer and information sciences, Natural sciences > Mathematics, Social sciences > Economics and business",
                 "supersedes_id": db["article_id"],
@@ -706,7 +702,6 @@ class TestVersioning:
             data={
                 "title": "Test Paper v2",
                 "authors": json.dumps([{"orcid": db["orcid"], "name": "Test Author"}]),
-                "ai_disclosure": "AI drafted v2",
                 "abstract": "Updated abstract for v2.",
                 "subjects": "Natural sciences > Computer and information sciences, Natural sciences > Mathematics, Social sciences > Economics and business",
                 "supersedes_id": db["article_id"],
@@ -730,7 +725,6 @@ class TestVersioning:
             data={
                 "title": "Test Paper v2",
                 "authors": json.dumps([{"orcid": db["orcid"], "name": "Test Author"}]),
-                "ai_disclosure": "AI drafted v2",
                 "abstract": "Updated abstract for v2 approval test.",
                 "subjects": "Natural sciences > Computer and information sciences, Natural sciences > Mathematics, Social sciences > Economics and business",
                 "supersedes_id": db["article_id"],
@@ -813,7 +807,6 @@ class TestNotifications:
             data={
                 "title": "Notification Test",
                 "authors": json.dumps([{"orcid": "0000-0000-0000-0001", "name": "Admin"}]),
-                "ai_disclosure": "AI drafted",
                 "abstract": "Testing moderation notifications.",
                 "subjects": "Natural sciences > Computer and information sciences, Natural sciences > Mathematics, Social sciences > Economics and business",
             },
@@ -846,7 +839,6 @@ class TestSecurity:
             data={
                 "title": "Test Paper",
                 "authors": json.dumps([{"orcid": "0000-0000-0000-0000", "name": "Test"}]),
-                "ai_disclosure": "AI drafted",
                 "abstract": "Test abstract.",
                 "subjects": "Natural sciences > Mathematics, Natural sciences > Physical sciences, Social sciences > Economics and business",
                 "license": "CC0",
@@ -926,7 +918,6 @@ class TestSecurity:
             data={
                 "title": "Test Paper",
                 "authors": json.dumps([{"orcid": "not-an-orcid", "name": "Test"}]),
-                "ai_disclosure": "AI drafted",
                 "abstract": "Test abstract.",
                 "subjects": "Natural sciences > Mathematics, Natural sciences > Physical sciences, Social sciences > Economics and business",
                 "license": "CC0",
@@ -948,7 +939,6 @@ class TestSecurity:
             data={
                 "title": "A" * 600,  # MAX_TITLE_LENGTH is 500
                 "authors": json.dumps([{"orcid": "0000-0000-0000-0000", "name": "Test"}]),
-                "ai_disclosure": "AI drafted",
                 "abstract": "Test abstract.",
                 "subjects": "Natural sciences > Mathematics, Natural sciences > Physical sciences, Social sciences > Economics and business",
                 "license": "CC0",
@@ -970,7 +960,6 @@ class TestSecurity:
             data={
                 "title": "Test Paper",
                 "authors": json.dumps([{"orcid": "0000-0000-0000-0000", "name": "Test"}]),
-                "ai_disclosure": "AI drafted",
                 "abstract": "A" * 6000,  # MAX_ABSTRACT_LENGTH is 5000
                 "subjects": "Natural sciences > Mathematics, Natural sciences > Physical sciences, Social sciences > Economics and business",
                 "license": "CC0",

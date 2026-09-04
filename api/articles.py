@@ -294,7 +294,6 @@ async def submit(
     markdown: UploadFile = File(...),
     title: str = Form(...),
     authors: str = Form(...),
-    ai_disclosure: str = Form(""),  # deprecated, kept for backward compat
     abstract: str = Form(""),
     license: str = Form("CC0"),
     license_url: str = Form("https://creativecommons.org/publicdomain/zero/1.0/"),
@@ -377,10 +376,10 @@ async def submit(
                 version = latest["version"] + 1
 
         row = conn.execute(
-            """INSERT INTO articles (title, abstract, ai_disclosure, license, license_url, subjects, source_markdown, submitted_by, status, version, supersedes_id)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'pending', %s, %s)
+            """INSERT INTO articles (title, abstract, license, license_url, subjects, source_markdown, submitted_by, status, version, supersedes_id)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, 'pending', %s, %s)
                RETURNING id, ark, status, submitted_at""",
-            (title, abstract or None, ai_disclosure, license, license_url, subj_list, md_text, _author["id"], version, supersedes_id),
+            (title, abstract or None, license, license_url, subj_list, md_text, _author["id"], version, supersedes_id),
         ).fetchone()
         article_id = row["id"]
 

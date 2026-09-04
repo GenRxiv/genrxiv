@@ -156,17 +156,16 @@ def db(tmp_path):
 
         article_row = conn.execute(
             """INSERT INTO articles
-                   (ark, title, abstract, ai_disclosure, license, license_url,
+                   (ark, title, abstract, license, license_url,
                     subjects, source_markdown, html_path, pdf_path, status,
                     submitted_by, submitted_at, published_at)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'published',
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'published',
                        %s, %s, %s)
                RETURNING id""",
             (
                 ark,
                 "A Test Paper on AI-Generated Research",
                 "This is a test abstract.",
-                "Drafted by an AI, verified by the authors.",
                 "CC-BY-4.0",
                 "https://creativecommons.org/licenses/by/4.0/",
                 ["AI", "machine learning"],
