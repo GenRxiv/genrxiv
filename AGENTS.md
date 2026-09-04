@@ -98,7 +98,7 @@ See `deploy/.env.example` for the full list. Key ones:
 - `CF_TUNNEL_TOKEN` — Cloudflare Tunnel token
 - `SMTP_*` — Resend SMTP for email notifications
 - `SCREENING_ENABLED` — Set to `true`/`1`/`yes` to enable automated screening
-- `CF_API_TOKEN` — Cloudflare API token with Workers AI permission
+- `CF_AGENT_TOKEN` — Cloudflare API token with Workers AI permission (for automated screening)
 - `CF_ACCOUNT_ID` — Cloudflare account ID for Workers AI
 - `SCREENING_MODEL` — Workers AI model name (default: `@cf/meta/llama-3.2-3b-instruct`)
 
@@ -417,7 +417,7 @@ paper-shaped object in scope?), not peer review (is the science correct?).
 
 **Configuration** (env vars):
 - `SCREENING_ENABLED=true` — enable screening
-- `CF_API_TOKEN` — Cloudflare API token with Workers AI permission
+- `CF_AGENT_TOKEN` — Cloudflare API token with Workers AI permission (for automated screening)
 - `CF_ACCOUNT_ID` — Cloudflare account ID
 - `SCREENING_MODEL` — model name (default: `@cf/meta/llama-3.2-3b-instruct`)
 

@@ -106,7 +106,7 @@ else:
         echo "=== TESTS PASSED, BUT SCREENING CONNECTION FAILED ==="
         echo "The site is functional, but automated screening is not working."
         echo "Submissions will go to the manual review queue until this is fixed."
-        echo "Check: CF_API_TOKEN, CF_ACCOUNT_ID, and IP address filtering in the Cloudflare dashboard."
+        echo "Check: CF_AGENT_TOKEN, CF_ACCOUNT_ID, and IP address filtering in the Cloudflare dashboard."
         exit 0
     elif [ $SCREENING_EXIT -ne 0 ]; then
         echo "WARNING: Screening smoke test errored (exit $SCREENING_EXIT)."

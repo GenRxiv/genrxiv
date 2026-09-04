@@ -124,7 +124,7 @@ Submission content (Markdown, may be truncated):
 def _call_cloudflare(model: str, system: str, user: str) -> dict[str, Any] | None:
     """Call Cloudflare Workers AI and return the parsed response, or None on failure."""
     if not config.screening_cf_api_token or not config.screening_cf_account_id:
-        logger.warning("Screening enabled but CF_API_TOKEN or CF_ACCOUNT_ID not set")
+        logger.warning("Screening enabled but CF_AGENT_TOKEN or CF_ACCOUNT_ID not set")
         return None
 
     url = CF_AI_BASE.format(

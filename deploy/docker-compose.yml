@@ -44,7 +44,7 @@ services:
       CONVERT_SERVICE_URL: http://convert:8000
       BASE_URL: https://genrxiv.org
       SCREENING_ENABLED: ${SCREENING_ENABLED:-false}
-      CF_API_TOKEN: ${CF_API_TOKEN}
+      CF_AGENT_TOKEN: ${CF_AGENT_TOKEN}
       CF_ACCOUNT_ID: ${CF_ACCOUNT_ID}
       SCREENING_MODEL: ${SCREENING_MODEL:-@cf/meta/llama-3.2-3b-instruct}
       UMAMI_WEBSITE_ID: ${UMAMI_WEBSITE_ID:-}

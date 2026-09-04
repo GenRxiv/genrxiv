@@ -107,7 +107,7 @@ class Config:
             admin_github_ids=admin_github_ids,
             reviewer_github_ids=reviewer_github_ids,
             screening_enabled=os.environ.get("SCREENING_ENABLED", "").lower() in ("1", "true", "yes"),
-            screening_cf_api_token=os.environ.get("CF_API_TOKEN", ""),
+            screening_cf_api_token=os.environ.get("CF_AGENT_TOKEN", ""),
             screening_cf_account_id=os.environ.get("CF_ACCOUNT_ID", ""),
             screening_model=os.environ.get("SCREENING_MODEL", "@cf/meta/llama-3.2-3b-instruct"),
             umami_website_id=os.environ.get("UMAMI_WEBSITE_ID", ""),
