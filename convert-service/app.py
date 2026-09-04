@@ -262,56 +262,29 @@ async def health():
 
 
 def _parse_front_matter(md_text: str) -> tuple[dict, str]:
-    """Parse YAML front matter from Markdown.
+    """Parse YAML front matter from Markdown using PyYAML.
 
     Returns (metadata_dict, body_text).
     metadata_dict has keys: title, abstract, authors (list of {orcid, name}).
     body_text is the Markdown without the front matter.
     """
-    m = re.match(r'^---\s*\n(.*?)\n---\s*\n', md_text, re.DOTALL)
+    import yaml
+
+    # Allow no trailing newline after closing ---
+    m = re.match(r'^---\s*\n(.*?)\n---\s*\n?', md_text, re.DOTALL)
     if not m:
         return {}, md_text
 
     yaml_text = m.group(1)
     body = md_text[m.end():]
 
-    meta = {}
-    lines = yaml_text.split('\n')
-    current_key = None
+    try:
+        meta = yaml.safe_load(yaml_text)
+    except yaml.YAMLError:
+        return {}, md_text
 
-    for i, line in enumerate(lines):
-        # Nested object item: "  - orcid: ..." then "    name: ..."
-        obj_match = re.match(r'^\s+-\s+(\w+):\s*["\']?(.*?)["\']?\s*$', line)
-        if obj_match and current_key:
-            if not isinstance(meta.get(current_key), list):
-                meta[current_key] = []
-            obj = {obj_match[1]: obj_match[2]}
-            # Look ahead for more fields in this object
-            for j in range(i + 1, len(lines)):
-                nested = re.match(r'^\s+(\w+):\s*["\']?(.*?)["\']?\s*$', lines[j])
-                if nested:
-                    obj[nested[1]] = nested[2]
-                else:
-                    break
-            meta[current_key].append(obj)
-            continue
-
-        # Simple list item: "  - value"
-        list_match = re.match(r'^\s+-\s+["\']?(.*?)["\']?\s*$', line)
-        if list_match and current_key:
-            if not isinstance(meta.get(current_key), list):
-                meta[current_key] = []
-            meta[current_key].append(list_match[1])
-            continue
-
-        # Key-value: "key: value" or key: "value"
-        kv_match = re.match(r'^(\w+):\s*["\']?(.*?)["\']?\s*$', line)
-        if kv_match:
-            current_key = kv_match[1]
-            val = kv_match[2].strip()
-            if val:
-                meta[current_key] = val
-            # If no value, it's a list header — current_key is set for following list items
+    if not isinstance(meta, dict):
+        return {}, md_text
 
     return meta, body
 

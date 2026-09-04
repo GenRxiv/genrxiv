@@ -3,3 +3,4 @@ uvicorn[standard]==0.52.4
 python-multipart==0.0.32
 pydantic[email]==2.13.4
 slowapi==0.1.10
+pyyaml==6.0.3

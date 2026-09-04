@@ -116,6 +116,73 @@ class TestRenderHtml:
         assert r.status_code == 200
         assert "paper-header" not in r.text
 
+    def test_front_matter_with_escaped_quotes(self, client):
+        """Titles with escaped quotes should parse correctly via PyYAML."""
+        content = (
+            b'---\n'
+            b'title: "On \\"Smart\\" Systems"\n'
+            b'abstract: "A study of \\"smart\\" systems."\n'
+            b'authors:\n'
+            b'  - orcid: "0000-0000-0000-0000"\n'
+            b'    name: "Jane Doe"\n'
+            b'---\n\n'
+            b'Body content here.\n'
+        )
+        r = client.post(
+            "/render/html",
+            files={"file": ("test.md", content, "text/markdown")},
+        )
+        assert r.status_code == 200
+        body = r.text
+        assert "paper-header" in body
+        assert "Smart" in body
+        assert "smart" in body
+
+    def test_front_matter_multiline_abstract(self, client):
+        """Multiline abstracts (YAML folded scalar) should parse correctly."""
+        content = (
+            b'---\n'
+            b'title: "Test Paper"\n'
+            b'abstract: |\n'
+            b'  This is a multiline abstract\n'
+            b'  that spans multiple lines.\n'
+            b'authors:\n'
+            b'  - orcid: "0000-0000-0000-0000"\n'
+            b'    name: "Jane Doe"\n'
+            b'---\n\n'
+            b'Body content here.\n'
+        )
+        r = client.post(
+            "/render/html",
+            files={"file": ("test.md", content, "text/markdown")},
+        )
+        assert r.status_code == 200
+        body = r.text
+        assert "paper-header" in body
+        assert "multiline abstract" in body
+        assert "multiple lines" in body
+
+    def test_front_matter_no_trailing_newline(self, client):
+        """Front matter at end of file with no trailing newline should parse."""
+        content = (
+            b'---\n'
+            b'title: "No Newline"\n'
+            b'abstract: "Test."\n'
+            b'authors:\n'
+            b'  - orcid: "0000-0000-0000-0000"\n'
+            b'    name: "Jane Doe"\n'
+            b'---\n\n'
+            b'Body content here.'  # No trailing newline
+        )
+        r = client.post(
+            "/render/html",
+            files={"file": ("test.md", content, "text/markdown")},
+        )
+        assert r.status_code == 200
+        body = r.text
+        assert "paper-header" in body
+        assert "No Newline" in body
+
     def test_latex_rejected(self, client, tex_file):
         r = client.post(
             "/render/html",

@@ -497,6 +497,52 @@ class TestSubmissionValidation:
         assert r.status_code == 400
         assert "Empty file" in r.json()["detail"]
 
+    @requires_db
+    def test_submit_stores_subjects_in_front_matter(self, authed_client, admin_client):
+        """The stored Markdown should include subjects in the front matter."""
+        r = self._submit(authed_client)
+        assert r.status_code == 200
+        article_id = r.json()["id"]
+        # Approve the article so we can fetch the markdown
+        admin_client.patch(
+            f"/admin/articles/{article_id}",
+            json={"action": "approve"},
+        )
+        r2 = authed_client.get(f"/article/ark:/99999/genrxiv-{article_id:04d}/markdown")
+        assert r2.status_code == 200
+        stored_md = r2.text
+        assert "subjects:" in stored_md
+        assert "Natural sciences > Mathematics" in stored_md
+
+    @requires_db
+    def test_submit_escapes_quotes_in_title(self, authed_client, admin_client):
+        """Titles with quotes should be properly escaped in the stored YAML."""
+        import io
+        md = io.BytesIO(b"# Test\n\nContent.")
+        r = authed_client.post(
+            "/api/submit",
+            files={"markdown": ("test.md", md, "text/markdown")},
+            data={
+                "title": 'On "Smart" Systems',
+                "authors": '[{"orcid": "0000-0000-0000-0000", "name": "Test"}]',
+                "abstract": "Test abstract.",
+                "subjects": self.KWS_3,
+                "license": "CC0",
+                "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+            },
+        )
+        assert r.status_code == 200
+        article_id = r.json()["id"]
+        admin_client.patch(
+            f"/admin/articles/{article_id}",
+            json={"action": "approve"},
+        )
+        r2 = authed_client.get(f"/article/ark:/99999/genrxiv-{article_id:04d}/markdown")
+        assert r2.status_code == 200
+        stored_md = r2.text
+        # The title should be escaped in the YAML
+        assert '\\"Smart\\"' in stored_md
+
 
 # ─── Validation endpoint ────────────────────────────────────────────────────
 

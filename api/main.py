@@ -407,9 +407,13 @@ Embedded metadata (YAML front matter):
     - "Social sciences > Economics and business"
   ---
 
-  Note: The submitter (logged-in ORCID user) is recorded separately for
-  accountability but does not need to be in the author list. Pandoc
-  strips front matter during rendering.
+  Note: The submitter (logged-in ORCID user) MUST be included in the
+  author list — one of the human authors must submit. The web form
+  adds the submitter automatically and prevents removing them. The API
+  rejects submissions where the submitter's ORCID is not in the author
+  list. The conversion service parses the front matter and renders
+  title, authors, and abstract as a header block; Pandoc does not
+  render the raw front matter.
 
 Citations:
   Use Pandoc @citekey syntax in the Markdown for inline citations.
@@ -465,16 +469,17 @@ The file should have this structure:
 
 Rules:
 - The authors list is the complete author list in publication order.
-  The first entry is the lead author. Include all authors — the
-  submitter is recorded separately for accountability and does not
-  need to be in the author list.
+  The first entry is the lead author. The submitter (logged-in ORCID
+  user) MUST be in the author list — the API rejects submissions
+  where they are not. The web form adds them automatically.
 - Exactly 3 subjects required, using "Domain > Subdomain" format.
   Fetch the taxonomy at GET /api/fos.
 - Citations use Pandoc @citekey syntax with a bibtex code block.
   Rendered as numbered [1], [2] in citation order.
 - License is always CC0. No other license is accepted.
-- Pandoc strips the front matter during rendering — it does not
-  appear in the published HTML or PDF.
+- The stored Markdown is the version of record. The conversion service
+  parses the front matter and renders title, authors, and abstract as
+  a header block in the HTML and PDF output.
 
 See docs/AUTHOR_PROMPT.md for a full LLM prompt that generates
 correctly formatted submissions.

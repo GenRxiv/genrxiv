@@ -38,15 +38,22 @@ ALLOWED_LICENSES = {
 ORCID_PATTERN = re.compile(r"^\d{4}-\d{4}-\d{4}-\d{3}[\dX]$")
 
 
-def _merge_front_matter(md_text: str, title: str, authors: list[dict], abstract: str) -> str:
+def _yaml_escape(value: str) -> str:
+    """Escape a string for use as a double-quoted YAML scalar."""
+    # Escape backslashes and double quotes
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _merge_front_matter(md_text: str, title: str, authors: list[dict], abstract: str, subjects: list[str] | None = None) -> str:
     """Merge form metadata into the Markdown file as YAML front matter.
 
     If the file already has front matter, the form values override it.
     If not, a new front matter block is prepended.
-    The stored file is always a complete document with front matter.
+    The stored file is always a complete document with front matter
+    including title, abstract, authors, and subjects.
     """
-    # Parse existing front matter
-    m = re.match(r'^---\s*\n(.*?)\n---\s*\n', md_text, re.DOTALL)
+    # Parse existing front matter — allow no trailing newline after closing ---
+    m = re.match(r'^---\s*\n(.*?)\n---\s*\n?', md_text, re.DOTALL)
     if m:
         body = md_text[m.end():]
     else:
@@ -54,14 +61,18 @@ def _merge_front_matter(md_text: str, title: str, authors: list[dict], abstract:
 
     # Build YAML front matter from form data
     lines = ["---"]
-    lines.append(f'title: "{title}"')
-    lines.append(f'abstract: "{abstract}"')
+    lines.append(f'title: "{_yaml_escape(title)}"')
+    lines.append(f'abstract: "{_yaml_escape(abstract)}"')
     lines.append("authors:")
     for a in authors:
-        lines.append(f'  - orcid: "{a["orcid"]}"')
-        lines.append(f'    name: "{a["name"]}"')
+        lines.append(f'  - orcid: "{_yaml_escape(a["orcid"])}"')
+        lines.append(f'    name: "{_yaml_escape(a["name"])}"')
         if a.get("affiliation"):
-            lines.append(f'    affiliation: "{a["affiliation"]}"')
+            lines.append(f'    affiliation: "{_yaml_escape(a["affiliation"])}"')
+    if subjects:
+        lines.append("subjects:")
+        for s in subjects:
+            lines.append(f'  - "{_yaml_escape(s)}"')
     lines.append("---")
 
     front_matter = "\n".join(lines)
@@ -91,8 +102,8 @@ def _check_content_issues(md_text: str, title: str, abstract: str) -> tuple[list
     errors = []
     hints = []
 
-    # Parse front matter
-    fm_match = re.match(r'^---\s*\n(.*?)\n---\s*\n', md_text, re.DOTALL)
+    # Parse front matter — allow no trailing newline after closing ---
+    fm_match = re.match(r'^---\s*\n(.*?)\n---\s*\n?', md_text, re.DOTALL)
     if not fm_match:
         # No front matter — check body-only issues
         body_text = md_text
@@ -618,7 +629,7 @@ async def validate_submission(
     if not errors and content:
         try:
             # Merge form metadata into front matter before rendering
-            merged_md = _merge_front_matter(md_text, title, author_list, abstract)
+            merged_md = _merge_front_matter(md_text, title, author_list, abstract, subj_list)
             preview_html = render_html(merged_md)
         except Exception as e:
             hints.append(f"Preview rendering failed: {str(e)}")
@@ -712,7 +723,7 @@ async def submit(
 
     # Merge form metadata into the Markdown as YAML front matter.
     # The stored file is the complete document — front matter + body.
-    md_text = _merge_front_matter(md_text, title, author_list, abstract)
+    md_text = _merge_front_matter(md_text, title, author_list, abstract, subj_list)
 
     # Insert article
     with get_conn().connection() as conn:
