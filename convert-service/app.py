@@ -194,6 +194,22 @@ def _prepare_citations(tmp_path: Path, md_text: str) -> list[str]:
     return ["--citeproc", f"--bibliography={bib_path}", f"--csl={csl_path}"]
 
 
+# Strips "Figure N." or "Fig. N." prefix from image alt text to prevent
+# Pandoc from producing "Figure 1: Figure 1. ..." in PDF captions.
+_FIG_PREFIX_RE = _re.compile(r'!\[(Figure\s+\d+\.?|Fig\.\s+\d+\.?)\s*', _re.IGNORECASE)
+
+
+def _strip_figure_prefix(md_text: str) -> str:
+    """Remove 'Figure N.' / 'Fig. N.' prefix from image alt text.
+
+    Pandoc's implicit_figures feature automatically numbers figures and
+    prepends 'Figure N:' to the caption. If the author also wrote
+    'Figure 1.' in the alt text, the result is 'Figure 1: Figure 1. ...'
+    This function strips the author's prefix so only Pandoc's remains.
+    """
+    return _FIG_PREFIX_RE.sub(r'![', md_text)
+
+
 async def _run_with_timeout(cmd: list[str], cwd: Path, timeout: int):
     proc = await asyncio.create_subprocess_exec(
         *cmd,
@@ -241,6 +257,9 @@ async def convert_markdown(
         header_md = _build_metadata_markdown_from_meta(meta)
         if header_md:
             body_text = header_md + "\n\n" + body_text
+        # Strip "Figure N." prefix from image alt text to avoid
+        # Pandoc producing "Figure 1: Figure 1. ..." in captions
+        body_text = _strip_figure_prefix(body_text)
         md_path.write_text(body_text, encoding="utf-8")
         out_pdf = tmp_path / "output.pdf"
 
@@ -505,6 +524,10 @@ async def render_html(
         # Parse front matter and extract body
         md_text = md_bytes.decode("utf-8", errors="replace")
         meta, body_text = _parse_front_matter(md_text)
+
+        # Strip "Figure N." prefix from image alt text to avoid
+        # duplicate captions ("Figure 1: Figure 1. ...")
+        body_text = _strip_figure_prefix(body_text)
 
         # Extract BibTeX citations if present and prepare citeproc args.
         # _prepare_citations writes the cleaned markdown (without the

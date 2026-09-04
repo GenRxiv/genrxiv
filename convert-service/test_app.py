@@ -378,3 +378,52 @@ This cites [@smith2023] and also [@jones2024].
         r = client.post("/render/html", files={"file": md_file})
         assert r.status_code == 200
         assert "<html" in r.text.lower()
+
+
+class TestFigurePrefix:
+    """Tests for stripping 'Figure N.' prefix from image alt text."""
+
+    def test_strip_figure_prefix_basic(self):
+        from app import _strip_figure_prefix
+        md = "![Figure 1. A diagram.](diagram.svg)"
+        result = _strip_figure_prefix(md)
+        assert result == "![A diagram.](diagram.svg)"
+
+    def test_strip_figure_prefix_no_number(self):
+        from app import _strip_figure_prefix
+        md = "![Figure. A diagram.](diagram.svg)"
+        # "Figure." without a number should NOT be stripped
+        assert _strip_figure_prefix(md) == md
+
+    def test_strip_figure_prefix_fig_abbreviation(self):
+        from app import _strip_figure_prefix
+        md = "![Fig. 2. A chart.](chart.svg)"
+        result = _strip_figure_prefix(md)
+        assert result == "![A chart.](chart.svg)"
+
+    def test_strip_figure_prefix_case_insensitive(self):
+        from app import _strip_figure_prefix
+        md = "![figure 3. A graph.](graph.svg)"
+        result = _strip_figure_prefix(md)
+        assert result == "![A graph.](graph.svg)"
+
+    def test_strip_figure_prefix_no_change_without_prefix(self):
+        from app import _strip_figure_prefix
+        md = "![A diagram of the system.](diagram.svg)"
+        assert _strip_figure_prefix(md) == md
+
+    def test_strip_figure_prefix_no_change_for_non_image(self):
+        from app import _strip_figure_prefix
+        md = "Figure 1. This is a text paragraph."
+        assert _strip_figure_prefix(md) == md
+
+    def test_render_html_strips_figure_prefix(self, client):
+        """HTML rendering should not duplicate 'Figure N.' in captions."""
+        import io
+        md = io.BytesIO(
+            b"![Figure 1. A test diagram.](data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=)"
+        )
+        r = client.post("/render/html", files={"file": ("test.md", md, "text/markdown")})
+        assert r.status_code == 200
+        # Should have exactly one "Figure 1" (from Pandoc's caption), not two
+        assert r.text.count("Figure 1") <= 1

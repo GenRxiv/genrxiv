@@ -1652,22 +1652,7 @@ def submit_done_page(article_id: int, request: Request, retraction: str = ""):
         ).fetchall()
 
     # Render the article HTML and extract body content + KaTeX assets
-    from articles import render_html
-    import re as _re
-    article_body = ""
-    katex_head = ""
-    try:
-        full_html = render_html(article["source_markdown"])
-        # Extract body content (the conversion service returns a full HTML doc)
-        m = _re.search(r"<body[^>]*>(.*)</body>", full_html, _re.DOTALL)
-        article_body = m.group(1) if m else full_html
-        # Extract KaTeX CSS link and scripts from head for the page head
-        katex_links = _re.findall(r'<link[^>]*katex[^>]*/>', full_html)
-        katex_scripts = _re.findall(r'<script[^>]*katex[^>]*></script>', full_html)
-        auto_render = _re.findall(r'<script[^>]*auto-render[^>]*>.*?</script>', full_html, _re.DOTALL)
-        katex_head = "\n".join(katex_links + katex_scripts + auto_render)
-    except Exception:
-        article_body = '<p class="empty">Preview rendering failed.</p>'
+    article_body, katex_head = _render_article_preview(article["source_markdown"])
 
     ark = article["ark"] or "(pending)"
     authors_html = ", ".join(
@@ -1927,10 +1912,49 @@ _ARTICLE_CONTENT_CSS = """
 .article-content table { border-collapse: collapse; margin: 1em 0; }
 .article-content th, .article-content td { border: 1px solid #c9c3b5; padding: 0.5em; }
 .article-content img { max-width: 100%; height: auto; }
+.article-content figure { margin: 2rem 0; text-align: center; }
+.article-content figcaption { font-size: 0.9rem; color: #666; margin-top: 0.5rem; }
 .katex-display { overflow-x: auto; overflow-y: hidden; padding: 0.5rem 0; }
 .orcid { font-size: 0.85em; color: var(--muted); }
 .subject-tag { display: inline-block; background: var(--accent-soft); color: var(--accent); padding: 0.2em 0.6em; border-radius: 3px; font-size: 0.85rem; margin: 0.2em; }
+/* Bibliography: Pandoc CSL output uses csl-left-margin / csl-right-inline
+   divs. Without this CSS they stack vertically, putting the citation
+   number on a separate line from the entry. */
+.article-content .csl-left-margin { display: inline-block; min-width: 2.5em; }
+.article-content .csl-right-inline { display: inline; }
 """
+
+
+def _render_article_preview(source_markdown: str) -> tuple[str, str]:
+    """Render Markdown to an HTML body fragment + KaTeX head assets.
+
+    Returns (article_body_html, katex_head_html).
+    Used by the submit confirmation page and the dashboard preview page
+    to show rendered article content inside the GenRxiv page template.
+    """
+    import re as _re
+    from articles import render_html
+
+    try:
+        full_html = render_html(source_markdown)
+        # Extract body content
+        m = _re.search(r"<body[^>]*>(.*)</body>", full_html, _re.DOTALL)
+        article_body = m.group(1) if m else full_html
+        # Extract KaTeX CSS link — match both /> and > endings (HTML5)
+        katex_links = _re.findall(r'<link[^>]*katex[^>]*?/?>', full_html)
+        # Extract KaTeX scripts (katex.min.js only, not auto-render)
+        katex_scripts = _re.findall(
+            r'<script[^>]*katex\.min\.js[^>]*></script>', full_html
+        )
+        # Extract auto-render script (has the onload handler)
+        auto_render = _re.findall(
+            r'<script[^>]*auto-render[^>]*>.*?</script>', full_html, _re.DOTALL
+        )
+        katex_head = "\n".join(katex_links + katex_scripts + auto_render)
+        return article_body, katex_head
+    except Exception as e:
+        logger.error("Article preview rendering failed: %s", e)
+        return '<p class="empty">Preview rendering failed.</p>', ""
 
 
 def _author_own_article(article_id: int, author: dict):
@@ -1960,20 +1984,7 @@ def dashboard_preview_page(article_id: int, request: Request):
             (article_id,),
         ).fetchall()
 
-    from articles import render_html
-    import re as _re
-    article_body = ""
-    katex_head = ""
-    try:
-        full_html = render_html(article["source_markdown"])
-        m = _re.search(r"<body[^>]*>(.*)</body>", full_html, _re.DOTALL)
-        article_body = m.group(1) if m else full_html
-        katex_links = _re.findall(r'<link[^>]*katex[^>]*/>', full_html)
-        katex_scripts = _re.findall(r'<script[^>]*katex[^>]*></script>', full_html)
-        auto_render = _re.findall(r'<script[^>]*auto-render[^>]*>.*?</script>', full_html, _re.DOTALL)
-        katex_head = "\n".join(katex_links + katex_scripts + auto_render)
-    except Exception:
-        article_body = '<p class="empty">Preview rendering failed.</p>'
+    article_body, katex_head = _render_article_preview(article["source_markdown"])
 
     ark = article["ark"] or "(pending)"
     authors_html = ", ".join(
