@@ -351,13 +351,14 @@ VALIDATION
 ----------
 Endpoint: POST {config.base_url}/api/validate
 Content-Type: multipart/form-data
-Auth: Optional (session cookie)
+Auth: None required
 Rate limit: 20 per minute
 
 Accepts the same fields as /api/submit but does not create a submission.
-No authentication required — agents can lint documents before the
-human author is logged in. When unauthenticated, the submitter-in-
-author-list check is skipped (all other checks still run).
+No authentication required — agents can lint documents at any time,
+before the human author is logged in. All checks run except the
+submitter-in-author-list check (which requires knowing who the
+submitter is).
 
 Returns JSON with:
   - valid: boolean (true if no blocking errors)
@@ -372,8 +373,13 @@ SUBMISSION
 ----------
 Endpoint: POST {config.base_url}/api/submit
 Content-Type: multipart/form-data
-Auth: Required (session cookie)
+Auth: Required (session cookie from ORCID login)
 Rate limit: 5 per minute
+
+Session cookies are issued only via ORCID OAuth login — there is no
+API token or key. The human author must log in via the web UI
+(GET /auth/orcid → ORCID → callback sets cookie). The agent can then
+use the cookie from the browser context to call /api/submit.
 
 Required fields:
   markdown       - Markdown file (.md or .markdown, max 25MB)
