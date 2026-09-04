@@ -1230,8 +1230,15 @@ function showPreview(e) {
     document.getElementById('confirm-authors').value = JSON.stringify(authors);
     document.getElementById('confirm-subjects').value = subjects.join(', ');
     // Copy the file to the confirm form's file input
+    // DataTransfer is needed because .files is read-only
     var confirmFile = document.getElementById('confirm-markdown');
-    confirmFile.files = mdFile;
+    try {
+        var dt = new DataTransfer();
+        dt.items.add(mdFile);
+        confirmFile.files = dt.files;
+    } catch (err) {
+        console.error('Could not copy file to confirm form:', err);
+    }
 
     // Show preview, hide form
     document.getElementById('submit-form').style.display = 'none';
