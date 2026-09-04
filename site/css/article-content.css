@@ -1,0 +1,20 @@
+.article-content { max-width: 800px; margin: 0 auto; line-height: 1.6; }
+.article-content h1, .article-content h2, .article-content h3 { margin-top: 1.5em; margin-bottom: 0.5em; }
+.article-content h1 + h2, .article-content h2 + h3 { margin-top: 0.5em; }
+.article-content p { margin: 0.8em 0; }
+.article-content pre { background: #f5f2eb; padding: 1em; border-radius: 4px; overflow-x: auto; }
+.article-content code { font-family: 'IBM Plex Mono', monospace; }
+.article-content blockquote { border-left: 3px solid #c9c3b5; margin: 1em 0; padding-left: 1em; color: #555; }
+.article-content table { border-collapse: collapse; margin: 1em 0; }
+.article-content th, .article-content td { border: 1px solid #c9c3b5; padding: 0.5em; }
+.article-content img { max-width: 100%; height: auto; }
+.article-content figure { margin: 2rem 0; text-align: center; }
+.article-content figcaption { font-size: 0.9rem; color: #666; margin-top: 0.5rem; }
+.katex-display { overflow-x: auto; overflow-y: hidden; padding: 0.5rem 0; }
+.orcid { font-size: 0.85em; color: var(--muted); }
+.subject-tag { display: inline-block; background: var(--accent-soft); color: var(--accent); padding: 0.2em 0.6em; border-radius: 3px; font-size: 0.85rem; margin: 0.2em; }
+/* Bibliography: Pandoc CSL output uses csl-left-margin / csl-right-inline
+   divs. Without this CSS they stack vertically, putting the citation
+   number on a separate line from the entry. */
+.article-content .csl-left-margin { display: inline-block; min-width: 2.5em; }
+.article-content .csl-right-inline { display: inline; }

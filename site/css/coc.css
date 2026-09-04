@@ -1,0 +1,8 @@
+.coc-page { max-width: 760px; margin: 0 auto; padding: 2rem 0; }
+.coc-page h1 { font-family: 'Fraunces', serif; font-size: 2rem; margin-bottom: 1rem; }
+.coc-page h2 { font-family: 'Fraunces', serif; font-size: 1.3rem; margin-top: 2rem; margin-bottom: 0.75rem; color: var(--ink); }
+.coc-page ul { margin-bottom: 1rem; padding-left: 1.5rem; }
+.coc-page li { margin-bottom: 0.4rem; line-height: 1.5; color: var(--ink); }
+.coc-intro { margin-bottom: 1rem; line-height: 1.6; color: var(--ink-soft); }
+.coc-standards-note { font-size: 0.9rem; color: var(--muted); margin-bottom: 1.5rem; }
+.coc-standards-note a { color: var(--accent); }

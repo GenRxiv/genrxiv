@@ -1,0 +1,44 @@
+.author-entry { display:flex; gap:0.5rem; align-items:center; margin-bottom:0.5rem; }
+.author-entry input { flex:1; }
+.author-entry .author-name { font-size:0.85rem; color:var(--ink-soft); margin-left:0.5rem; }
+.author-entry .author-name.loading { color:var(--muted); }
+.author-entry .author-name.not-found { color:#c0392b; }
+.author-entry .remove-author { background:none; border:1px solid var(--border); border-radius:3px; cursor:pointer; padding:0.2rem 0.5rem; font-size:0.8rem; color:#888; }
+.author-entry .remove-author:hover { color:#c0392b; border-color:#c0392b; }
+.add-author-btn { background:none; border:1px dashed var(--border); border-radius:4px; padding:0.4rem 1rem; cursor:pointer; font-size:0.85rem; color:var(--ink-soft); margin-bottom:1rem; }
+.add-author-btn:hover { border-color:var(--accent); color:var(--accent); }
+.preview-card { background:#fff; border:1px solid var(--border); border-radius:8px; padding:1.5rem; margin-bottom:1rem; }
+.preview-card h2 { margin-bottom:0.5rem; }
+.preview-card .meta { font-size:0.85rem; color:#888; margin-top:0.5rem; }
+.preview-card .authors-list { margin:0.5rem 0; font-size:0.95rem; }
+.preview-card .author-line { padding:0.3rem 0; border-bottom:1px solid var(--rule); }
+.preview-card .author-line:last-child { border-bottom:none; }
+.preview-card .author-line .orcid { font-family:'IBM Plex Mono',monospace; font-size:0.8rem; color:var(--muted); }
+.confirm-checkbox { display:flex; align-items:flex-start; gap:0.6rem; margin:1rem 0; }
+.confirm-checkbox input[type="checkbox"] { margin-top:0.2rem; width:18px; height:18px; accent-color:var(--accent); flex-shrink:0; }
+.confirm-checkbox label { font-size:0.95rem; color:var(--ink); }
+/* Classification rows */
+.class-row { display:flex; gap:0.5rem; align-items:center; margin-bottom:0.6rem; }
+.class-row select {
+    flex:1; padding:0.5rem; border:1px solid var(--border); border-radius:4px;
+    font-size:0.9rem; font-family:inherit; background:#fff; color:var(--ink);
+    transition: border-color 0.2s, background 0.2s;
+}
+.class-row select.complete {
+    border-color:#2D7A3E; background:#F0F7F1;
+}
+.class-row .class-num {
+    font-size:0.8rem; font-weight:600; color:var(--muted); min-width:1.2rem; text-align:right;
+}
+/* Preview button states */
+.btn-preview {
+    display:inline-block; padding:0.6rem 1.5rem; border-radius:4px;
+    font-size:0.95rem; font-family:inherit; cursor:pointer; border:none;
+    transition: background 0.2s, opacity 0.2s;
+}
+.btn-preview.ready { background:var(--accent); color:#fff; cursor:pointer; }
+.btn-preview.ready:hover { background:#1a40d0; }
+.btn-preview.disabled { background:var(--muted); color:#fff; cursor:not-allowed; opacity:0.6; }
+.preview-hints { margin-top:0.6rem; font-size:0.85rem; color:#888; min-height:1.2rem; }
+.preview-hints .missing-item { color:#c0392b; }
+.preview-hints .all-ready { color:#2D7A3E; }

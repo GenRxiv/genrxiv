@@ -279,11 +279,19 @@ def _page(
     raw_title: bool = False,
     wrap_container: bool = True,
     current_path: str = "",
+    extra_css_files: list[str] | None = None,
+    extra_js_files: list[str] | None = None,
 ) -> HTMLResponse:
     """Render a full HTML page."""
     page_title = title if raw_title else f"{title} &middot; {config.site_name}"
     if wrap_container:
         body = f'<div class="container">\n{body}\n</div>'
+    css_links = ""
+    if extra_css_files:
+        css_links = "\n".join(f'<link rel="stylesheet" href="{f}">' for f in extra_css_files)
+    js_links = ""
+    if extra_js_files:
+        js_links = "\n".join(f'<script defer src="{f}"></script>' for f in extra_js_files)
     html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -295,13 +303,16 @@ def _page(
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="icon" href="/mark.svg" type="image/svg+xml">
 <link rel="alternate" type="application/atom+xml" title="{config.site_name} — Recent Articles" href="/feed.xml">
-<style>{PAGE_CSS}{extra_css}</style>
+<link rel="stylesheet" href="/css/page.css">
+{css_links}
+{f"<style>{extra_css}</style>" if extra_css else ""}
 {extra_head}
 </head>
 <body>
 {_header_html(author, current_path)}
 {body}
 {_footer_html()}
+{js_links}
 {f"<script>{extra_js}</script>" if extra_js else ""}
 </body>
 </html>"""
@@ -622,8 +633,8 @@ def splash_page(request: Request):
         "GenRxiv — an open archive for AI-generated research",
         body,
         author,
-        extra_css=SPLASH_CSS,
-        extra_js=SPLASH_JS,
+        extra_css_files=["/css/splash.css"],
+        extra_js_files=["/js/splash.js"],
         raw_title=True,
         wrap_container=False,
         extra_head='''<meta name="description" content="GenRxiv is a preprint archive for AI-generated research. Submissions are Markdown, authors are identified by ORCID, and all papers are CC0.">
@@ -1507,8 +1518,8 @@ document.addEventListener('DOMContentLoaded', function() {
 def code_of_conduct_page(request: Request):
     """Public code of conduct for authors and agents."""
     author = get_current_author(request)
-    from code_of_conduct import COC_HTML, COC_CSS
-    return _page("Code of Conduct", COC_HTML, author, extra_css=COC_CSS, current_path="/code-of-conduct")
+    from code_of_conduct import COC_HTML
+    return _page("Code of Conduct", COC_HTML, author, extra_css_files=["/css/coc.css"], current_path="/code-of-conduct")
 
 
 @router.get("/submit", include_in_schema=False, response_class=HTMLResponse)
@@ -1527,7 +1538,9 @@ def submit_page(request: Request):
 
     import json as _json
     oecd_json = _json.dumps(OECD_FOS)
-    submit_js = SUBMIT_JS.replace("__OECD_JSON__", oecd_json)
+    # OECD data is dynamic, so inject it as a small inline script before
+    # the external submit.js loads (which references OECD_DATA as a global).
+    submit_inline_js = f"var OECD_DATA = {oecd_json};"
 
     body = f"""
     <h1>Submit a Paper</h1>
@@ -1644,7 +1657,7 @@ def submit_page(request: Request):
         You'll be able to track its status from <a href="/dashboard">My Submissions</a>.</p>
     </div>
     """
-    return _page("Submit", body, author, extra_css=SUBMIT_CSS, extra_js=submit_js, current_path="/submit")
+    return _page("Submit", body, author, extra_css_files=["/css/submit.css"], extra_js=submit_inline_js, extra_js_files=["/js/submit.js"], current_path="/submit")
 
 
 @router.get("/submit/done/{article_id}", include_in_schema=False, response_class=HTMLResponse)
@@ -1726,7 +1739,7 @@ def submit_done_page(article_id: int, request: Request, retraction: str = ""):
         "Submission Received",
         body,
         author,
-        extra_css=article_css,
+        extra_css_files=["/css/article-content.css"],
         extra_head=katex_head,
         current_path="/submit",
     )
@@ -2050,7 +2063,7 @@ def dashboard_preview_page(article_id: int, request: Request):
         f"Preview: {article['title']}",
         body,
         author,
-        extra_css=_ARTICLE_CONTENT_CSS,
+        extra_css_files=["/css/article-content.css"],
         extra_head=katex_head,
         current_path="/dashboard",
     )

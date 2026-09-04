@@ -393,6 +393,7 @@ HTML_HEADER = """<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>GenRxiv Preprint</title>
 <meta name="description" content="">
+<link rel="stylesheet" href="/css/article.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"
@@ -420,83 +421,6 @@ window.addEventListener('DOMContentLoaded', function() {
     });
 });
 </script>
-<style>
-:root {
-    --paper: #EDEAE2;
-    --ink: #1B1E27;
-    --cobalt: #2F5CFF;
-    --muted: #C9C3B5;
-}
-body {
-    font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-    color: var(--ink);
-    background: var(--paper);
-    max-width: 46rem;
-    margin: 0 auto;
-    padding: 2rem 1.5rem;
-    line-height: 1.7;
-    font-size: 1.05rem;
-}
-h1, h2, h3, h4, h5, h6 {
-    font-family: 'Fraunces', Georgia, serif;
-    line-height: 1.3;
-}
-h1 { font-size: 2rem; margin-top: 2rem; }
-h2 { font-size: 1.5rem; margin-top: 1.8rem; }
-a { color: var(--cobalt); }
-figure { margin: 2rem 0; text-align: center; }
-figure img, img { max-width: 100%; height: auto; }
-figcaption { font-size: 0.9rem; color: #666; margin-top: 0.5rem; }
-code {
-    font-family: 'IBM Plex Mono', monospace;
-    background: rgba(0,0,0,0.05);
-    padding: 0.15em 0.3em;
-    border-radius: 3px;
-    font-size: 0.9em;
-}
-pre {
-    background: rgba(0,0,0,0.05);
-    padding: 1rem;
-    border-radius: 6px;
-    overflow-x: auto;
-}
-pre code { background: none; padding: 0; }
-blockquote {
-    border-left: 3px solid var(--cobalt);
-    margin: 1.5rem 0;
-    padding: 0.5rem 1.5rem;
-    color: #555;
-}
-table { border-collapse: collapse; width: 100%; margin: 1.5rem 0; }
-th, td { border: 1px solid var(--muted); padding: 0.5rem 0.75rem; text-align: left; }
-th { background: rgba(0,0,0,0.03); }
-.katex-display { overflow-x: auto; overflow-y: hidden; padding: 0.5rem 0; }
-/* References: Pandoc CSL output uses second-field-align="flush" which
-   creates separate divs for the citation number and the text. Without
-   this CSS they stack vertically (block divs). Make them inline so the
-   reference reads "[1] Author, Title..." on one line. */
-.csl-entry { margin-bottom: 0.5rem; }
-.csl-left-margin { display: inline; margin-right: 0; }
-.csl-right-inline { display: inline; }
-.paper-title { margin-bottom: 0.5rem; }
-.paper-authors { font-size: 1.1rem; color: #444; margin-bottom: 1rem; }
-.paper-author { white-space: nowrap; }
-.paper-abstract h2 { font-size: 1.2rem; margin-bottom: 0.3rem; }
-.paper-abstract p { font-size: 0.95rem; color: #444; }
-
-@media print {
-    body {
-        background: #fff;
-        max-width: none;
-        padding: 0;
-        font-size: 11pt;
-    }
-    .no-print { display: none !important; }
-    a { color: inherit; text-decoration: none; }
-    pre, blockquote, figure { break-inside: avoid; }
-    h1, h2, h3 { break-after: avoid; }
-}
-</style>
 </head>
 <body>
 <div style="background:rgba(47,92,255,0.08);border:1px solid rgba(47,92,255,0.2);border-radius:6px;padding:0.75rem 1rem;margin-bottom:2rem;font-size:0.9rem;color:var(--ink);">
