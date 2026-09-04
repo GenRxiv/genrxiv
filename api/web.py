@@ -259,13 +259,13 @@ def _header_html(author: dict | None, current_path: str = "") -> str:
 
 
 def _footer_html() -> str:
-    reviewer_link = ""
+    reviewer_note = ""
     if config.github_client_id:
-        reviewer_link = f' &middot; <a href="/auth/github?redirect=/admin">Reviewer login (GitHub)</a>'
+        reviewer_note = f'<p style="font-size:0.85rem;color:var(--ink-soft)">Interested in helping review submissions? <a href="mailto:{config.contact_email if hasattr(config, "contact_email") and config.contact_email else "admin@genrxiv.org"}">Get in touch</a>. Already a reviewer? <a href="/auth/github?redirect=/admin">Log in with GitHub</a>.</p>'
     return f"""<footer>
 <p>{config.site_name} &mdash; An open archive for AI-generated research.</p>
-<p><a href="/api/articles">API</a> &middot; <a href="/oai?verb=Identify">OAI-PMH</a> &middot; <a href="/feed.xml">Feed</a> &middot; <a href="/sitemap.xml">Sitemap</a> &middot; <a href="/robots.txt">robots.txt</a> &middot; <a href="/code-of-conduct">Code of Conduct</a>{reviewer_link}</p>
-<p style="font-size:0.85rem;color:var(--ink-soft)">Interested in helping review submissions? <a href="mailto:{config.contact_email if hasattr(config, 'contact_email') and config.contact_email else 'admin@genrxiv.org'}">Get in touch</a>. Already a reviewer? <a href="/auth/github?redirect=/admin">Log in with GitHub</a>.</p>
+<p><a href="/api/articles">API</a> &middot; <a href="/oai?verb=Identify">OAI-PMH</a> &middot; <a href="/feed.xml">Feed</a> &middot; <a href="/sitemap.xml">Sitemap</a> &middot; <a href="/robots.txt">robots.txt</a> &middot; <a href="/code-of-conduct">Code of Conduct</a></p>
+{reviewer_note}
 </footer>"""
 
 
