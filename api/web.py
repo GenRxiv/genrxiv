@@ -265,6 +265,7 @@ def _page(
     author: dict | None = None,
     extra_css: str = "",
     extra_js: str = "",
+    extra_head: str = "",
     raw_title: bool = False,
     wrap_container: bool = True,
     current_path: str = "",
@@ -285,6 +286,7 @@ def _page(
 <link rel="icon" href="/mark.svg" type="image/svg+xml">
 <link rel="alternate" type="application/atom+xml" title="{config.site_name} — Recent Articles" href="/feed.xml">
 <style>{PAGE_CSS}{extra_css}</style>
+{extra_head}
 </head>
 <body>
 {_header_html(author, current_path)}
@@ -1624,12 +1626,23 @@ def submit_done_page(article_id: int, request: Request):
             (article_id,),
         ).fetchall()
 
-    # Render the article HTML
+    # Render the article HTML and extract body content + KaTeX assets
     from articles import render_html
+    import re as _re
+    article_body = ""
+    katex_head = ""
     try:
-        article_html = render_html(article["source_markdown"])
+        full_html = render_html(article["source_markdown"])
+        # Extract body content (the conversion service returns a full HTML doc)
+        m = _re.search(r"<body[^>]*>(.*)</body>", full_html, _re.DOTALL)
+        article_body = m.group(1) if m else full_html
+        # Extract KaTeX CSS link and scripts from head for the page head
+        katex_links = _re.findall(r'<link[^>]*katex[^>]*/>', full_html)
+        katex_scripts = _re.findall(r'<script[^>]*katex[^>]*></script>', full_html)
+        auto_render = _re.findall(r'<script[^>]*auto-render[^>]*>.*?</script>', full_html, _re.DOTALL)
+        katex_head = "\n".join(katex_links + katex_scripts + auto_render)
     except Exception:
-        article_html = '<p class="empty">Preview rendering failed.</p>'
+        article_body = '<p class="empty">Preview rendering failed.</p>'
 
     ark = article["ark"] or "(pending)"
     authors_html = ", ".join(
@@ -1639,6 +1652,23 @@ def submit_done_page(article_id: int, request: Request):
     subjects_html = " ".join(
         f'<span class="subject-tag">{s}</span>' for s in subjects
     )
+
+    # Article-specific CSS
+    article_css = """
+    .article-content { max-width: 800px; margin: 0 auto; line-height: 1.6; }
+    .article-content h1, .article-content h2, .article-content h3 { margin-top: 1.5em; margin-bottom: 0.5em; }
+    .article-content h1 + h2, .article-content h2 + h3 { margin-top: 0.5em; }
+    .article-content p { margin: 0.8em 0; }
+    .article-content pre { background: #f5f2eb; padding: 1em; border-radius: 4px; overflow-x: auto; }
+    .article-content code { font-family: 'IBM Plex Mono', monospace; }
+    .article-content blockquote { border-left: 3px solid #c9c3b5; margin: 1em 0; padding-left: 1em; color: #555; }
+    .article-content table { border-collapse: collapse; margin: 1em 0; }
+    .article-content th, .article-content td { border: 1px solid #c9c3b5; padding: 0.5em; }
+    .article-content img { max-width: 100%; height: auto; }
+    .katex-display { overflow-x: auto; overflow-y: hidden; padding: 0.5rem 0; }
+    .orcid { font-size: 0.85em; color: var(--muted); }
+    .subject-tag { display: inline-block; background: var(--accent-soft); color: var(--accent); padding: 0.2em 0.6em; border-radius: 3px; font-size: 0.85rem; margin: 0.2em; }
+    """
 
     body = f"""
     <div class="card" style="margin-bottom:1.5rem;border-left:4px solid #2D7A3E">
@@ -1662,10 +1692,17 @@ def submit_done_page(article_id: int, request: Request):
     </div>
 
     <div class="article-content">
-        {article_html}
+        {article_body}
     </div>
     """
-    return _page("Submission Received", body, author, current_path="/submit")
+    return _page(
+        "Submission Received",
+        body,
+        author,
+        extra_css=article_css,
+        extra_head=katex_head,
+        current_path="/submit",
+    )
 
 
 @router.get("/submit-version/{article_id}", include_in_schema=False, response_class=HTMLResponse)
