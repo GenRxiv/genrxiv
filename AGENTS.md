@@ -253,9 +253,10 @@ subjects:
 When uploaded via the web form, the form auto-fills from the front
 matter. The authors list is the complete author list in publication
 order — the first entry is the lead author. The submitter (logged-in
-ORCID user) is recorded separately for accountability and does not
-need to be in the author list. Pandoc strips the front matter during
-rendering.
+ORCID user) MUST be included in the author list — one of the human
+authors must submit, and you cannot remove yourself. If the front
+matter does not include the submitter's ORCID, they will be appended
+automatically. Pandoc strips the front matter during rendering.
 
 ### Citations
 

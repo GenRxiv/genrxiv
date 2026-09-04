@@ -448,6 +448,16 @@ class TestSubmissionValidation:
         assert "orcid and name" in r.json()["detail"]
 
     @requires_db
+    def test_submit_rejects_submitter_not_in_authors(self, authed_client):
+        """The submitter must be listed as one of the authors."""
+        import json
+        r = self._submit(authed_client, authors=json.dumps([
+            {"orcid": "0000-0000-0000-0009", "name": "Someone Else"},
+        ]))
+        assert r.status_code == 400
+        assert "must be listed as one of the authors" in r.json()["detail"]
+
+    @requires_db
     def test_submit_rejects_non_markdown_file(self, authed_client):
         """Only .md and .markdown files are accepted."""
         import io
@@ -677,7 +687,10 @@ class TestVersioning:
             files={"markdown": ("test.md", md, "text/markdown")},
             data={
                 "title": "Second Paper",
-                "authors": json.dumps([{"orcid": "0000-0000-0000-0001", "name": "Admin"}]),
+                "authors": json.dumps([
+                    {"orcid": "0000-0000-0000-0000", "name": "Test Author"},
+                    {"orcid": "0000-0000-0000-0001", "name": "Admin"},
+                ]),
                 "abstract": "A second paper for versioning tests.",
                 "subjects": "Natural sciences > Computer and information sciences, Natural sciences > Mathematics, Social sciences > Economics and business",
                 "supersedes_id": db["article_id"],

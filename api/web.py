@@ -1040,8 +1040,21 @@ function addAuthorRow(orcid, name) {
     input.style.border = '1px solid var(--border)';
     input.style.borderRadius = '4px';
     input.style.fontSize = '0.95rem';
+    input.style.flex = '1';
     const nameSpan = document.createElement('span');
     nameSpan.className = 'author-name';
+    const upBtn = document.createElement('button');
+    upBtn.type = 'button';
+    upBtn.className = 'move-author-up';
+    upBtn.innerHTML = '&#8593;';
+    upBtn.title = 'Move up';
+    upBtn.onclick = function() { moveAuthorUp(this); };
+    const downBtn = document.createElement('button');
+    downBtn.type = 'button';
+    downBtn.className = 'move-author-down';
+    downBtn.innerHTML = '&#8595;';
+    downBtn.title = 'Move down';
+    downBtn.onclick = function() { moveAuthorDown(this); };
     const removeBtn = document.createElement('button');
     removeBtn.type = 'button';
     removeBtn.className = 'remove-author';
@@ -1053,9 +1066,30 @@ function addAuthorRow(orcid, name) {
     });
     div.appendChild(input);
     div.appendChild(nameSpan);
+    div.appendChild(upBtn);
+    div.appendChild(downBtn);
     div.appendChild(removeBtn);
     container.appendChild(div);
     if (orcid) lookupOrcid(input, nameSpan);
+    updatePreviewState();
+}
+
+function moveAuthorUp(btn) {
+    var entry = btn.parentElement;
+    var prev = entry.previousElementSibling;
+    if (prev && prev.classList.contains('author-entry')) {
+        entry.parentNode.insertBefore(entry, prev);
+        updatePreviewState();
+    }
+}
+
+function moveAuthorDown(btn) {
+    var entry = btn.parentElement;
+    var next = entry.nextElementSibling;
+    if (next && next.classList.contains('author-entry')) {
+        entry.parentNode.insertBefore(next, entry);
+        updatePreviewState();
+    }
 }
 
 // ─── Classification rows: domain → subdomain ─────────────────────────────
@@ -1309,16 +1343,27 @@ function fillFormFromFrontMatter(meta) {
     }
 
     // Authors (array of {orcid, name} objects) — replaces all author entries
+    // The submitter must always be present; if the front matter doesn't
+    // include them, they are appended.
     if (meta.authors && Array.isArray(meta.authors)) {
         var container = document.getElementById('co-authors');
-        // Remove all existing author entries (including the submitter)
+        var submitterOrcid = document.querySelector('[data-submitter="true"] input');
+        var myOrcid = submitterOrcid ? normalizeOrcid(submitterOrcid.value) : null;
+        var myName = submitterOrcid ? submitterOrcid.dataset.name : null;
+        // Remove all existing author entries
         container.innerHTML = '';
 
+        var foundSubmitter = false;
         meta.authors.forEach(function(a) {
             if (a.orcid && a.name) {
                 addAuthorRow(a.orcid, a.name);
+                if (myOrcid && normalizeOrcid(a.orcid) === myOrcid) foundSubmitter = true;
             }
         });
+        // If the submitter wasn't in the front matter, add them
+        if (!foundSubmitter && myOrcid && myName) {
+            addAuthorRow(myOrcid, myName);
+        }
     }
 
     // Subjects (array of "Domain > Subdomain" strings)
@@ -1523,15 +1568,16 @@ def submit_page(request: Request):
             <div class="form-group">
                 <label>Authors (in order — first author is the lead)</label>
                 <div id="co-authors">
-                    <div class="author-entry">
+                    <div class="author-entry" data-submitter="true">
                         <input type="text" name="co_author_orcids" value="{author['orcid']}"
                             style="padding:0.6rem;border:1px solid var(--border);border-radius:4px;font-size:0.95rem;flex:1"
-                            data-name="{author['name']}">
+                            data-name="{author['name']}" readonly>
                         <span class="author-name">{author['name']} (you)</span>
-                        <button type="button" class="remove-author" onclick="this.parentElement.remove(); updatePreviewState();">Remove</button>
+                        <button type="button" class="move-author-up" onclick="moveAuthorUp(this)" title="Move up">&#8593;</button>
+                        <button type="button" class="move-author-down" onclick="moveAuthorDown(this)" title="Move down">&#8595;</button>
                     </div>
                 </div>
-                <div class="hint" style="margin-bottom:0.5rem">Add all authors by ORCID iD, in publication order. Names are looked up automatically. You can remove yourself if you're submitting on behalf of others.</div>
+                <div class="hint" style="margin-bottom:0.5rem">Add all authors by ORCID iD. Use the arrows to set publication order — the first author is the lead. You must be listed as an author; you cannot remove yourself.</div>
                 <button type="button" class="add-author-btn" id="add-author-btn">+ Add author</button>
             </div>
 

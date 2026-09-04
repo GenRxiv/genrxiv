@@ -368,8 +368,10 @@ Embedded metadata (YAML front matter):
   The Markdown file can include YAML front matter at the top. When
   uploaded via the web form, the form auto-fills from the front matter.
   The authors list is the complete author list in publication order —
-  the first entry is the lead author. Include all authors, including
-  the submitter if they are an author.
+  the first entry is the lead author. The submitter (logged-in ORCID
+  user) MUST be included in the author list. If the front matter does
+  not include the submitter's ORCID, they will be appended
+  automatically.
 
   Example:
   ---

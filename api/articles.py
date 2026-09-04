@@ -345,6 +345,15 @@ async def submit(
         if a.get("affiliation"):
             a["affiliation"] = a["affiliation"].strip()[:300]
 
+    # The submitter must be one of the authors
+    submitter_orcids = [a["orcid"] for a in author_list]
+    if _author["orcid"] not in submitter_orcids:
+        raise HTTPException(
+            400,
+            "The submitting author must be listed as one of the authors. "
+            "You cannot submit on behalf of others without being an author yourself."
+        )
+
     # Parse and validate subjects (exactly 3 OECD FOS classifications required)
     subj_list = validate_subjects(
         [s.strip() for s in subjects.split(",") if s.strip()] if subjects else []
