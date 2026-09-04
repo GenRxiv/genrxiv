@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS authors (
     name TEXT NOT NULL,
     email TEXT,
     affiliation TEXT,
+    role TEXT NOT NULL DEFAULT 'author',
     account_status TEXT NOT NULL DEFAULT 'active',
     status_reason TEXT,
     status_changed_at TIMESTAMPTZ,

@@ -252,7 +252,7 @@ def get_current_author(request: Request) -> dict | None:
     with get_conn().connection() as conn:
         row = conn.execute(
             """SELECT a.id, a.orcid, a.github_id, a.name, a.email, a.affiliation,
-                      a.account_status, s.expires_at
+                      a.role, a.account_status, s.expires_at
                FROM sessions s JOIN authors a ON s.author_id = a.id
                WHERE s.token = %s AND s.expires_at > now()""",
             (token,),
@@ -266,6 +266,7 @@ def get_current_author(request: Request) -> dict | None:
         "name": row["name"],
         "email": row["email"],
         "affiliation": row["affiliation"],
+        "role": row["role"],
         "account_status": row["account_status"],
     }
 
@@ -278,28 +279,50 @@ def require_author(request: Request) -> dict:
     return author
 
 
+def _is_admin(author: dict) -> bool:
+    """Check if author has admin role (via DB role, env var ORCID, or env var GitHub)."""
+    if author.get("role") == "admin":
+        return True
+    orcid = author.get("orcid")
+    if orcid and orcid in config.admin_orcids:
+        return True
+    github_id = author.get("github_id")
+    if github_id and github_id in config.admin_github_ids:
+        return True
+    return False
+
+
+def _is_reviewer(author: dict) -> bool:
+    """Check if author has reviewer or admin role."""
+    if author.get("role") in ("admin", "reviewer"):
+        return True
+    orcid = author.get("orcid")
+    if orcid and (orcid in config.admin_orcids or orcid in config.reviewer_orcids):
+        return True
+    github_id = author.get("github_id")
+    if github_id and (github_id in config.admin_github_ids or github_id in config.reviewer_github_ids):
+        return True
+    return False
+
+
 def require_reviewer(request: Request) -> dict:
     """Require reviewer or admin privileges (can approve/reject submissions).
 
-    Checks both ORCID-based and GitHub-based identity.
+    Checks DB role, env var ORCID lists, and env var GitHub lists.
     """
     author = require_author(request)
-    if author["orcid"] and (author["orcid"] in config.admin_orcids or author["orcid"] in config.reviewer_orcids):
-        return author
-    if author.get("github_id") and (author["github_id"] in config.admin_github_ids or author["github_id"] in config.reviewer_github_ids):
+    if _is_reviewer(author):
         return author
     raise HTTPException(403, "Reviewer access required")
 
 
 def require_admin(request: Request) -> dict:
-    """Require admin privileges (can withdraw, suspend, ban).
+    """Require admin privileges (can withdraw, suspend, ban, manage roles).
 
-    Checks both ORCID-based and GitHub-based identity.
+    Checks DB role, env var ORCID lists, and env var GitHub lists.
     """
     author = require_author(request)
-    if author["orcid"] and author["orcid"] in config.admin_orcids:
-        return author
-    if author.get("github_id") and author["github_id"] in config.admin_github_ids:
+    if _is_admin(author):
         return author
     raise HTTPException(403, "Admin access required")
 
@@ -461,19 +484,18 @@ def me(request: Request):
     author = get_current_author(request)
     if not author:
         return {"authenticated": False}
-    orcid = author.get("orcid")
-    github_id = author.get("github_id")
-    is_admin = (orcid and orcid in config.admin_orcids) or (github_id and github_id in config.admin_github_ids)
-    is_reviewer = (orcid and orcid in config.reviewer_orcids) or (github_id and github_id in config.reviewer_github_ids)
+    is_admin = _is_admin(author)
+    is_reviewer = _is_reviewer(author)
     return {
         "authenticated": True,
-        "orcid": orcid,
-        "github_id": github_id,
+        "orcid": author.get("orcid"),
+        "github_id": author.get("github_id"),
         "name": author["name"],
         "email": author.get("email"),
         "affiliation": author["affiliation"],
+        "role": author.get("role", "author"),
         "is_admin": is_admin,
-        "is_reviewer": is_reviewer or is_admin,
+        "is_reviewer": is_reviewer,
         "account_status": author.get("account_status", "active"),
     }
 

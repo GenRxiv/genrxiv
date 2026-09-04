@@ -3528,3 +3528,192 @@ class TestGitHubAuth:
         client = TestClient(app)
         r = client.get("/auth/github", follow_redirects=False)
         assert r.status_code == 404
+
+
+# ─── 33. DB-based role management ──────────────────────────────────────────
+
+class TestRoleManagement:
+    """Tests for DB-based role management via the admin UI/API."""
+
+    @requires_db
+    def test_admin_can_promote_author_to_reviewer(self, admin_client, db):
+        """Admin can promote an author to reviewer via the API."""
+        from db import get_conn
+        author_id = db["author_id"]
+
+        r = admin_client.patch(f"/admin/roles/{author_id}", json={"role": "reviewer"})
+        assert r.status_code == 200
+        assert r.json()["role"] == "reviewer"
+
+        with get_conn().connection() as conn:
+            row = conn.execute("SELECT role FROM authors WHERE id = %s", (author_id,)).fetchone()
+            assert row["role"] == "reviewer"
+            # Cleanup
+            conn.execute("UPDATE authors SET role = 'author' WHERE id = %s", (author_id,))
+            conn.commit()
+
+    @requires_db
+    def test_admin_can_promote_author_to_admin(self, admin_client, db):
+        """Admin can promote an author to admin via the API."""
+        from db import get_conn
+        author_id = db["author_id"]
+
+        r = admin_client.patch(f"/admin/roles/{author_id}", json={"role": "admin"})
+        assert r.status_code == 200
+        assert r.json()["role"] == "admin"
+
+        with get_conn().connection() as conn:
+            row = conn.execute("SELECT role FROM authors WHERE id = %s", (author_id,)).fetchone()
+            assert row["role"] == "admin"
+            # Cleanup
+            conn.execute("UPDATE authors SET role = 'author' WHERE id = %s", (author_id,))
+            conn.commit()
+
+    @requires_db
+    def test_admin_can_demote_reviewer_to_author(self, admin_client, db):
+        """Admin can remove a role (demote to author)."""
+        from db import get_conn
+        author_id = db["author_id"]
+
+        # Promote first
+        admin_client.patch(f"/admin/roles/{author_id}", json={"role": "reviewer"})
+        # Demote
+        r = admin_client.patch(f"/admin/roles/{author_id}", json={"role": "author"})
+        assert r.status_code == 200
+        assert r.json()["role"] == "author"
+
+        with get_conn().connection() as conn:
+            row = conn.execute("SELECT role FROM authors WHERE id = %s", (author_id,)).fetchone()
+            assert row["role"] == "author"
+
+    @requires_db
+    def test_cannot_change_own_role(self, admin_client, db):
+        """Admin cannot change their own role (prevent self-lockout)."""
+        admin_id = db["admin_id"]
+        r = admin_client.patch(f"/admin/roles/{admin_id}", json={"role": "author"})
+        assert r.status_code == 400
+        assert "own role" in r.json()["detail"].lower()
+
+    @requires_db
+    def test_cannot_change_env_admin_role(self, admin_client, db):
+        """Cannot change the role of an env-var-configured admin."""
+        admin_id = db["admin_id"]
+        # The test admin is in ADMIN_ORCIDS, so trying to change their role
+        # should fail with the env-var protection message
+        # (but self-check comes first, so let's create a second admin via env)
+        from db import get_conn
+        import config as config_module
+
+        with get_conn().connection() as conn:
+            row = conn.execute(
+                "INSERT INTO authors (orcid, name) VALUES ('0000-0000-0000-env1', 'Env Admin') RETURNING id"
+            ).fetchone()
+            conn.commit()
+            env_admin_id = row["id"]
+
+        original = config_module.config.admin_orcids
+        object.__setattr__(config_module.config, "admin_orcids", original + ("0000-0000-0000-env1",))
+
+        r = admin_client.patch(f"/admin/roles/{env_admin_id}", json={"role": "author"})
+        assert r.status_code == 400
+        assert "environment" in r.json()["detail"].lower()
+
+        object.__setattr__(config_module.config, "admin_orcids", original)
+        with get_conn().connection() as conn:
+            conn.execute("DELETE FROM authors WHERE id = %s", (env_admin_id,))
+            conn.commit()
+
+    @requires_db
+    def test_db_role_grants_reviewer_access(self, db):
+        """An author with DB role='reviewer' can access the admin queue."""
+        from db import get_conn
+        from fastapi.testclient import TestClient
+        from main import app
+        from auth import _create_session, SESSION_COOKIE
+
+        with get_conn().connection() as conn:
+            row = conn.execute(
+                "INSERT INTO authors (orcid, name, role) VALUES ('0000-0000-0000-dbrev', 'DB Reviewer', 'reviewer') RETURNING id"
+            ).fetchone()
+            conn.commit()
+            reviewer_id = row["id"]
+
+        token = _create_session(reviewer_id, "fake-token")
+        client = TestClient(app)
+        client.cookies.set(SESSION_COOKIE, token)
+
+        r = client.get("/admin")
+        assert r.status_code == 200
+        assert "Reviewer Dashboard" in r.text
+
+        with get_conn().connection() as conn:
+            conn.execute("DELETE FROM sessions WHERE author_id = %s", (reviewer_id,))
+            conn.execute("DELETE FROM authors WHERE id = %s", (reviewer_id,))
+            conn.commit()
+
+    @requires_db
+    def test_db_role_admin_grants_admin_access(self, db):
+        """An author with DB role='admin' can access admin pages."""
+        from db import get_conn
+        from fastapi.testclient import TestClient
+        from main import app
+        from auth import _create_session, SESSION_COOKIE
+
+        with get_conn().connection() as conn:
+            row = conn.execute(
+                "INSERT INTO authors (orcid, name, role) VALUES ('0000-0000-0000-dbadmin', 'DB Admin', 'admin') RETURNING id"
+            ).fetchone()
+            conn.commit()
+            db_admin_id = row["id"]
+
+        token = _create_session(db_admin_id, "fake-token")
+        client = TestClient(app)
+        client.cookies.set(SESSION_COOKIE, token)
+
+        r = client.get("/admin")
+        assert r.status_code == 200
+        assert "Admin Dashboard" in r.text
+
+        # Can access roles page
+        r = client.get("/admin/roles")
+        assert r.status_code == 200
+        assert "Role Management" in r.text
+
+        with get_conn().connection() as conn:
+            conn.execute("DELETE FROM sessions WHERE author_id = %s", (db_admin_id,))
+            conn.execute("DELETE FROM authors WHERE id = %s", (db_admin_id,))
+            conn.commit()
+
+    @requires_db
+    def test_roles_page_loads_for_admin(self, admin_client, db):
+        """The /admin/roles page loads for admins."""
+        r = admin_client.get("/admin/roles")
+        assert r.status_code == 200
+        assert "Role Management" in r.text
+
+    @requires_db
+    def test_reviewer_cannot_access_roles_page(self, db):
+        """A reviewer cannot access the role management page."""
+        from db import get_conn
+        from fastapi.testclient import TestClient
+        from main import app
+        from auth import _create_session, SESSION_COOKIE
+
+        with get_conn().connection() as conn:
+            row = conn.execute(
+                "INSERT INTO authors (orcid, name, role) VALUES ('0000-0000-0000-revonly', 'Rev Only', 'reviewer') RETURNING id"
+            ).fetchone()
+            conn.commit()
+            reviewer_id = row["id"]
+
+        token = _create_session(reviewer_id, "fake-token")
+        client = TestClient(app)
+        client.cookies.set(SESSION_COOKIE, token)
+
+        r = client.get("/admin/roles")
+        assert r.status_code == 403
+
+        with get_conn().connection() as conn:
+            conn.execute("DELETE FROM sessions WHERE author_id = %s", (reviewer_id,))
+            conn.execute("DELETE FROM authors WHERE id = %s", (reviewer_id,))
+            conn.commit()

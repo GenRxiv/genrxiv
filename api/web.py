@@ -20,7 +20,7 @@ from pydantic import BaseModel
 
 from config import config
 from db import get_conn
-from auth import get_current_author, require_author, require_admin, require_reviewer
+from auth import get_current_author, require_author, require_admin, require_reviewer, _is_admin, _is_reviewer
 from orcid_client import fetch_orcid_works_count
 
 router = APIRouter()
@@ -224,12 +224,8 @@ def _header_html(author: dict | None, current_path: str = "") -> str:
             "/submit", "Submit",
             "display:inline-block;padding:0.3rem 0.9rem;background:var(--accent);color:#fff;border-radius:4px;text-decoration:none;font-size:0.85rem",
         )
-        # Show moderation link for reviewers and admins (ORCID or GitHub)
-        is_reviewer = (
-            (author.get("orcid") and (author["orcid"] in config.reviewer_orcids or author["orcid"] in config.admin_orcids))
-            or (author.get("github_id") and (author["github_id"] in config.reviewer_github_ids or author["github_id"] in config.admin_github_ids))
-        )
-        mod_link = nav_link("/admin", "Moderation") if is_reviewer else ""
+        # Show moderation link for reviewers and admins (DB role, ORCID, or GitHub)
+        mod_link = nav_link("/admin", "Moderation") if _is_reviewer(author) else ""
         auth_area = (
             f'{mod_link}'
             f'{nav_link("/dashboard", "My Submissions")}'
@@ -2344,7 +2340,7 @@ def update_profile_affiliation(request: Request, affiliation: str = Form(default
 def admin_page(request: Request, withdrawn: str = ""):
     """Admin moderation queue and stats."""
     reviewer = require_reviewer(request)
-    is_admin = (reviewer.get("orcid") and reviewer["orcid"] in config.admin_orcids) or (reviewer.get("github_id") and reviewer["github_id"] in config.admin_github_ids)
+    is_admin = _is_admin(reviewer)
     withdrawn_banner = ""
     if withdrawn:
         withdrawn_banner = (
@@ -2436,7 +2432,7 @@ def admin_page(request: Request, withdrawn: str = ""):
 
     admin_links = ""
     if is_admin:
-        admin_links = '<div style="margin-top:1rem"><a href="/admin/authors" class="btn">Author Management</a></div>'
+        admin_links = '<div style="margin-top:1rem;display:flex;gap:0.5rem;flex-wrap:wrap"><a href="/admin/authors" class="btn">Author Management</a><a href="/admin/roles" class="btn">Role Management</a></div>'
 
     body = f"""
     <h1>{'Admin' if is_admin else 'Reviewer'} Dashboard</h1>
@@ -2455,7 +2451,7 @@ def admin_page(request: Request, withdrawn: str = ""):
 def admin_submission_detail(article_id: int, request: Request):
     """View submission details (reviewer or admin)."""
     reviewer = require_reviewer(request)
-    is_admin = (reviewer.get("orcid") and reviewer["orcid"] in config.admin_orcids) or (reviewer.get("github_id") and reviewer["github_id"] in config.admin_github_ids)
+    is_admin = _is_admin(reviewer)
     with get_conn().connection() as conn:
         article = conn.execute(
             "SELECT * FROM articles WHERE id = %s", (article_id,)
@@ -2710,11 +2706,12 @@ def admin_authors_page(request: Request, status: str = ""):
         changed_html = f'<div class="meta" style="margin-top:0.25rem">Changed: {_format_date(a.get("status_changed_at"))}</div>' if a.get("status_changed_at") else ''
 
         actions = ''
-        if a["account_status"] != "active" and a["orcid"] not in config.admin_orcids:
+        is_env_admin = (a["orcid"] and a["orcid"] in config.admin_orcids) or (a.get("github_id") and a["github_id"] in config.admin_github_ids)
+        if a["account_status"] != "active" and not is_env_admin:
             actions = f'''<form method="post" action="/admin/authors/{a["id"]}/reactivate" style="margin-top:0.5rem;display:inline">
                 <button type="submit" class="btn btn-primary">Reactivate</button>
             </form>'''
-        elif a["account_status"] == "active" and a["orcid"] not in config.admin_orcids:
+        elif a["account_status"] == "active" and not is_env_admin:
             actions = f'''<div style="margin-top:0.5rem;display:flex;gap:0.5rem;flex-wrap:wrap">
                 <form method="post" action="/admin/authors/{a["id"]}/suspend" style="display:inline">
                     <input type="text" name="reason" required placeholder="Reason" style="width:200px;display:inline-block">
@@ -2725,12 +2722,14 @@ def admin_authors_page(request: Request, status: str = ""):
                     <button type="submit" class="btn btn-danger">Ban</button>
                 </form>
             </div>'''
-        elif a["orcid"] in config.admin_orcids:
-            actions = '<div class="meta" style="margin-top:0.5rem;color:var(--muted)"><em>Admin account — cannot be modified</em></div>'
+        elif is_env_admin:
+            actions = '<div class="meta" style="margin-top:0.5rem;color:var(--muted)"><em>Admin account (env) — cannot be modified</em></div>'
 
+        orcid_display = a["orcid"] or ""
+        github_display = f' &middot; GitHub: {a["github_id"]}' if a.get("github_id") else ""
         cards.append(f"""<div class="card">
-<h2><a href="/author/{a['orcid']}">{a['name']}</a></h2>
-<div class="meta">{status_badge} &middot; {a['orcid']} &middot; Joined {_format_date(a.get('created_at'))}</div>
+<h2>{a['name']}</h2>
+<div class="meta">{status_badge} &middot; {orcid_display}{github_display} &middot; Joined {_format_date(a.get('created_at'))}</div>
 {reason_html}
 {changed_html}
 {actions}
@@ -2748,3 +2747,93 @@ def admin_authors_page(request: Request, status: str = ""):
     <div style="margin-top:1.5rem"><a href="/admin">&larr; Back to dashboard</a></div>
     """
     return _page("Author Management", body, admin, current_path="/admin/authors")
+
+
+@router.get("/admin/roles", include_in_schema=False, response_class=HTMLResponse)
+def admin_roles_page(request: Request):
+    """Role management page (admin only) — promote/demote authors to reviewer or admin."""
+    admin = require_admin(request)
+    with get_conn().connection() as conn:
+        rows = conn.execute(
+            """SELECT id, orcid, github_id, name, email, role,
+                      account_status, created_at
+               FROM authors ORDER BY
+                 CASE WHEN role = 'admin' THEN 0
+                      WHEN role = 'reviewer' THEN 1
+                      ELSE 2 END,
+                 created_at DESC""",
+        ).fetchall()
+
+    cards = []
+    for a in rows:
+        db_role = a["role"]
+        is_env_admin = (a["orcid"] and a["orcid"] in config.admin_orcids) or (a.get("github_id") and a["github_id"] in config.admin_github_ids)
+        is_env_reviewer = (a["orcid"] and a["orcid"] in config.reviewer_orcids) or (a.get("github_id") and a["github_id"] in config.reviewer_github_ids)
+        is_self = a["id"] == admin["id"]
+
+        role_badge = {
+            "admin": '<span class="status-badge status-published">admin</span>',
+            "reviewer": '<span class="status-badge status-pending" style="background:#fffdf0;color:#b48a00;border:1px solid #b48a00">reviewer</span>',
+            "author": '<span class="status-badge" style="background:#f0f0f0;color:#666">author</span>',
+        }.get(db_role, db_role)
+
+        env_note = ""
+        if is_env_admin:
+            env_note = ' <span style="color:var(--muted);font-size:0.8rem">(env: admin)</span>'
+        elif is_env_reviewer:
+            env_note = ' <span style="color:var(--muted);font-size:0.8rem">(env: reviewer)</span>'
+
+        actions = ""
+        if is_self:
+            actions = '<div class="meta" style="margin-top:0.5rem;color:var(--muted)"><em>This is you — cannot change your own role</em></div>'
+        elif is_env_admin:
+            actions = '<div class="meta" style="margin-top:0.5rem;color:var(--muted)"><em>Env-var admin — cannot be changed via UI</em></div>'
+        else:
+            buttons = []
+            if db_role != "reviewer":
+                buttons.append(f'''<form method="post" action="/admin/roles/{a["id"]}" style="display:inline">
+                    <input type="hidden" name="role" value="reviewer">
+                    <button type="submit" class="btn">Make Reviewer</button>
+                </form>''')
+            if db_role != "admin":
+                buttons.append(f'''<form method="post" action="/admin/roles/{a["id"]}" style="display:inline">
+                    <input type="hidden" name="role" value="admin">
+                    <button type="submit" class="btn btn-primary">Make Admin</button>
+                </form>''')
+            if db_role != "author":
+                buttons.append(f'''<form method="post" action="/admin/roles/{a["id"]}" style="display:inline">
+                    <input type="hidden" name="role" value="author">
+                    <button type="submit" class="btn btn-danger">Remove Role</button>
+                </form>''')
+            actions = f'<div style="margin-top:0.5rem;display:flex;gap:0.5rem;flex-wrap:wrap">{"".join(buttons)}</div>'
+
+        orcid_display = a["orcid"] or ""
+        github_display = f' &middot; GitHub: {a["github_id"]}' if a.get("github_id") else ""
+        cards.append(f"""<div class="card">
+<h2>{a['name']}{env_note}</h2>
+<div class="meta">{role_badge} &middot; {orcid_display}{github_display} &middot; Joined {_format_date(a.get('created_at'))}</div>
+{actions}
+</div>""")
+
+    body = f"""
+    <h1>Role Management</h1>
+    <p style="color:var(--ink-soft);margin-bottom:1rem">
+        Promote authors to reviewer or admin, or remove their role. Reviewers
+        can approve and reject submissions. Admins can additionally withdraw
+        articles, suspend/ban authors, and manage roles. Users configured via
+        environment variables (ADMIN_ORCIDS, REVIEWER_ORCIDS, etc.) are shown
+        with an <em>(env)</em> note and cannot be changed here.
+    </p>
+    {''.join(cards) if cards else '<div class="empty"><h3>No authors found</h3></div>'}
+    <div style="margin-top:1.5rem"><a href="/admin">&larr; Back to dashboard</a></div>
+    """
+    return _page("Role Management", body, admin, current_path="/admin/roles")
+
+
+@router.post("/admin/roles/{author_id}", include_in_schema=False)
+def admin_roles_update(request: Request, author_id: int, role: str = Form(...)):
+    """Update an author's role via the HTML form (admin only)."""
+    from articles import update_author_role, RoleAction
+    admin = require_admin(request)
+    update_author_role(author_id, RoleAction(role=role), admin)
+    return RedirectResponse(url="/admin/roles", status_code=303)

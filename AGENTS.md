@@ -50,7 +50,7 @@ cd convert-service && pip install -r requirements-dev.txt
 pytest test_app.py -v
 
 # Without DATABASE_URL_TEST, DB-dependent tests are skipped automatically.
-# Total: 253 tests (212 API + 16 browser + 25 convert service).
+# Total: 262 tests (221 API + 16 browser + 25 convert service).
 ```
 
 CI runs all suites on every push/PR (`.github/workflows/tests.yml`).
@@ -197,7 +197,7 @@ The workflow:
 4. Pull latest code
 5. Rebuild and restart the API container
 6. Run database migrations
-7. Run the full test suite (212 API tests + 16 browser tests)
+7. Run the full test suite (221 API tests + 16 browser tests)
 8. If tests pass → disable maintenance mode → site is live
 9. If tests fail → maintenance mode stays on → investigate
 
@@ -222,7 +222,7 @@ scripts/test-after-restore.sh
 ```
 
 This creates a fresh `genrxiv_test` database, copies test files into the
-API container, and runs all 212 API tests. Exits 0 if all pass.
+API container, and runs all 221 API tests. Exits 0 if all pass.
 
 ## API structure
 
@@ -342,12 +342,32 @@ GenRxiv has three access levels:
 | Role | Config | Can do |
 |---|---|---|
 | Author | (default) | Submit, preview, delete own pending/rejected, retract own published |
-| Reviewer | `REVIEWER_ORCIDS` or `REVIEWER_GITHUB_IDS` | Everything an author can, plus: view `/admin` queue, review submissions, approve/reject |
-| Admin | `ADMIN_ORCIDS` or `ADMIN_GITHUB_IDS` | Everything a reviewer can, plus: withdraw articles, suspend/ban authors, manage author accounts, maintenance mode |
+| Reviewer | `REVIEWER_ORCIDS` or `REVIEWER_GITHUB_IDS` or DB role | Everything an author can, plus: view `/admin` queue, review submissions, approve/reject |
+| Admin | `ADMIN_ORCIDS` or `ADMIN_GITHUB_IDS` or DB role | Everything a reviewer can, plus: withdraw articles, suspend/ban authors, manage roles, maintenance mode |
+
+**Role management:**
+
+Roles can be granted in two ways:
+
+1. **Environment variables** (bootstrap): `ADMIN_ORCIDS`, `REVIEWER_ORCIDS`,
+   `ADMIN_GITHUB_IDS`, `REVIEWER_GITHUB_IDS`. These are the initial admins
+   who can then manage roles via the UI. Env-var admins cannot be demoted
+   via the UI (bootstrap protection).
+
+2. **Database** (runtime): Admins can promote/demote any author via
+   `/admin/roles`. The `authors.role` column stores `author`, `reviewer`,
+   or `admin`. DB-based roles take effect immediately on the next request
+   (no restart needed).
+
+Both mechanisms are checked on every request — `_is_admin()` and
+`_is_reviewer()` in `api/auth.py` check the DB role first, then fall back
+to env vars. An admin cannot change their own role (prevents self-lockout)
+and cannot change the role of an env-var-configured admin.
 
 **GitHub OAuth** (optional): Admins and reviewers who don't have an ORCID iD
 can sign in with GitHub instead. Set `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`,
-and add their GitHub usernames to `ADMIN_GITHUB_IDS` or `REVIEWER_GITHUB_IDS`.
+and add their GitHub usernames to `ADMIN_GITHUB_IDS` or `REVIEWER_GITHUB_IDS`
+(or promote them via the role management UI after they sign in once).
 GitHub users can moderate but cannot submit papers (submission requires an
 ORCID to be listed in the paper's author list). The GitHub OAuth app's
 callback URL must be `https://genrxiv.org/auth/github/callback`.

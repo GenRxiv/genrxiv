@@ -1950,6 +1950,74 @@ def update_author_status(
     }
 
 
+# ─── Role management (admin) ───────────────────────────────────────────────
+
+class RoleAction(BaseModel):
+    role: str  # "author", "reviewer", or "admin"
+
+
+@router.get("/admin/roles/list", include_in_schema=False)
+def list_roles(
+    _admin: dict = Depends(require_admin),
+):
+    """List all authors with their roles, for the role management page."""
+    with get_conn().connection() as conn:
+        rows = conn.execute(
+            """SELECT id, orcid, github_id, name, email, role,
+                      account_status, created_at
+               FROM authors ORDER BY
+                 CASE WHEN role = 'admin' THEN 0
+                      WHEN role = 'reviewer' THEN 1
+                      ELSE 2 END,
+                 created_at DESC""",
+        ).fetchall()
+    return {"items": rows}
+
+
+@router.patch("/admin/roles/{author_id}", include_in_schema=False)
+def update_author_role(
+    author_id: int,
+    action: RoleAction,
+    admin: dict = Depends(require_admin),
+):
+    """Update an author's role (author, reviewer, or admin).
+
+    - Only admins can change roles.
+    - Cannot change the role of an env-var-configured admin (bootstrap protection).
+    - Cannot change your own role (prevent self-lockout).
+    """
+    if action.role not in ("author", "reviewer", "admin"):
+        raise HTTPException(400, "role must be 'author', 'reviewer', or 'admin'")
+
+    with get_conn().connection() as conn:
+        row = conn.execute(
+            "SELECT id, orcid, github_id, name, role FROM authors WHERE id = %s",
+            (author_id,),
+        ).fetchone()
+        if not row:
+            raise HTTPException(404, "Author not found")
+
+        # Prevent self-modification (avoid locking yourself out)
+        if row["id"] == admin["id"]:
+            raise HTTPException(400, "Cannot change your own role")
+
+        # Prevent changing env-var-configured admins
+        if (row["orcid"] and row["orcid"] in config.admin_orcids) or (row["github_id"] and row["github_id"] in config.admin_github_ids):
+            raise HTTPException(400, "Cannot change the role of a configured admin (set via environment variable)")
+
+        conn.execute(
+            "UPDATE authors SET role = %s WHERE id = %s",
+            (action.role, author_id),
+        )
+        conn.commit()
+
+    return {
+        "id": author_id,
+        "name": row["name"],
+        "role": action.role,
+    }
+
+
 # ─── Maintenance mode (admin) ──────────────────────────────────────────────
 
 @router.get("/admin/maintenance", include_in_schema=False)
