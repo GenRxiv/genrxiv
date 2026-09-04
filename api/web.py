@@ -777,7 +777,7 @@ def stats_page(request: Request):
             "pending": conn.execute(
                 "SELECT COUNT(*) AS c FROM articles WHERE status = 'pending'"
             ).fetchone()["c"],
-            "total_authors": conn.execute("SELECT COUNT(*) AS c FROM authors").fetchone()["c"],
+            "total_authors": conn.execute("SELECT COUNT(*) AS c FROM authors WHERE orcid IS NOT NULL").fetchone()["c"],
             "total_downloads": conn.execute("SELECT COUNT(*) AS c FROM downloads").fetchone()["c"],
             "agent_downloads": conn.execute(
                 "SELECT COUNT(*) AS c FROM downloads WHERE is_agent = TRUE"

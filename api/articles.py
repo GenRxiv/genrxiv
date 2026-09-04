@@ -2197,7 +2197,7 @@ def public_stats():
         total_articles = conn.execute(
             "SELECT COUNT(*) as c FROM articles WHERE status = 'published'"
         ).fetchone()["c"]
-        total_authors = conn.execute("SELECT COUNT(*) as c FROM authors").fetchone()["c"]
+        total_authors = conn.execute("SELECT COUNT(*) as c FROM authors WHERE orcid IS NOT NULL").fetchone()["c"]
         total_downloads = conn.execute("SELECT COUNT(*) as c FROM downloads").fetchone()["c"]
         agent_downloads = conn.execute(
             "SELECT COUNT(*) as c FROM downloads WHERE is_agent = true"
