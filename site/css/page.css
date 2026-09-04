@@ -122,14 +122,15 @@ footer { border-top: 1px solid var(--border); padding: 1.5rem; text-align: cente
 /* OECD classification tags */
 .oecd-tag {
     display: inline-block;
-    padding: 0.15rem 0.5rem;
+    padding: 0.2rem 0.6rem;
     border-radius: 3px;
     font-size: 0.75rem;
-    font-weight: 600;
-    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 500;
+    font-family: 'IBM Plex Sans', sans-serif;
     margin: 0.15rem;
     white-space: nowrap;
     cursor: default;
+    border: 1px solid;
 }
 
 /* Paper cards (used on browse and splash pages) */

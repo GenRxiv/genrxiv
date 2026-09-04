@@ -352,20 +352,19 @@ def _article_card(article: dict) -> str:
     elif "author_names" in article and article["author_names"]:
         authors_html = article["author_names"]
 
-    # Badges
-    badges = '<span class="badge badge-ai">AI co-generated</span>'
-    badges += '<span class="badge badge-format">Markdown</span>'
+    # Status indicator (only show if not published or is a retraction)
+    status_badge = ""
     if status != "published":
-        badges += f'<span class="badge badge-status">{status}</span>'
+        status_badge = f'<span class="badge badge-status">{status}</span>'
     if is_retraction:
-        badges += '<span class="badge" style="background:#fdf0f0;color:#c0392b">retraction</span>'
+        status_badge += '<span class="badge" style="background:#fdf0f0;color:#c0392b">retraction</span>'
 
     return f"""<div class="paper-card">
 <div class="paper-meta">{ark} &middot; posted {published}</div>
 <h2><a href="/article/{ark}">{title}</a></h2>
 <div class="paper-authors">{authors_html}</div>
 {f'<p class="paper-abstract">{abstract}</p>' if abstract else ''}
-<div class="paper-badges">{badges}</div>
+{f'<div class="paper-badges">{status_badge}</div>' if status_badge else ''}
 {f'<div class="paper-tags">{tags_html}</div>' if tags_html else ''}
 </div>"""
 
@@ -544,12 +543,12 @@ def splash_page(request: Request):
         Each paper is tagged with 3 subcategories across these domains:
     </p>
     <div class="subjects" style="display:flex;flex-wrap:wrap;gap:0.4rem">
-        <span class="oecd-tag" style="color:#2F5CFF;background:#E4E9FF">N &middot; Natural sciences</span>
-        <span class="oecd-tag" style="color:#E67E22;background:#FDF0E0">E &middot; Engineering & technology</span>
-        <span class="oecd-tag" style="color:#E74C3C;background:#FDEAEA">M &middot; Medical & health</span>
-        <span class="oecd-tag" style="color:#27AE60;background:#E8F8F0">A &middot; Agricultural & veterinary</span>
-        <span class="oecd-tag" style="color:#9B59B6;background:#F4ECF7">S &middot; Social sciences</span>
-        <span class="oecd-tag" style="color:#16A085;background:#E0F5F1">H &middot; Humanities & arts</span>
+        <span class="oecd-tag" style="color:#2F5CFF;background:#E4E9FF;border-color:#2F5CFF">N &middot; Natural sciences</span>
+        <span class="oecd-tag" style="color:#E67E22;background:#FDF0E0;border-color:#E67E22">E &middot; Engineering & technology</span>
+        <span class="oecd-tag" style="color:#E74C3C;background:#FDEAEA;border-color:#E74C3C">M &middot; Medical & health</span>
+        <span class="oecd-tag" style="color:#27AE60;background:#E8F8F0;border-color:#27AE60">A &middot; Agricultural & veterinary</span>
+        <span class="oecd-tag" style="color:#9B59B6;background:#F4ECF7;border-color:#9B59B6">S &middot; Social sciences</span>
+        <span class="oecd-tag" style="color:#16A085;background:#E0F5F1;border-color:#16A085">H &middot; Humanities & arts</span>
     </div>
 
     <h3>What a GenRxiv preprint looks like</h3>
@@ -563,15 +562,10 @@ def splash_page(request: Request):
             protocols resembling human mathematical notation. We characterize the
             conditions under which this emergence occurs and propose a framework&hellip;
         </p>
-        <div class="paper-badges">
-            <span class="badge badge-ai">AI co-generated</span>
-            <span class="badge badge-format">Markdown</span>
-            <span class="badge badge-status">Preprint</span>
-        </div>
         <div class="paper-tags">
-            <span class="oecd-tag" style="color:#2F5CFF;background:#E4E9FF" title="Natural sciences > Computer and information sciences">N&middot;CS</span>
-            <span class="oecd-tag" style="color:#9B59B6;background:#F4ECF7" title="Social sciences > Psychology and cognitive sciences">S&middot;PSYCH</span>
-            <span class="oecd-tag" style="color:#E67E22;background:#FDF0E0" title="Engineering and technology > Electrical, electronic, information engineering">E&middot;EE</span>
+            <span class="oecd-tag" style="color:#2F5CFF;background:#E4E9FF;border-color:#2F5CFF" title="Natural sciences > Computer and information sciences">N&middot;CS</span>
+            <span class="oecd-tag" style="color:#9B59B6;background:#F4ECF7;border-color:#9B59B6" title="Social sciences > Psychology and cognitive sciences">S&middot;PSYCH</span>
+            <span class="oecd-tag" style="color:#E67E22;background:#FDF0E0;border-color:#E67E22" title="Engineering and technology > Electrical, electronic, information engineering">E&middot;EE</span>
         </div>
     </div>
 

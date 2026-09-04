@@ -97,11 +97,11 @@ def classification_tag(classification: str) -> str:
     """Render a colored subject tag for a classification string.
 
     E.g., 'Natural sciences > Computer and information sciences' becomes:
-    <span class="oecd-tag" style="color:#2F5CFF;background:#E4E9FF">N·CS</span>
+    <span class="oecd-tag" style="color:#2F5CFF;background:#E4E9FF;border-color:#2F5CFF">N·CS</span>
     """
     domain, subdomain, letter, color, bg, sub_code = parse_classification(classification)
     label = f"{letter}·{sub_code}" if sub_code else letter
     return (
-        f'<span class="oecd-tag" style="color:{color};background:{bg}" '
+        f'<span class="oecd-tag" style="color:{color};background:{bg};border-color:{color}" '
         f'title="{classification}">{label}</span>'
     )
