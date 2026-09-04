@@ -333,7 +333,7 @@ def _page(
 {_footer_html()}
 {js_links}
 {f"<script>{extra_js}</script>" if extra_js else ""}
-{f'<script async defer src="/analytics/script.js" data-website-id="{config.umami_website_id}"></script>' if config.umami_website_id else ""}
+{f'<script async defer src="https://stats.genrxiv.org/script.js" data-website-id="{config.umami_website_id}"></script>' if config.umami_website_id else ""}
 </body>
 </html>"""
     return HTMLResponse(html)
