@@ -493,7 +493,83 @@ def validate_license(license: str, license_url: str) -> tuple[str, str]:
 
 
 def assign_ark(article_id: int) -> str:
-    return f"ark:/{config.ark_naan}/genrxiv-{article_id:04d}"
+    return f"ark:{config.ark_naan}/genrxiv-{article_id:04d}"
+
+
+def normalize_ark(ark: str) -> str:
+    """Normalize an ARK by stripping the extra slash after 'ark:'.
+
+    Accepts both 'ark:/NAAN/...' (legacy) and 'ark:NAAN/...' (standard/N2T)
+    and returns the canonical 'ark:NAAN/...' form.
+    """
+    if ark.startswith("ark:/"):
+        return "ark:" + ark[5:]
+    return ark
+
+
+# Format variants and their media types.
+FORMAT_VARIANTS = {
+    "pdf": "application/pdf",
+    "md": "text/markdown",
+    "jsonld": "application/json",
+    "bib": "text/plain",
+    "html": "text/html",
+}
+
+
+def parse_ark_variant(ark: str) -> tuple[str, int | None, str | None]:
+    """Parse an ARK into its base form, optional version, and optional format.
+
+    GenRxiv base names (e.g. 'genrxiv-0001') contain no dots, so the first
+    dot in the ARK marks the start of the variant portion. Variants follow
+    the ARK convention of dot-separated components:
+
+        'ark:99999/genrxiv-0001'         -> (base, None,  None)
+        'ark:99999/genrxiv-0001.v3'      -> (base, 3,     None)
+        'ark:99999/genrxiv-0001.pdf'     -> (base, None,  'pdf')
+        'ark:99999/genrxiv-0001.v3.pdf'  -> (base, 3,     'pdf')
+
+    Also handles legacy slash-separated suffixes for backwards compatibility:
+
+        'ark:99999/genrxiv-0001/1'       -> (base, 1,     None)
+        'ark:99999/genrxiv-0001/pdf'     -> (base, None,  'pdf')
+        'ark:99999/genrxiv-0001/1/pdf'   -> (base, 1,     'pdf')
+    """
+    ark = normalize_ark(ark)
+    version: int | None = None
+    fmt: str | None = None
+
+    # Handle legacy slash-separated version suffix: /N
+    parts = ark.rsplit("/", 1)
+    if len(parts) == 2 and parts[1].isdigit():
+        ark = parts[0]
+        version = int(parts[1])
+        # Check for a trailing format after the version: /N/pdf
+        parts2 = ark.rsplit("/", 1)
+        if len(parts2) == 2 and parts2[1] in FORMAT_VARIANTS:
+            ark = parts2[0]
+            fmt = parts2[1]
+        return ark, version, fmt
+
+    # Handle legacy slash-separated format suffix: /pdf
+    parts = ark.rsplit("/", 1)
+    if len(parts) == 2 and parts[1] in FORMAT_VARIANTS:
+        ark = parts[0]
+        fmt = parts[1]
+        return ark, version, fmt
+
+    # Handle dot-separated variants: .vN, .pdf, .vN.pdf
+    if "." not in ark:
+        return ark, version, fmt
+
+    base, variant_str = ark.split(".", 1)
+    for part in variant_str.split("."):
+        if part.startswith("v") and part[1:].isdigit():
+            version = int(part[1:])
+        elif part in FORMAT_VARIANTS:
+            fmt = part
+
+    return base, version, fmt
 
 
 def render_html(markdown: str) -> str:
@@ -692,6 +768,36 @@ def get_article_by_ark_including_withdrawn(ark: str) -> dict | None:
     return row
 
 
+def get_article_version(base_ark: str, version: int, include_withdrawn: bool = False) -> dict | None:
+    """Get a specific version of an article by its base ARK and version number.
+
+    The ARK is stored only on the current (published) version; earlier versions
+    have ``ark = NULL``. This function finds the current version by base ARK,
+    then locates the requested version in the version chain.
+    """
+    status_filter = ("published", "withdrawn") if include_withdrawn else ("published",)
+    with get_conn().connection() as conn:
+        # Find the current version (which holds the ARK) to get the root id
+        current = conn.execute(
+            "SELECT id, supersedes_id FROM articles WHERE ark = %s",
+            (base_ark,),
+        ).fetchone()
+        if not current:
+            return None
+        root_id = current["supersedes_id"] or current["id"]
+        placeholders = ",".join(["%s"] * len(status_filter))
+        row = conn.execute(
+            f"""SELECT a.*, array_agg(aa.author_id ORDER BY aa."order") AS author_ids
+               FROM articles a
+               LEFT JOIN article_authors aa ON a.id = aa.article_id
+               WHERE (a.id = %s OR a.supersedes_id = %s) AND a.version = %s
+                 AND a.status IN ({placeholders})
+               GROUP BY a.id""",
+            (root_id, root_id, version, *status_filter),
+        ).fetchone()
+    return row
+
+
 def _build_retraction_markdown(original: dict, authors: list[dict], reason: str) -> str:
     """Build the Markdown body for a one-click author retraction notice.
 
@@ -877,10 +983,10 @@ def withdraw_article(article_id: int, reason: str, admin: dict) -> dict:
     }
 
 
-def build_jsonld(article: dict, authors: list[dict]) -> dict:
+def build_jsonld(article: dict, authors: list[dict], display_ark: str | None = None, version: int | None = None) -> dict:
     """Build Schema.org ScholarArticle JSON-LD."""
     base = config.base_url
-    ark = article["ark"]
+    ark = display_ark or article["ark"]
     jsonld = {
         "@context": "https://schema.org",
         "@type": "ScholarlyArticle",
@@ -889,6 +995,8 @@ def build_jsonld(article: dict, authors: list[dict]) -> dict:
         "url": f"{base}/article/{ark}",
         "headline": article["title"],
     }
+    if version is not None:
+        jsonld["version"] = version
     if article.get("abstract"):
         jsonld["abstract"] = article["abstract"]
     if authors:
@@ -1505,80 +1613,112 @@ def article_versions(article_id: int):
 # NOTE: Specific routes (with suffixes) must be registered BEFORE the
 # catch-all {ark:path} route, otherwise FastAPI matches the catch-all first.
 
-def _withdrawn_gone(ark: str):
+def _lookup_article(base_ark: str, version: int | None, include_withdrawn: bool = False) -> dict | None:
+    """Look up an article by base ARK, optionally a specific version."""
+    if version is not None:
+        return get_article_version(base_ark, version, include_withdrawn=include_withdrawn)
+    if include_withdrawn:
+        return get_article_by_ark_including_withdrawn(base_ark)
+    return get_article_by_ark(base_ark)
+
+
+def _withdrawn_gone(base_ark: str, version: int | None):
     """Raise 410 Gone if the article exists but is withdrawn."""
-    article = get_article_by_ark_including_withdrawn(ark)
+    article = _lookup_article(base_ark, version, include_withdrawn=True)
     if article and article["status"] == "withdrawn":
         raise HTTPException(410, "This article has been withdrawn and is no longer available")
 
 
-@router.get("/article/{ark:path}/pdf")
-def download_pdf(ark: str, request: Request):
-    """Download article as PDF."""
-    ark = unquote(ark)
-    _withdrawn_gone(ark)
-    article = get_article_by_ark(ark)
-    if not article:
-        raise HTTPException(404, "Article not found")
+def _serve_pdf(article: dict, base_ark: str, version: int | None, request: Request):
+    """Serve an article as PDF."""
     track_download(article["id"], "pdf", request)
+    display = f"{base_ark}.v{version}" if version is not None else base_ark
     if article["pdf_path"]:
         filepath = safe_resolve_file(article["pdf_path"])
         if filepath:
-            return FileResponse(filepath, media_type="application/pdf", filename=f"{ark.replace('/', '_')}.pdf")
-    # Fallback: render on the fly (front matter is in the stored markdown)
+            return FileResponse(filepath, media_type="application/pdf", filename=f"{display.replace('/', '_')}.pdf")
     pdf_bytes = render_pdf(article["source_markdown"])
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{ark.replace("/", "_")}.pdf"'},
+        headers={"Content-Disposition": f'attachment; filename="{display.replace("/", "_")}.pdf"'},
     )
+
+
+def _serve_markdown(article: dict, base_ark: str, version: int | None, request: Request):
+    """Serve an article's Markdown source."""
+    track_download(article["id"], "markdown", request)
+    display = f"{base_ark}.v{version}" if version is not None else base_ark
+    return Response(
+        content=article["source_markdown"].encode("utf-8"),
+        media_type="text/markdown",
+        headers={"Content-Disposition": f'attachment; filename="{display.replace("/", "_")}.md"'},
+    )
+
+
+def _serve_jsonld(article: dict, base_ark: str, version: int | None):
+    """Serve an article as JSON-LD."""
+    authors = get_article_authors(article["id"])
+    display_ark = f"{base_ark}.v{version}" if version is not None else base_ark
+    return build_jsonld(article, authors, display_ark=display_ark, version=version)
+
+
+def _serve_bibtex(article: dict, base_ark: str, version: int | None):
+    """Serve an article's BibTeX references."""
+    bibtex = extract_bibtex(article["source_markdown"])
+    if not bibtex:
+        raise HTTPException(404, "No BibTeX references found for this article")
+    display = f"{base_ark}.v{version}" if version is not None else base_ark
+    return Response(content=bibtex, media_type="text/plain",
+                    headers={"Content-Disposition": f"inline; filename={display}.bib"})
+
+
+# ── Legacy slash-separated routes (backwards compatible) ──────────────────
+# These keep old URLs like /article/ark:NAAN/genrxiv-0001/pdf working.
+# New URLs use dot-variants: /article/ark:NAAN/genrxiv-0001.pdf
+
+@router.get("/article/{ark:path}/pdf")
+def download_pdf(ark: str, request: Request):
+    """Download article as PDF (legacy slash route)."""
+    base_ark, version, fmt = parse_ark_variant(unquote(ark))
+    _withdrawn_gone(base_ark, version)
+    article = _lookup_article(base_ark, version)
+    if not article:
+        raise HTTPException(404, "Article not found")
+    return _serve_pdf(article, base_ark, version, request)
 
 
 @router.get("/article/{ark:path}/markdown")
 def download_markdown(ark: str, request: Request):
-    """Download original Markdown source."""
-    ark = unquote(ark)
-    _withdrawn_gone(ark)
-    article = get_article_by_ark(ark)
+    """Download original Markdown source (legacy slash route)."""
+    base_ark, version, fmt = parse_ark_variant(unquote(ark))
+    _withdrawn_gone(base_ark, version)
+    article = _lookup_article(base_ark, version)
     if not article:
         raise HTTPException(404, "Article not found")
-    track_download(article["id"], "markdown", request)
-    return Response(
-        content=article["source_markdown"].encode("utf-8"),
-        media_type="text/markdown",
-        headers={"Content-Disposition": f'attachment; filename="{ark.replace("/", "_")}.md"'},
-    )
+    return _serve_markdown(article, base_ark, version, request)
 
 
 @router.get("/article/{ark:path}/jsonld")
 def article_jsonld(ark: str):
-    """Get article as JSON-LD."""
-    ark = unquote(ark)
-    _withdrawn_gone(ark)
-    article = get_article_by_ark(ark)
+    """Get article as JSON-LD (legacy slash route)."""
+    base_ark, version, fmt = parse_ark_variant(unquote(ark))
+    _withdrawn_gone(base_ark, version)
+    article = _lookup_article(base_ark, version)
     if not article:
         raise HTTPException(404, "Article not found")
-    authors = get_article_authors(article["id"])
-    return build_jsonld(article, authors)
+    return _serve_jsonld(article, base_ark, version)
 
 
 @router.get("/article/{ark:path}/bibtex")
 def article_bibtex(ark: str):
-    """Get article's BibTeX references as plain text.
-
-    Returns the raw BibTeX block extracted from the article's Markdown source.
-    If the article has no BibTeX references, returns 404.
-    """
-    ark = unquote(ark)
-    _withdrawn_gone(ark)
-    article = get_article_by_ark(ark)
+    """Get article's BibTeX references (legacy slash route)."""
+    base_ark, version, fmt = parse_ark_variant(unquote(ark))
+    _withdrawn_gone(base_ark, version)
+    article = _lookup_article(base_ark, version)
     if not article:
         raise HTTPException(404, "Article not found")
-    bibtex = extract_bibtex(article["source_markdown"])
-    if not bibtex:
-        raise HTTPException(404, "No BibTeX references found for this article")
-    return Response(content=bibtex, media_type="text/plain",
-                    headers={"Content-Disposition": f"inline; filename={ark}.bib"})
+    return _serve_bibtex(article, base_ark, version)
 
 
 @router.get("/api/articles/{ark:path}/references")
@@ -1588,9 +1728,9 @@ def article_references(ark: str):
     Returns a list of parsed BibTeX entries with type, key, author,
     title, year, and other fields. Useful for agents and harvesting.
     """
-    ark = unquote(ark)
-    _withdrawn_gone(ark)
-    article = get_article_by_ark(ark)
+    base_ark, version, fmt = parse_ark_variant(unquote(ark))
+    _withdrawn_gone(base_ark, version)
+    article = _lookup_article(base_ark, version)
     if not article:
         raise HTTPException(404, "Article not found")
     bibtex = extract_bibtex(article["source_markdown"])
@@ -1605,8 +1745,8 @@ def article_versions_page(ark: str, request: Request):
     """Version history page for an article."""
     from urllib.parse import unquote as _unquote
     from web import _page, _format_date
-    ark = _unquote(ark)
-    article = get_article_by_ark(ark)
+    base_ark, _, _ = parse_ark_variant(_unquote(ark))
+    article = get_article_by_ark(base_ark)
     if not article:
         raise HTTPException(404, "Article not found")
     with get_conn().connection() as conn:
@@ -1639,7 +1779,7 @@ def article_versions_page(ark: str, request: Request):
     <h1>Version History</h1>
     <div class="card" style="margin-bottom:1.5rem">
         <h2>{article['title']}</h2>
-        <div class="meta">ARK: {ark} &middot; Current version: v{article['version']}</div>
+        <div class="meta">ARK: {base_ark} &middot; Current version: v{article['version']}</div>
     </div>
     <table style="width:100%;border-collapse:collapse;font-size:0.9rem">
         <thead>
@@ -1655,18 +1795,57 @@ def article_versions_page(ark: str, request: Request):
             {''.join(version_rows)}
         </tbody>
     </table>
-    <div style="margin-top:1.5rem"><a href="/article/{ark}">&larr; Back to article</a></div>
+    <div style="margin-top:1.5rem"><a href="/article/{base_ark}">&larr; Back to article</a></div>
     """
     return _page("Version History", body, author)
 
 
-@router.get("/article/{ark:path}", response_class=HTMLResponse)
+@router.get("/article/{ark:path}")
 def view_article(ark: str, request: Request):
-    """View article as HTML."""
-    ark = unquote(ark)
-    # Use the including-withdrawn lookup so a withdrawn article's ARK still
-    # resolves (to a tombstone page) rather than 404ing.
-    article = get_article_by_ark_including_withdrawn(ark)
+    """View article — dispatches based on ARK variant (format/version).
+
+    Supports dot-separated variants per the ARK standard:
+        ark:NAAN/genrxiv-0001         → current version, HTML
+        ark:NAAN/genrxiv-0001.v3      → version 3, HTML
+        ark:NAAN/genrxiv-0001.pdf     → current version, PDF
+        ark:NAAN/genrxiv-0001.v3.pdf  → version 3, PDF
+        ark:NAAN/genrxiv-0001.md      → current version, Markdown
+        ark:NAAN/genrxiv-0001.jsonld  → current version, JSON-LD
+        ark:NAAN/genrxiv-0001.bib     → current version, BibTeX
+
+    Also handles legacy slash-separated suffixes for backwards compatibility.
+    """
+    base_ark, version, fmt = parse_ark_variant(unquote(ark))
+
+    # Dispatch non-HTML formats to their handlers.
+    if fmt == "pdf":
+        _withdrawn_gone(base_ark, version)
+        article = _lookup_article(base_ark, version)
+        if not article:
+            raise HTTPException(404, "Article not found")
+        return _serve_pdf(article, base_ark, version, request)
+    if fmt == "md":
+        _withdrawn_gone(base_ark, version)
+        article = _lookup_article(base_ark, version)
+        if not article:
+            raise HTTPException(404, "Article not found")
+        return _serve_markdown(article, base_ark, version, request)
+    if fmt == "jsonld":
+        _withdrawn_gone(base_ark, version)
+        article = _lookup_article(base_ark, version)
+        if not article:
+            raise HTTPException(404, "Article not found")
+        return _serve_jsonld(article, base_ark, version)
+    if fmt == "bib":
+        _withdrawn_gone(base_ark, version)
+        article = _lookup_article(base_ark, version)
+        if not article:
+            raise HTTPException(404, "Article not found")
+        return _serve_bibtex(article, base_ark, version)
+
+    # HTML (default) — use including-withdrawn lookup so a withdrawn article's
+    # ARK still resolves to a tombstone page rather than 404ing.
+    article = _lookup_article(base_ark, version, include_withdrawn=True)
     if not article:
         raise HTTPException(404, "Article not found")
 
@@ -1676,18 +1855,19 @@ def view_article(ark: str, request: Request):
         from auth import get_current_author
         withdrawn_at = _format_date(article.get("withdrawn_at"))
         reason = article.get("withdrawal_reason") or ""
+        display_ark = f"{base_ark}.v{version}" if version is not None else base_ark
         body = f"""
         <div class="card" style="border-left:4px solid #c0392b;background:#fdf0f0">
             <h1 style="color:#c0392b">Article withdrawn</h1>
             <p>This article (<strong>{article['title']}</strong>) has been
             withdrawn from GenRxiv and is no longer available.</p>
             <p style="margin-top:0.5rem">
-                <strong>ARK:</strong> {ark}<br>
+                <strong>ARK:</strong> {display_ark}<br>
                 <strong>Withdrawn:</strong> {withdrawn_at}
             </p>
             {f'<div style="margin-top:1rem;padding:0.8rem;background:#fff;border:1px solid #e0d6d6;border-radius:4px"><strong>Reason:</strong> {reason}</div>' if reason else ''}
             <p style="margin-top:1rem;font-size:0.85rem;color:#666">
-                The identifier ({ark}) remains valid and resolves to this
+                The identifier ({display_ark}) remains valid and resolves to this
                 notice. The full text is no longer served. For questions about
                 this withdrawal, contact the GenRxiv moderators.
             </p>
@@ -1698,6 +1878,20 @@ def view_article(ark: str, request: Request):
 
     track_download(article["id"], "html", request)
 
+    # Version banner: shown when viewing a specific (non-current) version.
+    version_banner = ""
+    if version is not None:
+        current_article = get_article_by_ark(base_ark)
+        if current_article and current_article["id"] != article["id"]:
+            version_banner = (
+                '<div style="background:#fff8e1;border-left:4px solid #f57c00;'
+                'padding:1rem 1.5rem;margin:0 0 1.5rem 0;font-size:1.05rem">'
+                f'<strong>Version {version}.</strong> This is not the current version. '
+                f'<a href="/article/{base_ark}">View current version (v{current_article["version"]})</a>'
+                f' &middot; <a href="/article/{base_ark}/versions">Version history</a>'
+                '</div>'
+            )
+
     # Retraction notice: prepend a prominent banner to the rendered HTML.
     retraction_banner = ""
     if article.get("is_retraction"):
@@ -1707,17 +1901,21 @@ def view_article(ark: str, request: Request):
             '<strong style="color:#c0392b">This article has been retracted.</strong> '
             "This page is the retraction notice and is the current version of record. "
             'See the <a href="/article/{ark}/versions">version history</a> for the original.</div>'
-        ).replace("{ark}", ark)
+        ).replace("{ark}", base_ark)
 
     if article["html_path"]:
         filepath = safe_resolve_file(article["html_path"])
         if filepath:
             html = filepath.read_text(encoding="utf-8")
+            if version_banner:
+                html = _inject_retraction_banner(html, version_banner)
             if retraction_banner:
                 html = _inject_retraction_banner(html, retraction_banner)
             return HTMLResponse(html)
     # Fallback: render on the fly (front matter is in the stored markdown)
     html = render_html(article["source_markdown"])
+    if version_banner:
+        html = _inject_retraction_banner(html, version_banner)
     if retraction_banner:
         html = _inject_retraction_banner(html, retraction_banner)
     return HTMLResponse(html)
