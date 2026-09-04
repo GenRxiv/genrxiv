@@ -578,9 +578,9 @@ def splash_page(request: Request):
             conditions under which this emergence occurs and propose a framework&hellip;
         </p>
         <div class="paper-tags">
-            <span class="oecd-tag" style="color:#2F5CFF;background:#E4E9FF;border-color:#2F5CFF" title="Natural sciences > Computer and information sciences">N&middot;CS</span>
-            <span class="oecd-tag" style="color:#9B59B6;background:#F4ECF7;border-color:#9B59B6" title="Social sciences > Psychology and cognitive sciences">S&middot;PSYCH</span>
-            <span class="oecd-tag" style="color:#E67E22;background:#FDF0E0;border-color:#E67E22" title="Engineering and technology > Electrical, electronic, information engineering">E&middot;EE</span>
+            <span class="oecd-tag" tabindex="0" style="color:#2F5CFF;background:#E4E9FF;border-color:#2F5CFF" data-tooltip="Natural sciences > Computer and information sciences">N&middot;CS</span>
+            <span class="oecd-tag" tabindex="0" style="color:#9B59B6;background:#F4ECF7;border-color:#9B59B6" data-tooltip="Social sciences > Psychology and cognitive sciences">S&middot;PSYCH</span>
+            <span class="oecd-tag" tabindex="0" style="color:#E67E22;background:#FDF0E0;border-color:#E67E22" data-tooltip="Engineering and technology > Electrical, electronic, information engineering">E&middot;EE</span>
         </div>
     </div>
 

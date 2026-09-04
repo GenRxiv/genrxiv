@@ -131,6 +131,32 @@ footer { border-top: 1px solid var(--border); padding: 1.5rem; text-align: cente
     white-space: nowrap;
     cursor: default;
     border: 1px solid;
+    position: relative;
+}
+.oecd-tag::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: 130%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--ink);
+    color: #fff;
+    padding: 0.35rem 0.6rem;
+    border-radius: 4px;
+    font-size: 0.72rem;
+    font-weight: 400;
+    white-space: normal;
+    width: max-content;
+    max-width: 220px;
+    text-align: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+    z-index: 10;
+}
+.oecd-tag:hover::after,
+.oecd-tag:focus::after {
+    opacity: 1;
 }
 
 /* Paper cards (used on browse and splash pages) */

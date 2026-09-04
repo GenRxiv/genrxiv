@@ -96,12 +96,16 @@ def parse_classification(classification: str) -> tuple[str, str, str, str, str, 
 def classification_tag(classification: str) -> str:
     """Render a colored subject tag for a classification string.
 
+    Uses data-tooltip (CSS-based) instead of the title attribute so
+    tooltips work on touch devices (iPad, iPhone) via tap-to-focus.
+
     E.g., 'Natural sciences > Computer and information sciences' becomes:
-    <span class="oecd-tag" style="color:#2F5CFF;background:#E4E9FF;border-color:#2F5CFF">N·CS</span>
+    <span class="oecd-tag" tabindex="0" data-tooltip="..." style="...">N·CS</span>
     """
     domain, subdomain, letter, color, bg, sub_code = parse_classification(classification)
     label = f"{letter}·{sub_code}" if sub_code else letter
     return (
-        f'<span class="oecd-tag" style="color:{color};background:{bg};border-color:{color}" '
-        f'title="{classification}">{label}</span>'
+        f'<span class="oecd-tag" tabindex="0" '
+        f'style="color:{color};background:{bg};border-color:{color}" '
+        f'data-tooltip="{classification}">{label}</span>'
     )
