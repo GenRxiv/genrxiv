@@ -269,6 +269,20 @@ def _footer_html() -> str:
 </footer>"""
 
 
+def _asset_version() -> str:
+    """Cache-busting version string for static assets.
+
+    Uses the mtime of this file so it changes whenever the code is
+    updated and the container is rebuilt. This forces Cloudflare and
+    browsers to fetch fresh CSS/JS instead of serving stale caches.
+    """
+    import os
+    try:
+        return str(int(os.path.getmtime(__file__)))
+    except OSError:
+        return "1"
+
+
 def _page(
     title: str,
     body: str,
@@ -286,12 +300,13 @@ def _page(
     page_title = title if raw_title else f"{title} &middot; {config.site_name}"
     if wrap_container:
         body = f'<div class="container">\n{body}\n</div>'
+    v = _asset_version()
     css_links = ""
     if extra_css_files:
-        css_links = "\n".join(f'<link rel="stylesheet" href="{f}">' for f in extra_css_files)
+        css_links = "\n".join(f'<link rel="stylesheet" href="{f}?v={v}">' for f in extra_css_files)
     js_links = ""
     if extra_js_files:
-        js_links = "\n".join(f'<script defer src="{f}"></script>' for f in extra_js_files)
+        js_links = "\n".join(f'<script defer src="{f}?v={v}"></script>' for f in extra_js_files)
     html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -307,7 +322,7 @@ def _page(
 <link rel="icon" href="/favicon-16.png" type="image/png" sizes="16x16">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="alternate" type="application/atom+xml" title="{config.site_name} — Recent Articles" href="/feed.xml">
-<link rel="stylesheet" href="/css/page.css">
+<link rel="stylesheet" href="/css/page.css?v={v}">
 {css_links}
 {f"<style>{extra_css}</style>" if extra_css else ""}
 {extra_head}
