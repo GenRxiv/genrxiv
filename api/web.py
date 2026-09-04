@@ -1440,11 +1440,36 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 
-// Clear the flag when the confirm form is submitted
+// Intercept confirm form submit — post via fetch, redirect to submission page
 document.addEventListener('DOMContentLoaded', function() {
     var confirmForm = document.getElementById('confirm-form');
     if (confirmForm) {
-        confirmForm.addEventListener('submit', function() { _submitConfirmed = true; });
+        confirmForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            _submitConfirmed = true;
+            var btn = confirmForm.querySelector('button[type="submit"]');
+            btn.disabled = true;
+            btn.textContent = 'Submitting...';
+            fetch('/api/submit', {
+                method: 'POST',
+                body: new FormData(confirmForm),
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.id) {
+                    window.location.href = '/submit/done/' + data.id;
+                } else {
+                    alert('Submission failed: ' + (data.detail || JSON.stringify(data)));
+                    btn.disabled = false;
+                    btn.textContent = 'Confirm and submit';
+                }
+            })
+            .catch(function(err) {
+                alert('Submission failed: ' + err);
+                btn.disabled = false;
+                btn.textContent = 'Confirm and submit';
+            });
+        });
     }
 });
 """
@@ -1577,6 +1602,70 @@ def submit_page(request: Request):
     </div>
     """
     return _page("Submit", body, author, extra_css=SUBMIT_CSS, extra_js=submit_js, current_path="/submit")
+
+
+@router.get("/submit/done/{article_id}", include_in_schema=False, response_class=HTMLResponse)
+def submit_done_page(article_id: int, request: Request):
+    """Show submission confirmation with rendered article preview."""
+    author = require_author(request)
+    with get_conn().connection() as conn:
+        article = conn.execute(
+            """SELECT id, ark, title, abstract, status, version, submitted_at,
+                      source_markdown, subjects
+               FROM articles WHERE id = %s AND submitted_by = %s""",
+            (article_id, author["id"]),
+        ).fetchone()
+        if not article:
+            raise HTTPException(404, "Submission not found")
+        author_rows = conn.execute(
+            """SELECT a.orcid, a.name FROM authors a
+               JOIN article_authors aa ON a.id = aa.author_id
+               WHERE aa.article_id = %s ORDER BY aa."order\"""",
+            (article_id,),
+        ).fetchall()
+
+    # Render the article HTML
+    from articles import render_html
+    try:
+        article_html = render_html(article["source_markdown"])
+    except Exception:
+        article_html = '<p class="empty">Preview rendering failed.</p>'
+
+    ark = article["ark"] or "(pending)"
+    authors_html = ", ".join(
+        f'{a["name"]} <span class="orcid">{a["orcid"]}</span>' for a in author_rows
+    )
+    subjects = article["subjects"] or []
+    subjects_html = " ".join(
+        f'<span class="subject-tag">{s}</span>' for s in subjects
+    )
+
+    body = f"""
+    <div class="card" style="margin-bottom:1.5rem;border-left:4px solid #2D7A3E">
+        <h2 style="color:#2D7A3E">Submission received</h2>
+        <p>Your paper has been submitted and is awaiting moderation.</p>
+        <p style="margin-top:0.5rem">
+            <strong>Status:</strong> <span class="status-badge status-pending">pending</span>
+            &middot; <strong>ARK:</strong> {ark}
+            &middot; <strong>Version:</strong> {article["version"]}
+        </p>
+        <p style="margin-top:0.8rem">
+            <a href="/dashboard" class="btn btn-primary">Go to My Submissions</a>
+            <a href="/submit" class="btn" style="margin-left:0.5rem">Submit another paper</a>
+        </p>
+    </div>
+
+    <h1>{article["title"]}</h1>
+    <div class="meta" style="margin-bottom:1rem">
+        <p><strong>Authors:</strong> {authors_html}</p>
+        <p><strong>Subjects:</strong> {subjects_html}</p>
+    </div>
+
+    <div class="article-content">
+        {article_html}
+    </div>
+    """
+    return _page("Submission Received", body, author, current_path="/submit")
 
 
 @router.get("/submit-version/{article_id}", include_in_schema=False, response_class=HTMLResponse)
