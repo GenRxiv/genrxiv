@@ -1521,7 +1521,7 @@ def submit_page(request: Request):
             <div class="form-group">
                 <div class="confirm-checkbox">
                     <input type="checkbox" name="reviewed" id="reviewed">
-                    <label for="reviewed">I confirm that this content was AI-generated, and I have reviewed and verified it for accuracy and integrity.</label>
+                    <label for="reviewed">I agree that even if this work was co-authored with AI, I have reviewed it for accuracy and integrity.</label>
                 </div>
                 <div class="confirm-checkbox">
                     <input type="checkbox" name="cc0_agree" id="cc0_agree">

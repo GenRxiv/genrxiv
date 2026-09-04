@@ -321,7 +321,7 @@ class TestWebPages:
         assert "Submit a Paper" in r.text
         assert "Subject classifications" in r.text
         assert "CC0" in r.text
-        assert "reviewed and verified" in r.text
+        assert "reviewed it for accuracy" in r.text
         assert "classification-rows" in r.text
         assert "Preview submission" in r.text
 
