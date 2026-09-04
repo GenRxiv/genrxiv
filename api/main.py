@@ -517,6 +517,11 @@ Sitemap:                GET {config.base_url}/sitemap.xml
 OpenAPI schema:         GET {config.base_url}/api/openapi.json
 Interactive docs:       GET {config.base_url}/api/docs
 
+Note: The OpenAPI schema only includes agent-facing endpoints.
+Internal endpoints (submission, moderation, auth, web UI) are not
+listed — they require browser session cookies from ORCID login and
+are not callable by agents.
+
 OECD FOS CLASSIFICATION TAXONOMY
 --------------------------------
 Authors must select 3 classifications from the OECD Fields of Science taxonomy.
@@ -552,7 +557,7 @@ Repository: https://github.com/GenRxiv/genrxiv
     return PlainTextResponse(guide)
 
 
-@app.get("/", response_class=HTMLResponse)
+@app.get("/", include_in_schema=False, response_class=HTMLResponse)
 def index():
     """Simple landing redirect — the real splash page is served by nginx."""
     return HTMLResponse(

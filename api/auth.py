@@ -186,7 +186,7 @@ def require_admin(request: Request) -> dict:
     return author
 
 
-@router.get("/orcid")
+@router.get("/orcid", include_in_schema=False)
 def orcid_login(request: Request, redirect: str = "/"):
     """Redirect to ORCID OAuth."""
     state = secrets.token_urlsafe(16)
@@ -197,7 +197,7 @@ def orcid_login(request: Request, redirect: str = "/"):
     return response
 
 
-@router.get("/orcid/callback")
+@router.get("/orcid/callback", include_in_schema=False)
 @limiter.limit("10 per minute")
 def orcid_callback(request: Request, code: str, state: str):
     """Handle ORCID OAuth callback."""
@@ -241,7 +241,7 @@ def orcid_callback(request: Request, code: str, state: str):
     return response
 
 
-@router.post("/logout")
+@router.post("/logout", include_in_schema=False)
 def logout(request: Request):
     """Destroy session and redirect to homepage."""
     token = request.cookies.get(SESSION_COOKIE)
@@ -254,7 +254,7 @@ def logout(request: Request):
     return response
 
 
-@router.get("/me")
+@router.get("/me", include_in_schema=False)
 def me(request: Request):
     """Current user info."""
     author = get_current_author(request)
@@ -275,7 +275,7 @@ class EmailUpdate(BaseModel):
     email: str | None = None
 
 
-@router.post("/me/email")
+@router.post("/me/email", include_in_schema=False)
 def update_email(request: Request, body: EmailUpdate):
     """Set or update the current author's email for notifications."""
     import re

@@ -332,7 +332,7 @@ def _article_card(article: dict, show_endorsements: bool = False) -> str:
 
 # ─── ORCID lookup for co-author entry ──────────────────────────────────────
 
-@router.get("/api/orcid-lookup/{orcid}")
+@router.get("/api/orcid-lookup/{orcid}", include_in_schema=False)
 def orcid_lookup(orcid: str, request: Request):
     """Look up an ORCID iD and return the name if known.
 
@@ -467,7 +467,7 @@ form.addEventListener('submit', async function (e) {
 """
 
 
-@router.get("/", response_class=HTMLResponse)
+@router.get("/", include_in_schema=False, response_class=HTMLResponse)
 def splash_page(request: Request):
     """Splash page — served through FastAPI so it shares the nav with all pages."""
     author = get_current_author(request)
@@ -623,7 +623,7 @@ def splash_page(request: Request):
 
 # ─── Browse page ───────────────────────────────────────────────────────────
 
-@router.get("/browse", response_class=HTMLResponse)
+@router.get("/browse", include_in_schema=False, response_class=HTMLResponse)
 def browse_page(
     request: Request,
     page: int = 1,
@@ -725,7 +725,7 @@ def browse_page(
 
 # ─── Subjects page ─────────────────────────────────────────────────────────
 
-@router.get("/subjects", response_class=HTMLResponse)
+@router.get("/subjects", include_in_schema=False, response_class=HTMLResponse)
 def subjects_page(request: Request):
     """Subject cloud."""
     author = get_current_author(request)
@@ -757,7 +757,7 @@ def subjects_page(request: Request):
     return _page("Subjects", body, author, current_path="/subjects")
 
 
-@router.get("/stats", response_class=HTMLResponse)
+@router.get("/stats", include_in_schema=False, response_class=HTMLResponse)
 def stats_page(request: Request):
     """Public statistics page."""
     author = get_current_author(request)
@@ -837,7 +837,7 @@ def stats_page(request: Request):
 
 # ─── Subject articles page ─────────────────────────────────────────────────
 
-@router.get("/subjects/{subject:path}/articles", response_class=HTMLResponse)
+@router.get("/subjects/{subject:path}/articles", include_in_schema=False, response_class=HTMLResponse)
 def subject_articles(subject: str, request: Request, page: int = 1, per_page: int = 20):
     """Articles by subject."""
     from urllib.parse import unquote
@@ -877,7 +877,7 @@ def subject_articles(subject: str, request: Request, page: int = 1, per_page: in
 
 # ─── Author profile page ───────────────────────────────────────────────────
 
-@router.get("/author/{orcid:path}", response_class=HTMLResponse)
+@router.get("/author/{orcid:path}", include_in_schema=False, response_class=HTMLResponse)
 def author_page(orcid: str, request: Request):
     """Author profile page."""
     from urllib.parse import unquote
@@ -1512,7 +1512,7 @@ document.addEventListener('DOMContentLoaded', function() {
 """
 
 
-@router.get("/submit", response_class=HTMLResponse)
+@router.get("/submit", include_in_schema=False, response_class=HTMLResponse)
 def submit_page(request: Request):
     """Submission form with ORCID-based author entry and preview/confirm flow."""
     author = get_current_author(request)
@@ -1641,7 +1641,7 @@ def submit_page(request: Request):
     return _page("Submit", body, author, extra_css=SUBMIT_CSS, extra_js=submit_js, current_path="/submit")
 
 
-@router.get("/submit-version/{article_id}", response_class=HTMLResponse)
+@router.get("/submit-version/{article_id}", include_in_schema=False, response_class=HTMLResponse)
 def submit_version_page(article_id: int, request: Request):
     """Submit a new version of an existing article."""
     author = require_author(request)
@@ -1728,7 +1728,7 @@ def submit_version_page(article_id: int, request: Request):
 
 # ─── Dashboard (author's submissions) ──────────────────────────────────────
 
-@router.get("/dashboard", response_class=HTMLResponse)
+@router.get("/dashboard", include_in_schema=False, response_class=HTMLResponse)
 def dashboard_page(request: Request):
     """Author's submissions dashboard."""
     author = require_author(request)
@@ -1810,7 +1810,7 @@ def dashboard_page(request: Request):
 
 # ─── Profile page ──────────────────────────────────────────────────────────
 
-@router.get("/profile", response_class=HTMLResponse)
+@router.get("/profile", include_in_schema=False, response_class=HTMLResponse)
 def profile_page(request: Request):
     """Author profile page with email settings."""
     author = require_author(request)
@@ -1914,7 +1914,7 @@ def profile_page(request: Request):
     return _page("Profile", body, author, current_path="/profile")
 
 
-@router.post("/profile/email")
+@router.post("/profile/email", include_in_schema=False)
 def update_profile_email(request: Request, email: str = Form(default="")):
     """Handle email form submission from profile page."""
     import re
@@ -1931,7 +1931,7 @@ def update_profile_email(request: Request, email: str = Form(default="")):
     return RedirectResponse(url="/profile?saved=email", status_code=303)
 
 
-@router.post("/profile/affiliation")
+@router.post("/profile/affiliation", include_in_schema=False)
 def update_profile_affiliation(request: Request, affiliation: str = Form(default="")):
     """Handle affiliation form submission from profile page."""
     author = require_author(request)
@@ -1947,7 +1947,7 @@ def update_profile_affiliation(request: Request, affiliation: str = Form(default
 
 # ─── Admin page ────────────────────────────────────────────────────────────
 
-@router.get("/admin", response_class=HTMLResponse)
+@router.get("/admin", include_in_schema=False, response_class=HTMLResponse)
 def admin_page(request: Request):
     """Admin moderation queue and stats."""
     admin = require_admin(request)
@@ -2029,7 +2029,7 @@ def admin_page(request: Request):
 
 # ─── Admin submission detail page ──────────────────────────────────────────
 
-@router.get("/admin/submission/{article_id}", response_class=HTMLResponse)
+@router.get("/admin/submission/{article_id}", include_in_schema=False, response_class=HTMLResponse)
 def admin_submission_detail(article_id: int, request: Request):
     """View submission details (admin only)."""
     admin = require_admin(request)
@@ -2110,7 +2110,7 @@ class ModerationForm(BaseModel):
     note: str = ""
 
 
-@router.post("/admin/articles/{article_id}")
+@router.post("/admin/articles/{article_id}", include_in_schema=False)
 def moderate_article_form(
     article_id: int,
     request: Request,

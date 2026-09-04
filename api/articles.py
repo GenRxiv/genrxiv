@@ -642,7 +642,7 @@ async def validate_submission(
     }
 
 
-@router.post("/api/submit")
+@router.post("/api/submit", include_in_schema=False)
 @limiter.limit("5 per minute")
 async def submit(
     request: Request,
@@ -806,7 +806,7 @@ async def submit(
 
 # ─── Author's own submissions ──────────────────────────────────────────────
 
-@router.get("/api/submissions")
+@router.get("/api/submissions", include_in_schema=False)
 def my_submissions(_author: dict = Depends(require_author)):
     """List the current author's submissions."""
     with get_conn().connection() as conn:
@@ -1120,7 +1120,7 @@ class ModerationAction(BaseModel):
     note: str = ""
 
 
-@router.get("/admin/queue")
+@router.get("/admin/queue", include_in_schema=False)
 def moderation_queue(_admin: dict = Depends(require_admin)):
     """List pending submissions."""
     with get_conn().connection() as conn:
@@ -1135,7 +1135,7 @@ def moderation_queue(_admin: dict = Depends(require_admin)):
     return {"items": rows}
 
 
-@router.patch("/admin/articles/{article_id}")
+@router.patch("/admin/articles/{article_id}", include_in_schema=False)
 def moderate_article(
     article_id: int,
     action: ModerationAction,
@@ -1212,7 +1212,7 @@ def moderate_article(
 
 # ─── Stats ─────────────────────────────────────────────────────────────────
 
-@router.get("/admin/stats")
+@router.get("/admin/stats", include_in_schema=False)
 def admin_stats(_admin: dict = Depends(require_admin)):
     """Aggregate stats."""
     with get_conn().connection() as conn:
@@ -1241,7 +1241,7 @@ def admin_stats(_admin: dict = Depends(require_admin)):
 
 # ─── Maintenance mode (admin) ──────────────────────────────────────────────
 
-@router.get("/admin/maintenance")
+@router.get("/admin/maintenance", include_in_schema=False)
 def get_maintenance_status(_admin: dict = Depends(require_admin)):
     """Get current maintenance mode status."""
     from db import is_maintenance_mode, get_setting
@@ -1251,7 +1251,7 @@ def get_maintenance_status(_admin: dict = Depends(require_admin)):
     }
 
 
-@router.post("/admin/maintenance")
+@router.post("/admin/maintenance", include_in_schema=False)
 def set_maintenance_status(
     enabled: bool = Form(...),
     message: str = Form(""),
