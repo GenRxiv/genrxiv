@@ -118,6 +118,85 @@ def _check_duplicate_content(md_text: str, title: str, abstract: str) -> list[st
     return [e for e in all_errors if any(kw in e.lower() for kw in dup_keywords)]
 
 
+def _content_hash(md_text: str) -> str:
+    """Compute a normalised hash of the markdown body for duplicate detection.
+
+    Strips YAML front matter and whitespace differences so that
+    re-uploads of the same paper (with minor formatting changes) still
+    match.
+    """
+    body = _strip_front_matter(md_text)
+    # Normalise: collapse whitespace, strip leading/trailing
+    normalised = re.sub(r"\s+", " ", body).strip().lower()
+    return hashlib.sha256(normalised.encode("utf-8")).hexdigest()
+
+
+def check_duplicate_submission(
+    title: str,
+    md_text: str,
+    author_id: int,
+    exclude_id: int | None = None,
+) -> list[dict]:
+    """Check for duplicate submissions in the database.
+
+    Returns a list of matching articles (id, title, status, submitted_at).
+    A match is either:
+    - The same content hash (normalised body text matches)
+    - The same title (case-insensitive) by the same author
+
+    Excludes the article with ``exclude_id`` (used when submitting a new
+    version, which legitimately has the same content).
+    """
+    body = _strip_front_matter(md_text)
+    normalised = re.sub(r"\s+", " ", body).strip().lower()
+    content_hash = hashlib.sha256(normalised.encode("utf-8")).hexdigest()
+    title_lower = title.strip().lower()
+
+    # Fetch candidate rows by title, then compare content hash in Python.
+    # This avoids a full-table scan on the large source_markdown column.
+    with get_conn().connection() as conn:
+        if exclude_id is not None:
+            rows = conn.execute(
+                """SELECT id, title, status, submitted_at, source_markdown
+                   FROM articles
+                   WHERE LOWER(TRIM(title)) = %s AND id != %s
+                   ORDER BY id""",
+                (title_lower, exclude_id),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """SELECT id, title, status, submitted_at, source_markdown
+                   FROM articles
+                   WHERE LOWER(TRIM(title)) = %s
+                   ORDER BY id""",
+                (title_lower,),
+            ).fetchall()
+
+    matches = []
+    for r in rows:
+        row_body = _strip_front_matter(r["source_markdown"])
+        row_normalised = re.sub(r"\s+", " ", row_body).strip().lower()
+        row_hash = hashlib.sha256(row_normalised.encode("utf-8")).hexdigest()
+        if row_hash == content_hash:
+            matches.append({
+                "id": r["id"],
+                "title": r["title"],
+                "status": r["status"],
+                "submitted_at": r["submitted_at"].isoformat() if r["submitted_at"] else None,
+                "match_type": "content",
+            })
+        else:
+            # Same title, different content — still flag it
+            matches.append({
+                "id": r["id"],
+                "title": r["title"],
+                "status": r["status"],
+                "submitted_at": r["submitted_at"].isoformat() if r["submitted_at"] else None,
+                "match_type": "title",
+            })
+    return matches
+
+
 def _check_content_issues(md_text: str, title: str, abstract: str) -> tuple[list[str], list[str]]:
     """Check for content issues in the Markdown file.
 
@@ -517,6 +596,80 @@ def get_article_authors(article_id: int) -> list[dict]:
     return rows
 
 
+def get_article_by_id_for_author(article_id: int, author_id: int) -> dict | None:
+    """Fetch an article by id, but only if the given author submitted it.
+
+    Unlike ``get_article_by_ark`` this does not filter on status, so it returns
+    pending/rejected articles too — used for the author's own preview and
+    delete flows on the My Submissions dashboard.
+    """
+    with get_conn().connection() as conn:
+        row = conn.execute(
+            """SELECT a.*, array_agg(aa.author_id ORDER BY aa."order") AS author_ids
+               FROM articles a
+               LEFT JOIN article_authors aa ON a.id = aa.article_id
+               WHERE a.id = %s AND a.submitted_by = %s
+               GROUP BY a.id""",
+            (article_id, author_id),
+        ).fetchone()
+    return row
+
+
+# Statuses an author is allowed to delete their own submission in.
+# Published articles carry a persistent ARK and may be cited externally, so
+# they cannot be removed by the author (a withdrawal/tombstone flow would be
+# used instead, which is out of scope here).
+DELETABLE_STATUSES = ("pending", "rejected")
+
+
+def delete_article(article_id: int, author_id: int) -> dict:
+    """Delete an author's own submission.
+
+    Only allowed when the article was submitted by ``author_id`` and its status
+    is one of ``DELETABLE_STATUSES`` (pending or rejected). Removes the article
+    row (cascading to article_authors and downloads) and any rendered files on
+    disk. Returns a descriptor of what was removed.
+    """
+    with get_conn().connection() as conn:
+        row = conn.execute(
+            "SELECT id, title, status, submitted_by, html_path, pdf_path FROM articles WHERE id = %s",
+            (article_id,),
+        ).fetchone()
+        if not row:
+            raise HTTPException(404, "Article not found")
+        if row["submitted_by"] != author_id:
+            # Don't leak existence to non-owners — return 404 rather than 403.
+            raise HTTPException(404, "Article not found")
+        if row["status"] not in DELETABLE_STATUSES:
+            raise HTTPException(
+                400,
+                f"Only {'/'.join(DELETABLE_STATUSES)} submissions can be deleted "
+                f"(this one is {row['status']})",
+            )
+
+        # Remove rendered artefacts (html/pdf) from disk if present.
+        for rel in (row.get("html_path"), row.get("pdf_path")):
+            if rel:
+                target = safe_resolve_file(rel)
+                if target and target.exists():
+                    try:
+                        target.unlink()
+                    except OSError:
+                        pass
+        # Best-effort: remove the per-article directory if now empty.
+        article_dir = Path(config.files_dir) / str(article_id)
+        if article_dir.is_dir():
+            try:
+                article_dir.rmdir()
+            except OSError:
+                pass
+
+        conn.execute("DELETE FROM articles WHERE id = %s", (article_id,))
+        conn.commit()
+
+    return {"id": article_id, "title": row["title"], "status": row["status"]}
+
+
 def build_jsonld(article: dict, authors: list[dict]) -> dict:
     """Build Schema.org ScholarArticle JSON-LD."""
     base = config.base_url
@@ -681,6 +834,29 @@ async def validate_submission(
         errors.extend(content_errors)
         hints.extend(content_hints)
 
+        # Check for duplicate submissions in the database (hint only)
+        if title:
+            try:
+                duplicates = check_duplicate_submission(title, md_text, author_id=0)
+                if duplicates:
+                    content_dups = [d for d in duplicates if d["match_type"] == "content"]
+                    if content_dups:
+                        hints.append(
+                            f"Note: This paper appears to be a duplicate of an existing "
+                            f"submission (id={content_dups[0]['id']}, "
+                            f"status={content_dups[0]['status']}). "
+                            f"Submitting it will be rejected unless it is a new version."
+                        )
+                    else:
+                        hints.append(
+                            f"Note: A submission with the same title already exists "
+                            f"(id={duplicates[0]['id']}, "
+                            f"status={duplicates[0]['status']}). "
+                            f"If this is a different paper, consider using a more specific title."
+                        )
+            except Exception:
+                pass  # Don't let duplicate check failure block validation
+
         if "$" in md_text:
             dollar_count = md_text.count("$")
             if dollar_count % 2 != 0:
@@ -784,6 +960,26 @@ async def submit(
     if dup_errors:
         raise HTTPException(400, "; ".join(dup_errors))
 
+    # Check for duplicate submissions already in the database.
+    # An exact content match is blocked; a title-only match is allowed
+    # but the user is informed (they may be submitting a related paper).
+    duplicates = check_duplicate_submission(
+        title, md_text, _author["id"], exclude_id=supersedes_id,
+    )
+    content_dups = [d for d in duplicates if d["match_type"] == "content"]
+    if content_dups and not supersedes_id:
+        dup_info = "; ".join(
+            f'"{d["title"]}" (id={d["id"]}, status={d["status"]})'
+            for d in content_dups
+        )
+        raise HTTPException(
+            409,
+            f"This paper appears to be a duplicate of an existing submission: {dup_info}. "
+            f"If you meant to submit a new version, use the 'Submit new version' button "
+            f"on your My Submissions page. If the existing submission is pending or rejected, "
+            f"you can delete it and resubmit."
+        )
+
     # Merge form metadata into the Markdown as YAML front matter.
     # The stored file is the complete document — front matter + body.
     md_text = _merge_front_matter(md_text, title, author_list, abstract, subj_list)
@@ -879,6 +1075,18 @@ def my_submissions(_author: dict = Depends(require_author)):
             (_author["id"],),
         ).fetchall()
     return {"items": rows}
+
+
+@router.delete("/api/submissions/{article_id}", include_in_schema=False)
+def delete_submission(article_id: int, _author: dict = Depends(require_author)):
+    """Delete the author's own pending or rejected submission.
+
+    Published articles cannot be deleted (they carry a persistent ARK
+    and may be cited externally). Only the submitter can delete their
+    own submission.
+    """
+    result = delete_article(article_id, _author["id"])
+    return result
 
 
 # ─── Public article listing ────────────────────────────────────────────────

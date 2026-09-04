@@ -13,7 +13,7 @@ from datetime import datetime
 from urllib.parse import quote
 
 from fastapi import APIRouter, Request, Depends, HTTPException, Form
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from pydantic import BaseModel
 
 from config import config
@@ -1793,9 +1793,15 @@ def submit_version_page(article_id: int, request: Request):
 # ─── Dashboard (author's submissions) ──────────────────────────────────────
 
 @router.get("/dashboard", include_in_schema=False, response_class=HTMLResponse)
-def dashboard_page(request: Request):
+def dashboard_page(request: Request, deleted: str = ""):
     """Author's submissions dashboard."""
     author = require_author(request)
+    deleted_banner = ""
+    if deleted:
+        deleted_banner = (
+            '<div class="card" style="margin-bottom:1.5rem;border-left:4px solid #2D7A3E;background:#f0fff4">'
+            "Submission deleted.</div>"
+        )
     with get_conn().connection() as conn:
         rows = conn.execute(
             """SELECT id, ark, title, status, version, submitted_at, published_at
@@ -1833,6 +1839,7 @@ def dashboard_page(request: Request):
 
     if not rows:
         body = f"""
+        {deleted_banner}
         {email_section}
         <div class="empty">
             <h3>No submissions yet</h3>
@@ -1849,9 +1856,12 @@ def dashboard_page(request: Request):
             submitted = _format_date(r.get("submitted_at"))
             link = f'<a href="/article/{r["ark"]}">{r["title"]}</a>' if r["ark"] else r["title"]
             version_badge = f'<span class="status-badge" style="background:#e4e9ff;color:#2f5cff">v{r["version"]}</span>' if r.get("version") and r["version"] > 1 else ""
-            new_version_link = ""
+            actions = [f'<a href="/dashboard/preview/{r["id"]}" class="btn" style="font-size:0.8rem;padding:0.3rem 0.8rem">Preview</a>']
             if r["status"] in ("published", "superseded"):
-                new_version_link = f' <a href="/submit-version/{r["id"]}" class="btn" style="font-size:0.8rem;padding:0.3rem 0.8rem">Submit new version</a>'
+                actions.append(f'<a href="/submit-version/{r["id"]}" class="btn" style="font-size:0.8rem;padding:0.3rem 0.8rem">Submit new version</a>')
+            if r["status"] in ("pending", "rejected"):
+                actions.append(f'<a href="/dashboard/delete/{r["id"]}" class="btn btn-danger" style="font-size:0.8rem;padding:0.3rem 0.8rem">Delete</a>')
+            actions_html = " ".join(actions)
             cards.append(f"""<div class="card">
 <h2>{link}</h2>
 <div class="meta">
@@ -1861,15 +1871,213 @@ def dashboard_page(request: Request):
     {f'&middot; Published {published}' if published else ''}
     &middot; ARK: {ark}
 </div>
-<div style="margin-top:0.5rem">{new_version_link}</div>
+<div style="margin-top:0.5rem">{actions_html}</div>
 </div>""")
         body = f"""
         <h1>My Submissions</h1>
+        {deleted_banner}
         {email_section}
         <p style="margin-bottom:1.5rem"><a href="/submit" class="btn btn-primary">Submit new paper</a></p>
         {''.join(cards)}
         """
     return _page("My Submissions", body, author, current_path="/dashboard")
+
+
+# ─── Submission preview & delete (author's own submissions) ────────────────
+#
+# The public /article/{ark} routes only serve *published* articles (an ARK is
+# only assigned on approval), so pending/rejected submissions have no public
+# view. These dashboard-scoped routes let the submitter preview their own
+# submission in any status, and delete it while it is still unpublished.
+
+_ARTICLE_CONTENT_CSS = """
+.article-content { max-width: 800px; margin: 0 auto; line-height: 1.6; }
+.article-content h1, .article-content h2, .article-content h3 { margin-top: 1.5em; margin-bottom: 0.5em; }
+.article-content h1 + h2, .article-content h2 + h3 { margin-top: 0.5em; }
+.article-content p { margin: 0.8em 0; }
+.article-content pre { background: #f5f2eb; padding: 1em; border-radius: 4px; overflow-x: auto; }
+.article-content code { font-family: 'IBM Plex Mono', monospace; }
+.article-content blockquote { border-left: 3px solid #c9c3b5; margin: 1em 0; padding-left: 1em; color: #555; }
+.article-content table { border-collapse: collapse; margin: 1em 0; }
+.article-content th, .article-content td { border: 1px solid #c9c3b5; padding: 0.5em; }
+.article-content img { max-width: 100%; height: auto; }
+.katex-display { overflow-x: auto; overflow-y: hidden; padding: 0.5rem 0; }
+.orcid { font-size: 0.85em; color: var(--muted); }
+.subject-tag { display: inline-block; background: var(--accent-soft); color: var(--accent); padding: 0.2em 0.6em; border-radius: 3px; font-size: 0.85rem; margin: 0.2em; }
+"""
+
+
+def _author_own_article(article_id: int, author: dict):
+    """Load an article owned by the author (submitter), or 404.
+
+    Used by the preview/delete dashboard routes. Returns the article row
+    regardless of status so the author can preview pending/rejected work.
+    """
+    from articles import get_article_by_id_for_author
+    article = get_article_by_id_for_author(article_id, author["id"])
+    if not article:
+        raise HTTPException(404, "Submission not found")
+    return article
+
+
+@router.get("/dashboard/preview/{article_id}", include_in_schema=False, response_class=HTMLResponse)
+def dashboard_preview_page(article_id: int, request: Request):
+    """Render the author's own submission as HTML (any status)."""
+    author = require_author(request)
+    article = _author_own_article(article_id, author)
+
+    with get_conn().connection() as conn:
+        author_rows = conn.execute(
+            """SELECT a.orcid, a.name FROM authors a
+               JOIN article_authors aa ON a.id = aa.author_id
+               WHERE aa.article_id = %s ORDER BY aa."order\"""",
+            (article_id,),
+        ).fetchall()
+
+    from articles import render_html
+    import re as _re
+    article_body = ""
+    katex_head = ""
+    try:
+        full_html = render_html(article["source_markdown"])
+        m = _re.search(r"<body[^>]*>(.*)</body>", full_html, _re.DOTALL)
+        article_body = m.group(1) if m else full_html
+        katex_links = _re.findall(r'<link[^>]*katex[^>]*/>', full_html)
+        katex_scripts = _re.findall(r'<script[^>]*katex[^>]*></script>', full_html)
+        auto_render = _re.findall(r'<script[^>]*auto-render[^>]*>.*?</script>', full_html, _re.DOTALL)
+        katex_head = "\n".join(katex_links + katex_scripts + auto_render)
+    except Exception:
+        article_body = '<p class="empty">Preview rendering failed.</p>'
+
+    ark = article["ark"] or "(pending)"
+    authors_html = ", ".join(
+        f'{a["name"]} <span class="orcid">{a["orcid"]}</span>' for a in author_rows
+    )
+    subjects = article["subjects"] or []
+    subjects_html = " ".join(
+        f'<span class="subject-tag">{s}</span>' for s in subjects
+    )
+    status = article["status"]
+    status_note = ""
+    if status == "pending":
+        status_note = (
+            '<div class="card" style="margin-bottom:1.5rem;border-left:4px solid #b48a00;background:#fffdf0">'
+            '<strong>Awaiting moderation.</strong> This preview is only visible to you '
+            "and the moderators until it is approved and published.</div>"
+        )
+    elif status == "rejected":
+        status_note = (
+            '<div class="card" style="margin-bottom:1.5rem;border-left:4px solid #c0392b;background:#fdf0f0">'
+            "<strong>Rejected.</strong> This submission was not accepted for publication.</div>"
+        )
+
+    body = f"""
+    <div class="meta" style="margin-bottom:1rem">
+        <span class="status-badge status-{status}">{status}</span>
+        &middot; <strong>ARK:</strong> {ark}
+        &middot; <strong>Version:</strong> v{article["version"]}
+        <span style="margin-left:1rem">
+            <a href="/dashboard/preview/{article_id}/markdown" class="btn" style="font-size:0.8rem;padding:0.3rem 0.8rem">Markdown</a>
+            <a href="/dashboard/preview/{article_id}/pdf" class="btn" style="font-size:0.8rem;padding:0.3rem 0.8rem">PDF</a>
+        </span>
+    </div>
+    {status_note}
+    <h1>{article["title"]}</h1>
+    <div class="meta" style="margin-bottom:1rem">
+        <p><strong>Authors:</strong> {authors_html}</p>
+        <p><strong>Subjects:</strong> {subjects_html}</p>
+    </div>
+    <div class="article-content">
+        {article_body}
+    </div>
+    <div style="margin-top:1.5rem"><a href="/dashboard">&larr; Back to My Submissions</a></div>
+    """
+    return _page(
+        f"Preview: {article['title']}",
+        body,
+        author,
+        extra_css=_ARTICLE_CONTENT_CSS,
+        extra_head=katex_head,
+        current_path="/dashboard",
+    )
+
+
+@router.get("/dashboard/preview/{article_id}/markdown", include_in_schema=False)
+def dashboard_preview_markdown(article_id: int, request: Request):
+    """Download the original Markdown source of the author's own submission."""
+    author = require_author(request)
+    article = _author_own_article(article_id, author)
+    filename = f"{article['ark'].replace('/', '_') if article['ark'] else f'submission-{article_id}'}.md"
+    return Response(
+        content=article["source_markdown"].encode("utf-8"),
+        media_type="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/dashboard/preview/{article_id}/pdf", include_in_schema=False)
+def dashboard_preview_pdf(article_id: int, request: Request):
+    """Render the author's own submission as a PDF on the fly."""
+    author = require_author(request)
+    article = _author_own_article(article_id, author)
+    from articles import render_pdf
+    try:
+        pdf_bytes = render_pdf(article["source_markdown"])
+    except Exception:
+        raise HTTPException(502, "PDF rendering failed. The conversion service may be unavailable.")
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'inline; filename="preview-{article_id}.pdf"',
+        },
+    )
+
+
+@router.get("/dashboard/delete/{article_id}", include_in_schema=False, response_class=HTMLResponse)
+def dashboard_delete_confirm(article_id: int, request: Request):
+    """Confirmation page before deleting an author's own submission."""
+    author = require_author(request)
+    article = _author_own_article(article_id, author)
+    status = article["status"]
+    from articles import DELETABLE_STATUSES
+    if status not in DELETABLE_STATUSES:
+        body = f"""
+        <div class="card" style="border-left:4px solid #c0392b">
+            <h2>Cannot delete this submission</h2>
+            <p>This submission is <strong>{status}</strong>. Only
+            {'/'.join(DELETABLE_STATUSES)} submissions can be deleted — published
+            articles carry a persistent ARK and may already be cited externally.</p>
+            <p style="margin-top:1rem"><a href="/dashboard" class="btn">&larr; Back to My Submissions</a></p>
+        </div>
+        """
+        return _page("Cannot delete", body, author, current_path="/dashboard")
+    body = f"""
+    <div class="card" style="border-left:4px solid #c0392b">
+        <h2>Delete submission?</h2>
+        <p>You are about to permanently delete your submission
+        <strong>&ldquo;{article['title']}&rdquo;</strong>
+        (status: <span class="status-badge status-{status}">{status}</span>).</p>
+        <p style="margin-top:0.5rem;color:#555;font-size:0.9rem">
+            This removes the stored Markdown, any rendered HTML/PDF, and the
+            submission record. This action cannot be undone.
+        </p>
+        <form method="post" action="/dashboard/delete/{article_id}" style="margin-top:1rem">
+            <button type="submit" class="btn btn-danger">Yes, delete this submission</button>
+            <a href="/dashboard" class="btn" style="margin-left:0.5rem">Cancel</a>
+        </form>
+    </div>
+    """
+    return _page("Delete submission?", body, author, current_path="/dashboard")
+
+
+@router.post("/dashboard/delete/{article_id}", include_in_schema=False)
+def dashboard_delete_submit(article_id: int, request: Request):
+    """Delete an author's own pending/rejected submission, then redirect."""
+    author = require_author(request)
+    from articles import delete_article
+    delete_article(article_id, author["id"])
+    return RedirectResponse(url="/dashboard?deleted=1", status_code=303)
 
 
 # ─── Profile page ──────────────────────────────────────────────────────────

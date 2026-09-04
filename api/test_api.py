@@ -1087,6 +1087,220 @@ class TestAuthGated:
             assert key in body
 
 
+# ─── 21b. Dashboard preview & delete (author's own submissions) ────────────
+
+def _insert_submission(db, status="pending", title="Pending Paper"):
+    """Insert a submission owned by the regular test author, return its id.
+
+    Unlike the seeded ``db['article_id']`` (which is published with an ARK),
+    this lets tests exercise the per-status preview/delete dashboard flows.
+    """
+    from db import get_conn
+    with get_conn().connection() as conn:
+        row = conn.execute(
+            """INSERT INTO articles
+                   (title, abstract, license, license_url, subjects,
+                    source_markdown, status, submitted_by)
+               VALUES (%s, %s, 'CC0',
+                       'https://creativecommons.org/publicdomain/zero/1.0/',
+                       ARRAY['AI'], %s, %s, %s)
+               RETURNING id""",
+            (title, "An abstract.", "# Title\n\nBody text.", status, db["author_id"]),
+        ).fetchone()
+        conn.execute(
+            """INSERT INTO article_authors (article_id, author_id, "order")
+               VALUES (%s, %s, 0)""",
+            (row["id"], db["author_id"]),
+        )
+        conn.commit()
+        return row["id"]
+
+
+class TestDashboardPreview:
+    @requires_db
+    def test_preview_requires_auth(self, client, db):
+        article_id = _insert_submission(db)
+        r = client.get(f"/dashboard/preview/{article_id}")
+        assert r.status_code == 401
+
+    @requires_db
+    def test_preview_pending_submission_renders_html(self, authed_client, db):
+        article_id = _insert_submission(db, title="My Pending Paper")
+        r = authed_client.get(f"/dashboard/preview/{article_id}")
+        assert r.status_code == 200
+        assert "text/html" in r.headers["content-type"]
+        # Title and the rendered body appear
+        assert "My Pending Paper" in r.text
+        # Pending banner is shown
+        assert "Awaiting moderation" in r.text
+        # Links to markdown and pdf variants
+        assert f"/dashboard/preview/{article_id}/markdown" in r.text
+        assert f"/dashboard/preview/{article_id}/pdf" in r.text
+
+    @requires_db
+    def test_preview_rejected_submission_shows_rejected_banner(self, authed_client, db):
+        article_id = _insert_submission(db, status="rejected", title="A Rejected One")
+        r = authed_client.get(f"/dashboard/preview/{article_id}")
+        assert r.status_code == 200
+        assert "Rejected" in r.text
+
+    @requires_db
+    def test_preview_published_submission_works(self, authed_client, db):
+        # The seeded article is published and owned by the regular author.
+        r = authed_client.get(f"/dashboard/preview/{db['article_id']}")
+        assert r.status_code == 200
+        assert "A Test Paper on AI-Generated Research" in r.text
+
+    @requires_db
+    def test_preview_nonexistent_returns_404(self, authed_client, db):
+        r = authed_client.get("/dashboard/preview/999999")
+        assert r.status_code == 404
+
+    @requires_db
+    def test_preview_other_authors_submission_returns_404(self, admin_client, db):
+        """The admin is not the submitter, so the article is not 'theirs'."""
+        article_id = _insert_submission(db, title="Not Yours")
+        r = admin_client.get(f"/dashboard/preview/{article_id}")
+        assert r.status_code == 404
+
+    @requires_db
+    def test_preview_markdown_downloads_source(self, authed_client, db):
+        article_id = _insert_submission(db)
+        r = authed_client.get(f"/dashboard/preview/{article_id}/markdown")
+        assert r.status_code == 200
+        assert "text/markdown" in r.headers["content-type"]
+        assert b"Body text." in r.content
+        assert "attachment" in r.headers["content-disposition"]
+
+    @requires_db
+    def test_preview_pdf_returns_pdf(self, authed_client, db):
+        article_id = _insert_submission(db)
+        r = authed_client.get(f"/dashboard/preview/{article_id}/pdf")
+        assert r.status_code == 200
+        assert "application/pdf" in r.headers["content-type"]
+        assert r.content.startswith(b"%PDF")
+
+    @requires_db
+    def test_preview_markdown_requires_auth(self, client, db):
+        article_id = _insert_submission(db)
+        assert client.get(f"/dashboard/preview/{article_id}/markdown").status_code == 401
+
+
+class TestDashboardDelete:
+    @requires_db
+    def test_delete_confirm_requires_auth(self, client, db):
+        article_id = _insert_submission(db)
+        assert client.get(f"/dashboard/delete/{article_id}").status_code == 401
+
+    @requires_db
+    def test_delete_confirm_pending_shows_confirmation(self, authed_client, db):
+        article_id = _insert_submission(db, title="To Be Deleted")
+        r = authed_client.get(f"/dashboard/delete/{article_id}")
+        assert r.status_code == 200
+        assert "Delete submission?" in r.text
+        assert "To Be Deleted" in r.text
+        assert "Yes, delete this submission" in r.text
+
+    @requires_db
+    def test_delete_confirm_published_shows_blocked_message(self, authed_client, db):
+        r = authed_client.get(f"/dashboard/delete/{db['article_id']}")
+        assert r.status_code == 200
+        assert "Cannot delete" in r.text
+
+    @requires_db
+    def test_delete_confirm_other_authors_submission_returns_404(self, admin_client, db):
+        article_id = _insert_submission(db)
+        r = admin_client.get(f"/dashboard/delete/{article_id}")
+        assert r.status_code == 404
+
+    @requires_db
+    def test_delete_post_pending_removes_submission(self, authed_client, db):
+        article_id = _insert_submission(db, title="Do Delete Me")
+        r = authed_client.post(f"/dashboard/delete/{article_id}", follow_redirects=False)
+        assert r.status_code == 303
+        assert r.headers["location"].startswith("/dashboard")
+        assert "deleted=1" in r.headers["location"]
+        # Following the redirect shows the deleted banner
+        r2 = authed_client.get(r.headers["location"])
+        assert r2.status_code == 200
+        assert "Submission deleted." in r2.text
+        # The submission is gone from the listing
+        assert "Do Delete Me" not in r2.text
+        # And gone from the database
+        from db import get_conn
+        with get_conn().connection() as conn:
+            row = conn.execute(
+                "SELECT 1 FROM articles WHERE id = %s", (article_id,)
+            ).fetchone()
+            assert row is None
+            # Cascade removed the author link too
+            row = conn.execute(
+                "SELECT 1 FROM article_authors WHERE article_id = %s", (article_id,)
+            ).fetchone()
+            assert row is None
+
+    @requires_db
+    def test_delete_post_rejected_removes_submission(self, authed_client, db):
+        article_id = _insert_submission(db, status="rejected", title="Rejected Deletion")
+        r = authed_client.post(f"/dashboard/delete/{article_id}", follow_redirects=False)
+        assert r.status_code == 303
+
+    @requires_db
+    def test_delete_post_published_is_blocked(self, authed_client, db):
+        r = authed_client.post(
+            f"/dashboard/delete/{db['article_id']}", follow_redirects=False
+        )
+        assert r.status_code == 400
+        from db import get_conn
+        with get_conn().connection() as conn:
+            row = conn.execute(
+                "SELECT 1 FROM articles WHERE id = %s", (db["article_id"],)
+            ).fetchone()
+            assert row is not None  # still present
+
+    @requires_db
+    def test_delete_post_other_authors_submission_returns_404(self, admin_client, db):
+        article_id = _insert_submission(db)
+        r = admin_client.post(f"/dashboard/delete/{article_id}", follow_redirects=False)
+        assert r.status_code == 404
+
+    @requires_db
+    def test_delete_post_nonexistent_returns_404(self, authed_client, db):
+        r = authed_client.post("/dashboard/delete/999999", follow_redirects=False)
+        assert r.status_code == 404
+
+    @requires_db
+    def test_delete_post_requires_auth(self, client, db):
+        article_id = _insert_submission(db)
+        r = client.post(f"/dashboard/delete/{article_id}", follow_redirects=False)
+        assert r.status_code == 401
+
+
+class TestDashboardButtons:
+    @requires_db
+    def test_dashboard_lists_preview_button_for_each_submission(self, authed_client, db):
+        pending_id = _insert_submission(db, title="A Pending One")
+        r = authed_client.get("/dashboard")
+        assert r.status_code == 200
+        # Preview button present for both the pending submission and the
+        # published seeded article
+        assert f"/dashboard/preview/{pending_id}" in r.text
+        assert f"/dashboard/preview/{db['article_id']}" in r.text
+        assert ">Preview<" in r.text
+
+    @requires_db
+    def test_dashboard_lists_delete_button_only_for_deletable(self, authed_client, db):
+        pending_id = _insert_submission(db, title="Deletable Pending")
+        rejected_id = _insert_submission(db, status="rejected", title="Deletable Rejected")
+        r = authed_client.get("/dashboard")
+        assert r.status_code == 200
+        # Delete button present for pending and rejected...
+        assert f"/dashboard/delete/{pending_id}" in r.text
+        assert f"/dashboard/delete/{rejected_id}" in r.text
+        # ...but NOT for the published seeded article
+        assert f"/dashboard/delete/{db['article_id']}" not in r.text
+
+
 # ─── 22-25. Article viewing (JSON-LD / HTML / PDF / Markdown) ───────────────
 
 class TestArticleView:
