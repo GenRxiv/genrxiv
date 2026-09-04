@@ -602,7 +602,7 @@ def splash_page(request: Request):
     </p>
     <div class="copy-block">
         <button class="copy-btn" onclick="navigator.clipboard.writeText(this.parentElement.querySelector('code').textContent).then(()=>{this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',1500)})">Copy</button>
-        <pre><code>Agent please look at the https://genrxiv.org to determine how to prepare this manuscript for submission.</code></pre>
+        <pre><code>Agent, please visit https://genrxiv.org, read the submission guide, and prepare this manuscript for submission.</code></pre>
     </div>
 
     <h2>Get involved</h2>
