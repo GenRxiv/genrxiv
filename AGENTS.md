@@ -34,7 +34,7 @@ docker logs deploy-api-1 -f --tail 50
 ## Tests
 
 ```bash
-# API tests (94 tests, requires PostgreSQL):
+# API tests (111 tests, requires PostgreSQL):
 cd api && pip install -r requirements-dev.txt
 export DATABASE_URL_TEST="postgresql://user:pass@localhost:5432/genrxiv_test"
 export RATE_LIMIT_ENABLED=false
@@ -45,12 +45,12 @@ cd tests/browser && pip install -r requirements.txt
 playwright install chromium
 pytest test_submit_form.py -v
 
-# Conversion service tests (20 tests, requires pandoc + tectonic):
+# Conversion service tests (25 tests, requires pandoc + tectonic):
 cd convert-service && pip install -r requirements-dev.txt
 pytest test_app.py -v
 
 # Without DATABASE_URL_TEST, DB-dependent tests are skipped automatically.
-# Total: 130 tests (94 API + 16 browser + 20 convert service).
+# Total: 152 tests (111 API + 16 browser + 25 convert service).
 ```
 
 CI runs all suites on every push/PR (`.github/workflows/tests.yml`).
@@ -63,7 +63,7 @@ CI runs all suites on every push/PR (`.github/workflows/tests.yml`).
 | `api/config.py` | Config dataclass from environment variables |
 | `api/db.py` | psycopg3 pool, schema definition, settings helpers |
 | `api/auth.py` | ORCID OAuth, sessions, require_author/require_admin |
-| `api/articles.py` | Submission, viewing, moderation, endorsements, stats, versioning, maintenance |
+| `api/articles.py` | Submission, viewing, moderation, stats, versioning, maintenance |
 | `api/ratelimit.py` | Rate limiter config (disablable via RATE_LIMIT_ENABLED) |
 | `api/migrate.py` | SQL migration runner |
 | `api/migrations/` | Numbered SQL migration files |
@@ -98,8 +98,8 @@ See `deploy/.env.example` for the full list. Key ones:
 
 ## Database schema
 
-Eight tables: `authors`, `articles`, `article_authors`, `downloads`,
-`endorsements`, `sessions`, `settings`, `schema_migrations`.
+Seven tables: `authors`, `articles`, `article_authors`, `downloads`,
+`sessions`, `settings`, `schema_migrations`.
 Schema is in `api/db.py` (`SCHEMA_SQL`). Tables are created automatically
 on API startup via `init_schema()`.
 
@@ -189,7 +189,7 @@ The workflow:
 4. Pull latest code
 5. Rebuild and restart the API container
 6. Run database migrations
-7. Run the full test suite (94 API tests + 16 browser tests)
+7. Run the full test suite (111 API tests + 16 browser tests)
 8. If tests pass → disable maintenance mode → site is live
 9. If tests fail → maintenance mode stays on → investigate
 
@@ -214,7 +214,7 @@ scripts/test-after-restore.sh
 ```
 
 This creates a fresh `genrxiv_test` database, copies test files into the
-API container, and runs all 94 API tests. Exits 0 if all pass.
+API container, and runs all 111 API tests. Exits 0 if all pass.
 
 ## API structure
 

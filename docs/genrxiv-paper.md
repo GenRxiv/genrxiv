@@ -25,9 +25,9 @@ either hide AI involvement or avoid depositing the work entirely.
 GenRxiv takes the opposite position. It is a preprint archive where AI
 involvement is the expected condition of the venue, not an exception to
 be argued for. The archive does not peer-review submissions and does
-not evaluate scientific merit. Quality signal comes from community
-endorsement: ORCID-identified authors can endorse papers they find
-useful, and endorsement counts are public.
+not evaluate scientific merit. Popularity is measured by download
+counts, tracked separately for human and agent traffic, so that both
+audiences contribute to a paper's visibility.
 
 The design is shaped by a few deliberate constraints. Submissions are
 Markdown only — no PDF, no LaTeX source, no Word documents. Authors are
@@ -113,15 +113,14 @@ Every author is identified by an ORCID iD. There is no
 email/password registration, no local account creation, and no
 provision for anonymous submission. This choice ensures that
 attribution is verifiable — an ORCID iD resolves to a real person —
-and that the same person can be recognised across submissions and
-across endorsements.
+and that the same person can be recognised across submissions.
 
 The trade-off is that requiring an ORCID iD raises the barrier to
 submission. A researcher without an ORCID iD must register at
 orcid.org before they can deposit work. GenRxiv accepts this cost on
 the grounds that verifiable authorship is foundational to the
-archive's credibility: if authorship cannot be verified, endorsement
-cannot be either, and the quality signal layer collapses.
+archive's credibility: if authorship cannot be verified, the
+attribution data that underpins the archive's value is unreliable.
 
 ### 3.3 CC0 for all submissions
 
@@ -146,29 +145,22 @@ benefit of maximal reusability outweighs this preference, and that
 attribution norms in the research community will apply regardless of
 the legal licence.
 
-### 3.4 Endorsement instead of peer review
+### 3.4 Download-based popularity instead of peer review
 
 GenRxiv does not peer-review submissions. Moderation is a thin layer
-that checks format and completeness — not scientific merit. The
-quality signal is endorsement: any ORCID-identified author can
-endorse any published paper, and endorsement counts are displayed
-publicly.
+that checks format and completeness — not scientific merit. Popularity
+is measured by download counts, tracked separately for human and agent
+traffic. This gives a transparent, hard-to-game signal: a paper that
+is frequently downloaded by both people and software agents is one
+that the community finds useful, regardless of whether anyone has
+vouched for it.
 
-This model has precedents. bioRxiv uses an endorsement system for
-screening submissions (an existing member must endorse a new
-submission before it is posted). GenRxiv's model is different:
-endorsement happens *after* publication, not before. Every submission
-that passes format checks is published; endorsement is the community's
-way of saying "this is worth reading."
-
-The trade-off is that endorsement can be gamed. An author could create
-ORCID iDs and endorse their own work, or coordinate with colleagues to
-inflate counts. GenRxiv mitigates this by requiring a real ORCID iD
-for every endorsement, making the endorsements themselves
-attributable. A pattern of suspicious endorsement activity would be
-visible in the public record. The archive does not currently attempt
-to detect or prevent coordinated endorsement, but the data is
-available for anyone who wants to analyse it.
+The trade-off is that download counts are a coarse signal. They
+measure interest, not quality. A paper can be downloaded many times
+because it is controversial, not because it is correct. GenRxiv
+accepts this on the grounds that no single metric captures quality,
+and that download data is transparent and available for anyone who
+wants to analyse it more carefully.
 
 ### 3.5 Agent-readable by design
 
@@ -247,18 +239,12 @@ identity and prove its persistence before taking on that obligation.
 GenRxiv has several limitations that are worth stating plainly.
 
 **No peer review.** The archive does not evaluate scientific merit.
-Endorsement provides a community signal, but it is not a substitute
-for review. A paper with zero endorsements and a paper with fifty
-endorsements are both published; the difference is a signal to
-readers, not a gate. Whether this signal is sufficient to distinguish
+Download counts provide a popularity signal, but they are not a
+substitute for review. A paper with zero downloads and a paper with
+thousands of downloads are both published; the difference is a signal
+to readers, not a gate. Whether this signal is sufficient to distinguish
 useful work from noise is an open question that the archive's own
 data will eventually answer.
-
-**Endorsement can be gamed.** As discussed in section 3.4, the
-endorsement model is vulnerable to coordinated manipulation. The
-archive mitigates this by making endorsements attributable, but it
-does not currently detect or prevent suspicious patterns. As the
-archive grows, this may need to change.
 
 **Markdown limits expressiveness.** Papers that require complex
 layouts, multi-column figures, or fine typographic control cannot be
@@ -273,12 +259,11 @@ so through the archive. This is a deliberate choice, but it may
 exclude authors who are willing to deposit their work but not under
 CC0.
 
-**ORCID as a barrier.** Requiring an ORCID iD for every submission and
-every endorsement raises the barrier to participation. Most active
-researchers have an ORCID iD, but students, independent researchers,
-and researchers in under-resourced settings may not. The archive
-treats this as an acceptable cost of verifiable authorship, but it is
-a cost.
+**ORCID as a barrier.** Requiring an ORCID iD for every submission
+raises the barrier to participation. Most active researchers have an
+ORCID iD, but students, independent researchers, and researchers in
+under-resourced settings may not. The archive treats this as an
+acceptable cost of verifiable authorship, but it is a cost.
 
 **Sustainability is unproven.** GenRxiv is a small, self-hosted
 service. It has documented backup, restore, and deployment workflows,
@@ -293,14 +278,15 @@ GenRxiv is a small, opinionated archive built on a simple premise:
 AI-generated research deserves a dedicated home where AI involvement
 is the norm rather than the exception. It pairs that premise with
 Markdown submissions, verifiable ORCID authorship, CC0 licensing,
-community endorsement, and a machine-readable architecture that
-treats agents as first-class readers.
+download-based popularity tracking, and a machine-readable
+architecture that treats agents as first-class readers.
 
 The archive is live and accepting submissions. The questions that
-remain — whether endorsement is a sufficient quality signal, whether
-the Markdown-only format is too restrictive, whether a single licence
-is the right choice, and whether the archive can sustain itself — are
-empirical questions that the archive's own operation will answer over
+remain — whether download counts are a sufficient popularity signal,
+whether the Markdown-only format is too restrictive, whether a single
+licence is the right choice, and whether the archive can sustain
+itself — are empirical questions that the archive's own operation
+will answer over
 time.
 
 ```bibtex

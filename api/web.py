@@ -304,7 +304,7 @@ def _format_date(dt) -> str:
     return dt.strftime("%Y-%m-%d")
 
 
-def _article_card(article: dict, show_endorsements: bool = False) -> str:
+def _article_card(article: dict) -> str:
     """Render an article card."""
     ark = article.get("ark", "")
     title = article.get("title", "Untitled")
@@ -568,10 +568,6 @@ def splash_page(request: Request):
             <span class="roadmap-status planned">Planned</span>
             <span class="roadmap-label">Open submissions go live</span>
         </div>
-        <div class="roadmap-item">
-            <span class="roadmap-status planned">Planned</span>
-            <span class="roadmap-label">Community moderation and endorsement system</span>
-        </div>
     </div>
 
     <h2>Get involved</h2>
@@ -777,9 +773,6 @@ def stats_page(request: Request):
             "human_downloads": conn.execute(
                 "SELECT COUNT(*) AS c FROM downloads WHERE is_agent = FALSE"
             ).fetchone()["c"],
-            "total_endorsements": conn.execute(
-                "SELECT COUNT(*) AS c FROM endorsements"
-            ).fetchone()["c"],
         }
         top = conn.execute(
             """SELECT a.ark, a.title, COUNT(d.id) as dl_count
@@ -797,7 +790,6 @@ def stats_page(request: Request):
         ("Total downloads", "total_downloads"),
         ("Agent downloads", "agent_downloads"),
         ("Human downloads", "human_downloads"),
-        ("Endorsements", "total_endorsements"),
     ]:
         stat_cards.append(
             f'<div class="stat-card"><div class="num">{stats[key]}</div><div class="label">{label}</div></div>'
@@ -902,12 +894,6 @@ def author_page(orcid: str, request: Request):
                ORDER BY a.published_at DESC""",
             (author["id"],),
         ).fetchall()
-        endorsement_count = conn.execute(
-            """SELECT COUNT(*) as c FROM endorsements e
-               JOIN articles a ON e.article_id = a.id
-               WHERE e.author_id = %s AND a.status = 'published'""",
-            (author["id"],),
-        ).fetchone()["c"]
 
     cards = "".join(_article_card(r) for r in articles) if articles else ""
     if not cards:
@@ -926,7 +912,6 @@ def author_page(orcid: str, request: Request):
     <div class="stats-grid" style="margin-bottom:2rem">
         <div class="stat-card"><div class="num">{len(articles)}</div><div class="label">GenRxiv articles</div></div>
         <div class="stat-card"><div class="num">{works_count}</div><div class="label">ORCID publications</div></div>
-        <div class="stat-card"><div class="num">{endorsement_count}</div><div class="label">Endorsements given</div></div>
     </div>
     <h2>Articles</h2>
     {cards}

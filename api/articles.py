@@ -1321,70 +1321,6 @@ def article_stats(article_id: int, _author: dict = Depends(get_current_author)):
     }
 
 
-# ─── Endorsements (community upvotes) ──────────────────────────────────────
-
-@router.post("/api/articles/{article_id}/endorse")
-def endorse_article(
-    article_id: int,
-    author: dict = Depends(require_author),
-):
-    """Endorse an article (community upvote). One endorsement per author per article."""
-    with get_conn().connection() as conn:
-        row = conn.execute(
-            "SELECT id FROM articles WHERE id = %s AND status = 'published'", (article_id,)
-        ).fetchone()
-        if not row:
-            raise HTTPException(404, "Article not found")
-        existing = conn.execute(
-            "SELECT id FROM endorsements WHERE article_id = %s AND author_id = %s",
-            (article_id, author["id"]),
-        ).fetchone()
-        if existing:
-            raise HTTPException(409, "Already endorsed")
-        conn.execute(
-            "INSERT INTO endorsements (article_id, author_id) VALUES (%s, %s)",
-            (article_id, author["id"]),
-        )
-        conn.commit()
-    return {"status": "endorsed", "article_id": article_id}
-
-
-@router.delete("/api/articles/{article_id}/endorse")
-def unendorse_article(
-    article_id: int,
-    author: dict = Depends(require_author),
-):
-    """Remove endorsement."""
-    with get_conn().connection() as conn:
-        conn.execute(
-            "DELETE FROM endorsements WHERE article_id = %s AND author_id = %s",
-            (article_id, author["id"]),
-        )
-        conn.commit()
-    return {"status": "unendorsed", "article_id": article_id}
-
-
-@router.get("/api/articles/{article_id}/endorsements")
-def article_endorsements(article_id: int):
-    """Get endorsement count and list for an article."""
-    with get_conn().connection() as conn:
-        count = conn.execute(
-            "SELECT COUNT(*) as c FROM endorsements WHERE article_id = %s", (article_id,)
-        ).fetchone()["c"]
-        endorsers = conn.execute(
-            """SELECT a.orcid, a.name, e.endorsed_at
-               FROM endorsements e
-               JOIN authors a ON e.author_id = a.id
-               WHERE e.article_id = %s
-               ORDER BY e.endorsed_at DESC""",
-            (article_id,),
-        ).fetchall()
-    return {
-        "count": count,
-        "endorsers": endorsers,
-    }
-
-
 # ─── Author pages ──────────────────────────────────────────────────────────
 
 @router.get("/api/authors/{orcid:path}")
@@ -1407,16 +1343,9 @@ def author_profile(orcid: str):
                ORDER BY a.published_at DESC""",
             (author["id"],),
         ).fetchall()
-        endorsement_count = conn.execute(
-            """SELECT COUNT(*) as c FROM endorsements e
-               JOIN articles a ON e.article_id = a.id
-               WHERE e.author_id = %s AND a.status = 'published'""",
-            (author["id"],),
-        ).fetchone()["c"]
     return {
         "author": author,
         "articles": articles,
-        "endorsement_count": endorsement_count,
     }
 
 
@@ -1481,7 +1410,6 @@ def public_stats():
         human_downloads = conn.execute(
             "SELECT COUNT(*) as c FROM downloads WHERE is_agent = false"
         ).fetchone()["c"]
-        total_endorsements = conn.execute("SELECT COUNT(*) as c FROM endorsements").fetchone()["c"]
         # Top downloaded articles
         top_articles = conn.execute(
             """SELECT a.id, a.ark, a.title, COUNT(d.id) as downloads
@@ -1497,6 +1425,5 @@ def public_stats():
         "total_downloads": total_downloads,
         "agent_downloads": agent_downloads,
         "human_downloads": human_downloads,
-        "total_endorsements": total_endorsements,
         "top_articles": top_articles,
     }

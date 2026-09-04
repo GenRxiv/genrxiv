@@ -181,7 +181,7 @@ class TestOAI:
         assert "cannotDisseminateFormat" in r.text
 
 
-# ─── 9-11, 16-17. Articles / endorsements / subjects API ────────────────────
+# ─── 9-11, 16-17. Articles / subjects API ───────────────────────────────────
 
 class TestArticlesAPI:
     @requires_db
@@ -206,29 +206,6 @@ class TestArticlesAPI:
         item = body["items"][0]
         assert item["@context"] == "https://schema.org"
         assert item["@type"] == "ScholarlyArticle"
-
-    @requires_db
-    def test_article_endorsements_returns_count(self, client, db):
-        r = client.get(f"/api/articles/{db['article_id']}/endorsements")
-        assert r.status_code == 200
-        body = r.json()
-        assert "count" in body
-        assert "endorsers" in body
-        assert body["count"] == 0
-
-    @requires_db
-    def test_endorse_requires_auth_returns_401_without(self, client, db):
-        r = client.post(f"/api/articles/{db['article_id']}/endorse")
-        assert r.status_code == 401
-
-    @requires_db
-    def test_endorse_succeeds_when_authenticated(self, authed_client, db):
-        r = authed_client.post(f"/api/articles/{db['article_id']}/endorse")
-        assert r.status_code == 200
-        assert r.json()["status"] == "endorsed"
-        # Endorsing again should be a conflict.
-        r2 = authed_client.post(f"/api/articles/{db['article_id']}/endorse")
-        assert r2.status_code == 409
 
 
 class TestSubjectsAPI:
@@ -304,7 +281,6 @@ class TestStatsAPI:
             "total_downloads",
             "agent_downloads",
             "human_downloads",
-            "total_endorsements",
             "top_articles",
         ):
             assert key in body

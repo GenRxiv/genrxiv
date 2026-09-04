@@ -119,15 +119,6 @@ CREATE TABLE downloads (
     downloaded_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Endorsements (community upvotes, not peer review)
-CREATE TABLE endorsements (
-    id SERIAL PRIMARY KEY,
-    article_id INTEGER REFERENCES articles(id) ON DELETE CASCADE,
-    author_id INTEGER REFERENCES authors(id) ON DELETE CASCADE,
-    endorsed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (article_id, author_id)
-);
-
 -- Sessions (for ORCID OAuth)
 CREATE TABLE sessions (
     token TEXT PRIMARY KEY,
@@ -482,7 +473,6 @@ No `sub_filter`. No `/app/` prefix. No `$$$call$$` routing.
    - Aggregate stats
 
 4. **Implement community features** — DONE
-   - Endorsement system (community upvotes)
    - Author pages
    - Keyword browsing
    - Web UI (browse, submit, dashboard, admin)

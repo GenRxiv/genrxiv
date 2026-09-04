@@ -83,15 +83,6 @@ CREATE TABLE IF NOT EXISTS downloads (
     downloaded_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Endorsements (community upvotes)
-CREATE TABLE IF NOT EXISTS endorsements (
-    id SERIAL PRIMARY KEY,
-    article_id INTEGER REFERENCES articles(id) ON DELETE CASCADE,
-    author_id INTEGER REFERENCES authors(id) ON DELETE CASCADE,
-    endorsed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (article_id, author_id)
-);
-
 -- Sessions (for ORCID OAuth)
 CREATE TABLE IF NOT EXISTS sessions (
     token TEXT PRIMARY KEY,

@@ -22,8 +22,8 @@ GenRxiv starts from the other end. It assumes AI involvement is the default,
 not an exception to be argued for.
 
 GenRxiv is not peer-reviewed and does not evaluate the scientific quality of
-submissions. Community endorsement (upvotes by other ORCID-identified authors)
-is the signal layer, not editorial gatekeeping.
+submissions. Popularity is tracked via human and agent download counts — the
+signal layer is usage, not editorial gatekeeping.
 
 ## How it works
 
@@ -35,7 +35,6 @@ is the signal layer, not editorial gatekeeping.
 | **Machine access** | OAI-PMH metadata endpoint, sitemap, Atom feed, schema.org JSON-LD, public stats API, agent discovery manifest |
 | **Licensing** | CC0 (Public Domain Dedication) — all submissions |
 | **Discovery** | Browse, search, subject pages, author pages |
-| **Endorsements** | ORCID-identified authors can endorse papers (community signal) |
 | **Versioning** | Authors can submit revised versions; ARK persists across versions |
 | **Citations** | BibTeX in Markdown, rendered as numbered references [1] in citation order |
 | **Notifications** | Authors notified by email when submissions are approved or rejected |
@@ -79,7 +78,7 @@ simple: submit, moderate, publish.
     FastAPI API    Conversion Service    PostgreSQL
     (submission,   (Markdown → HTML/PDF   (articles, authors,
      moderation,    via Pandoc + Tectonic)  downloads, sessions,
-     articles,      No published ports      endorsements, settings,
+     articles,      No published ports      settings,
      OAI-PMH,                               schema_migrations)
      auth, stats,
      agent discovery,
@@ -141,7 +140,6 @@ test-paper.md     sample submission for testing
 | GET | `/api/subjects/{subject}/articles` | Articles by subject classification |
 | GET | `/api/authors/{orcid}` | Author profile and articles |
 | GET | `/api/stats` | Public stats (no auth, agent-readable) |
-| GET | `/api/articles/{id}/endorsements` | Endorsement count and list |
 | GET | `/article/{ark}` | View article as HTML |
 | GET | `/article/{ark}/pdf` | Download article as PDF |
 | GET | `/article/{ark}/markdown` | Download original Markdown |
@@ -181,8 +179,6 @@ test-paper.md     sample submission for testing
 |---|---|---|
 | POST | `/api/submit` | Submit Markdown paper (rate-limited: 5/min) |
 | GET | `/api/submissions` | List own submissions |
-| POST | `/api/articles/{id}/endorse` | Endorse an article |
-| DELETE | `/api/articles/{id}/endorse` | Remove endorsement |
 | GET | `/api/articles/{id}/stats` | Per-article download stats |
 | GET | `/api/articles/{id}/versions` | Version history for an article |
 
