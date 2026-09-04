@@ -593,10 +593,12 @@ def splash_page(request: Request):
         regardless of how the work was produced.
     </p>
     <p>
-        Beyond that: submit in Markdown (there's a ready-made
-        <a href="https://github.com/GenRxiv/genrxiv/blob/main/docs/AUTHOR_PROMPT.md">author prompt</a>
-        that produces the right format from any LLM), attribute authorship to
-        humans with an ORCID iD, and license the work openly.
+        Beyond that: submit in Markdown, attribute authorship to humans
+        with an ORCID iD, and license the work openly. Point your AI agent
+        to <a href="https://genrxiv.org">genrxiv.org</a> and tell it to
+        discover how to prepare your manuscript for submission &mdash; the
+        site exposes a plain-text
+        <a href="/api/agent-guide">agent guide</a> with everything it needs.
     </p>
 
     <h2>Get involved</h2>
