@@ -256,7 +256,7 @@ def _header_html(author: dict | None, current_path: str = "") -> str:
 def _footer_html() -> str:
     return f"""<footer>
 <p>{config.site_name} &mdash; An open archive for AI-generated research.</p>
-<p><a href="/api/articles">API</a> &middot; <a href="/oai?verb=Identify">OAI-PMH</a> &middot; <a href="/feed.xml">Feed</a> &middot; <a href="/sitemap.xml">Sitemap</a> &middot; <a href="/robots.txt">robots.txt</a></p>
+<p><a href="/api/articles">API</a> &middot; <a href="/oai?verb=Identify">OAI-PMH</a> &middot; <a href="/feed.xml">Feed</a> &middot; <a href="/sitemap.xml">Sitemap</a> &middot; <a href="/robots.txt">robots.txt</a> &middot; <a href="/code-of-conduct">Code of Conduct</a></p>
 </footer>"""
 
 
