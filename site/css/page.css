@@ -122,9 +122,9 @@ footer { border-top: 1px solid var(--border); padding: 1.5rem; text-align: cente
 /* OECD classification tags */
 .oecd-tag {
     display: inline-block;
-    padding: 0.2rem 0.6rem;
+    padding: 0.15rem 0.45rem;
     border-radius: 3px;
-    font-size: 0.75rem;
+    font-size: 0.7rem;
     font-weight: 500;
     font-family: 'IBM Plex Sans', sans-serif;
     margin: 0.15rem;
