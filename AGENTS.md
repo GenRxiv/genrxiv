@@ -50,7 +50,7 @@ cd convert-service && pip install -r requirements-dev.txt
 pytest test_app.py -v
 
 # Without DATABASE_URL_TEST, DB-dependent tests are skipped automatically.
-# Total: 234 tests (193 API + 16 browser + 25 convert service).
+# Total: 238 tests (197 API + 16 browser + 25 convert service).
 ```
 
 CI runs all suites on every push/PR (`.github/workflows/tests.yml`).
@@ -193,7 +193,7 @@ The workflow:
 4. Pull latest code
 5. Rebuild and restart the API container
 6. Run database migrations
-7. Run the full test suite (193 API tests + 16 browser tests)
+7. Run the full test suite (197 API tests + 16 browser tests)
 8. If tests pass → disable maintenance mode → site is live
 9. If tests fail → maintenance mode stays on → investigate
 
@@ -218,7 +218,7 @@ scripts/test-after-restore.sh
 ```
 
 This creates a fresh `genrxiv_test` database, copies test files into the
-API container, and runs all 193 API tests. Exits 0 if all pass.
+API container, and runs all 197 API tests. Exits 0 if all pass.
 
 ## API structure
 
@@ -358,6 +358,24 @@ manual admin approval — the existing behavior is unchanged.
 
 Screening reports are stored in the `screening_reports` table for audit.
 Module: `api/screening.py`. Migration: `008_screening_reports.sql`.
+
+### Startup reconciliation
+
+On every server startup, `api/reconcile.py` scans pending submissions
+and re-processes any that are stranded:
+
+1. **Auto-approve retry**: If a screening report says `auto_approve` but
+   the article is still pending (e.g. the conversion service was
+   unavailable at submission time), the approval is retried.
+2. **Re-screening**: If no screening report exists, or the existing
+   report says `screening_disabled`, and screening is now enabled, the
+   submission is re-screened. If the new verdict is `auto_approve`, it
+   is published immediately.
+3. **Flagged submissions**: If the screening report says `flag_for_review`
+   or `screening_error`, the submission is left pending for human review.
+
+Reconciliation never blocks startup — if it fails, the server starts
+normally and submissions remain pending for manual admin review.
 
 The screening prompt also checks for:
 - **Prompt injection / jailbreak attempts**: The model is instructed to flag

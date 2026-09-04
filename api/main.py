@@ -31,6 +31,13 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"WARNING: Migration failed on startup: {e}")
     os.makedirs(config.files_dir, exist_ok=True)
+    # Reconcile pending submissions: retry failed auto-approvals and
+    # re-screen submissions that were never screened. Never blocks startup.
+    try:
+        from reconcile import reconcile_pending_submissions
+        reconcile_pending_submissions()
+    except Exception as e:
+        print(f"WARNING: Reconciliation failed on startup: {e}")
     yield
 
 

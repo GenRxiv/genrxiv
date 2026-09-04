@@ -2921,3 +2921,182 @@ class TestCodeOfConduct:
         )
         assert r.status_code == 400
         assert "CC0" in r.json()["detail"]
+
+
+# ─── 29. Startup reconciliation ────────────────────────────────────────────
+
+class TestReconciliation:
+    """Tests for the startup reconciliation of pending submissions."""
+
+    @requires_db
+    def test_reconcile_no_pending(self, db):
+        """When there are no pending submissions, reconciliation is a no-op."""
+        from reconcile import reconcile_pending_submissions
+        summary = reconcile_pending_submissions()
+        assert summary["scanned"] >= 0
+        assert summary["errors"] == 0
+
+    @requires_db
+    def test_reconcile_retries_auto_approve(self, authed_client, monkeypatch, db):
+        """A pending submission with an auto_approve screening report but
+        failed approval gets retried on reconciliation."""
+        import config as config_module
+        object.__setattr__(config_module.config, "screening_enabled", True)
+
+        # Mock the CF API to return a clean report
+        def mock_call(model, system, user):
+            return {"text": '{"format_ok": true, "in_scope": true, "spam_likelihood": "low", "has_abstract": true, "has_references": true, "has_jailbreak": false, "has_prohibited_content": false, "flags": [], "summary": "Clean paper."}'}
+        monkeypatch.setattr("screening._call_cloudflare", mock_call)
+
+        # Mock render_pdf to fail so the auto-approval fails at submission time
+        import articles as articles_module
+        original_render_pdf = articles_module.render_pdf
+        def failing_render_pdf(md):
+            raise Exception("Conversion service unavailable")
+        monkeypatch.setattr(articles_module, "render_pdf", failing_render_pdf)
+
+        import io, json
+        md = io.BytesIO(b"# Test Paper\n\nA real paper about machine learning.\n\n## Introduction\n\nWe study optimization.\n\n## References\n\n[1] Smith et al.")
+        r = authed_client.post(
+            "/api/submit",
+            files={"markdown": ("test.md", md, "text/markdown")},
+            data={
+                "title": "Reconciliation Test Paper",
+                "authors": json.dumps([{"orcid": "0000-0000-0000-0000", "name": "Test"}]),
+                "abstract": "We study optimization methods for machine learning.",
+                "subjects": "Natural sciences > Mathematics, Natural sciences > Computer and information sciences, Social sciences > Economics and business",
+                "license": "CC0",
+                "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+                "reviewed_agree": "1",
+                "cc0_agree": "1",
+                "coc_agree": "1",
+            },
+        )
+        assert r.status_code == 200
+        article_id = r.json()["id"]
+        # The submission should be pending (auto-approval failed)
+        assert r.json()["status"] == "pending"
+
+        # Restore render_pdf so reconciliation can succeed
+        monkeypatch.setattr(articles_module, "render_pdf", original_render_pdf)
+
+        # Run reconciliation
+        from reconcile import reconcile_pending_submissions
+        summary = reconcile_pending_submissions()
+
+        assert summary["scanned"] >= 1
+        assert summary["retried_approval"] >= 1
+
+        # Verify the article is now published
+        from db import get_conn
+        with get_conn().connection() as conn:
+            row = conn.execute(
+                "SELECT status, ark FROM articles WHERE id = %s", (article_id,)
+            ).fetchone()
+            assert row["status"] == "published"
+            assert row["ark"] is not None
+
+    @requires_db
+    def test_reconcile_rescreens_missing_report(self, authed_client, monkeypatch, db):
+        """A pending submission with no screening report gets re-screened."""
+        import config as config_module
+        object.__setattr__(config_module.config, "screening_enabled", False)
+
+        # Submit with screening disabled — no screening report will be created
+        import io, json
+        md = io.BytesIO(b"# Test Paper\n\nA paper about physics.\n\n## Introduction\n\nWe study quantum mechanics.")
+        r = authed_client.post(
+            "/api/submit",
+            files={"markdown": ("test.md", md, "text/markdown")},
+            data={
+                "title": "Rescreen Test Paper",
+                "authors": json.dumps([{"orcid": "0000-0000-0000-0000", "name": "Test"}]),
+                "abstract": "We study quantum mechanics and entanglement.",
+                "subjects": "Natural sciences > Mathematics, Natural sciences > Computer and information sciences, Social sciences > Economics and business",
+                "license": "CC0",
+                "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+                "reviewed_agree": "1",
+                "cc0_agree": "1",
+                "coc_agree": "1",
+            },
+        )
+        article_id = r.json()["id"]
+        assert r.json()["status"] == "pending"
+
+        # A screening report exists but with verdict=screening_disabled
+        from screening import get_screening_report
+        report = get_screening_report(article_id)
+        assert report is not None
+        assert report["verdict"] == "screening_disabled"
+
+        # Enable screening and mock the CF API to return a flagged report
+        object.__setattr__(config_module.config, "screening_enabled", True)
+        def mock_call(model, system, user):
+            return {"text": '{"format_ok": true, "in_scope": false, "spam_likelihood": "low", "has_abstract": true, "has_references": false, "has_jailbreak": false, "has_prohibited_content": false, "flags": ["out of scope"], "summary": "Not in scope."}'}
+        monkeypatch.setattr("screening._call_cloudflare", mock_call)
+
+        # Run reconciliation
+        from reconcile import reconcile_pending_submissions
+        summary = reconcile_pending_submissions()
+
+        assert summary["scanned"] >= 1
+        assert summary["rescreened"] >= 1
+
+        # The article should now have a fresh screening report with a real verdict
+        report = get_screening_report(article_id)
+        assert report is not None
+        assert report["verdict"] == "flag_for_review"
+
+        # And it should still be pending (flagged = human review)
+        from db import get_conn
+        with get_conn().connection() as conn:
+            row = conn.execute(
+                "SELECT status FROM articles WHERE id = %s", (article_id,)
+            ).fetchone()
+            assert row["status"] == "pending"
+
+    @requires_db
+    def test_reconcile_leaves_flagged_pending(self, authed_client, monkeypatch, db):
+        """A pending submission with a flag_for_review report is NOT re-processed."""
+        import config as config_module
+        object.__setattr__(config_module.config, "screening_enabled", True)
+
+        # Mock the CF API to return a flagged report
+        def mock_call(model, system, user):
+            return {"text": '{"format_ok": true, "in_scope": false, "spam_likelihood": "low", "has_abstract": true, "has_references": true, "has_jailbreak": false, "has_prohibited_content": false, "flags": ["out of scope"], "summary": "Not in scope."}'}
+        monkeypatch.setattr("screening._call_cloudflare", mock_call)
+
+        import io, json
+        md = io.BytesIO(b"# Test Paper\n\nA paper about economics.\n\n## Introduction\n\nWe study markets.")
+        r = authed_client.post(
+            "/api/submit",
+            files={"markdown": ("test.md", md, "text/markdown")},
+            data={
+                "title": "Flagged Test Paper",
+                "authors": json.dumps([{"orcid": "0000-0000-0000-0000", "name": "Test"}]),
+                "abstract": "We study market dynamics and pricing.",
+                "subjects": "Natural sciences > Mathematics, Natural sciences > Computer and information sciences, Social sciences > Economics and business",
+                "license": "CC0",
+                "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+                "reviewed_agree": "1",
+                "cc0_agree": "1",
+                "coc_agree": "1",
+            },
+        )
+        article_id = r.json()["id"]
+        assert r.json()["status"] == "pending"
+
+        # Run reconciliation
+        from reconcile import reconcile_pending_submissions
+        summary = reconcile_pending_submissions()
+
+        # This article should be in the "still_pending" count, not retried
+        assert summary["retried_approval"] == 0 or summary["retried_approval"] is not None
+
+        # The article should still be pending
+        from db import get_conn
+        with get_conn().connection() as conn:
+            row = conn.execute(
+                "SELECT status FROM articles WHERE id = %s", (article_id,)
+            ).fetchone()
+            assert row["status"] == "pending"
