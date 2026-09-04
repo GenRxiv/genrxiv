@@ -12,6 +12,7 @@ the database-free endpoints (health, robots.txt, OAI-PMH Identify /
 ListMetadataFormats / error responses) are exercised.
 """
 import os
+from datetime import datetime
 
 import pytest
 
@@ -496,7 +497,7 @@ class TestSubmissionValidation:
             f"/admin/articles/{article_id}",
             json={"action": "approve"},
         )
-        r2 = authed_client.get(f"/article/ark:/99999/genrxiv-{article_id:04d}/markdown")
+        r2 = authed_client.get(f"/article/ark:/99999/genrxiv-{datetime.now().year}-{article_id:05d}/markdown")
         assert r2.status_code == 200
         stored_md = r2.text
         assert "subjects:" in stored_md
@@ -528,7 +529,7 @@ class TestSubmissionValidation:
             f"/admin/articles/{article_id}",
             json={"action": "approve"},
         )
-        r2 = authed_client.get(f"/article/ark:/99999/genrxiv-{article_id:04d}/markdown")
+        r2 = authed_client.get(f"/article/ark:/99999/genrxiv-{datetime.now().year}-{article_id:05d}/markdown")
         assert r2.status_code == 200
         stored_md = r2.text
         # The title should be escaped in the YAML
@@ -1647,7 +1648,7 @@ class TestArticleView:
 
     @requires_db
     def test_article_not_found_returns_404(self, client):
-        r = client.get("/article/ark:/99999/genrxiv-9999")
+        r = client.get("/article/ark:/99999/genrxiv-2026-99999")
         assert r.status_code == 404
 
 

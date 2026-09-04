@@ -493,7 +493,18 @@ def validate_license(license: str, license_url: str) -> tuple[str, str]:
 
 
 def assign_ark(article_id: int) -> str:
-    return f"ark:{config.ark_naan}/genrxiv-{article_id:04d}"
+    """Assign a year-based ARK to an article.
+
+    Format: ark:NAAN/genrxiv-YYYY-NNNNN
+    Where YYYY is the publication year and NNNNN is a zero-padded sequential
+    article ID (5 digits, allowing up to 99,999 articles per year).
+
+    The base name uses dashes (not dots) so that ARK variant syntax
+    (.v3, .pdf, .v3.pdf) works without ambiguity.
+    """
+    from datetime import datetime
+    year = datetime.now().year
+    return f"ark:{config.ark_naan}/genrxiv-{year}-{article_id:05d}"
 
 
 def normalize_ark(ark: str) -> str:
@@ -520,20 +531,20 @@ FORMAT_VARIANTS = {
 def parse_ark_variant(ark: str) -> tuple[str, int | None, str | None]:
     """Parse an ARK into its base form, optional version, and optional format.
 
-    GenRxiv base names (e.g. 'genrxiv-0001') contain no dots, so the first
+    GenRxiv base names (e.g. 'genrxiv-2026-00001') contain no dots, so the first
     dot in the ARK marks the start of the variant portion. Variants follow
     the ARK convention of dot-separated components:
 
-        'ark:99999/genrxiv-0001'         -> (base, None,  None)
-        'ark:99999/genrxiv-0001.v3'      -> (base, 3,     None)
-        'ark:99999/genrxiv-0001.pdf'     -> (base, None,  'pdf')
-        'ark:99999/genrxiv-0001.v3.pdf'  -> (base, 3,     'pdf')
+        'ark:99999/genrxiv-2026-00001'         -> (base, None,  None)
+        'ark:99999/genrxiv-2026-00001.v3'      -> (base, 3,     None)
+        'ark:99999/genrxiv-2026-00001.pdf'     -> (base, None,  'pdf')
+        'ark:99999/genrxiv-2026-00001.v3.pdf'  -> (base, 3,     'pdf')
 
     Also handles legacy slash-separated suffixes for backwards compatibility:
 
-        'ark:99999/genrxiv-0001/1'       -> (base, 1,     None)
-        'ark:99999/genrxiv-0001/pdf'     -> (base, None,  'pdf')
-        'ark:99999/genrxiv-0001/1/pdf'   -> (base, 1,     'pdf')
+        'ark:99999/genrxiv-2026-00001/1'       -> (base, 1,     None)
+        'ark:99999/genrxiv-2026-00001/pdf'     -> (base, None,  'pdf')
+        'ark:99999/genrxiv-2026-00001/1/pdf'   -> (base, 1,     'pdf')
     """
     ark = normalize_ark(ark)
     version: int | None = None
@@ -1674,8 +1685,8 @@ def _serve_bibtex(article: dict, base_ark: str, version: int | None):
 
 
 # ── Legacy slash-separated routes (backwards compatible) ──────────────────
-# These keep old URLs like /article/ark:NAAN/genrxiv-0001/pdf working.
-# New URLs use dot-variants: /article/ark:NAAN/genrxiv-0001.pdf
+# These keep old URLs like /article/ark:NAAN/genrxiv-2026-00001/pdf working.
+# New URLs use dot-variants: /article/ark:NAAN/genrxiv-2026-00001.pdf
 
 @router.get("/article/{ark:path}/pdf")
 def download_pdf(ark: str, request: Request):
@@ -1805,13 +1816,13 @@ def view_article(ark: str, request: Request):
     """View article — dispatches based on ARK variant (format/version).
 
     Supports dot-separated variants per the ARK standard:
-        ark:NAAN/genrxiv-0001         → current version, HTML
-        ark:NAAN/genrxiv-0001.v3      → version 3, HTML
-        ark:NAAN/genrxiv-0001.pdf     → current version, PDF
-        ark:NAAN/genrxiv-0001.v3.pdf  → version 3, PDF
-        ark:NAAN/genrxiv-0001.md      → current version, Markdown
-        ark:NAAN/genrxiv-0001.jsonld  → current version, JSON-LD
-        ark:NAAN/genrxiv-0001.bib     → current version, BibTeX
+        ark:NAAN/genrxiv-2026-00001         → current version, HTML
+        ark:NAAN/genrxiv-2026-00001.v3      → version 3, HTML
+        ark:NAAN/genrxiv-2026-00001.pdf     → current version, PDF
+        ark:NAAN/genrxiv-2026-00001.v3.pdf  → version 3, PDF
+        ark:NAAN/genrxiv-2026-00001.md      → current version, Markdown
+        ark:NAAN/genrxiv-2026-00001.jsonld  → current version, JSON-LD
+        ark:NAAN/genrxiv-2026-00001.bib     → current version, BibTeX
 
     Also handles legacy slash-separated suffixes for backwards compatibility.
     """

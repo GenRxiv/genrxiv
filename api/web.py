@@ -301,7 +301,11 @@ def _page(
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="icon" href="/favicon.ico" sizes="any">
 <link rel="icon" href="/mark.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon-32.png" type="image/png" sizes="32x32">
+<link rel="icon" href="/favicon-16.png" type="image/png" sizes="16x16">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="alternate" type="application/atom+xml" title="{config.site_name} — Recent Articles" href="/feed.xml">
 <link rel="stylesheet" href="/css/page.css">
 {css_links}
@@ -328,28 +332,41 @@ def _format_date(dt) -> str:
 
 
 def _article_card(article: dict) -> str:
-    """Render an article card."""
+    """Render an article card in the unified paper-card style."""
+    from oecd_codes import classification_tag
+
     ark = article.get("ark", "")
     title = article.get("title", "Untitled")
     abstract = article.get("abstract") or ""
     subjects = article.get("subjects", [])
     published = _format_date(article.get("published_at"))
-    subj_html = " ".join(
-        f'<a href="/subjects/{quote(s)}">{s}</a>' for s in subjects
-    ) if subjects else ""
+    is_retraction = article.get("is_retraction", False)
+    status = article.get("status", "published")
+
+    tags_html = "".join(classification_tag(s) for s in subjects) if subjects else ""
     authors_html = ""
     if "authors" in article and article["authors"]:
-        authors_html = "<div class='meta'>" + ", ".join(
+        authors_html = ", ".join(
             f'<a href="/author/{a["orcid"]}">{a["name"]}</a>' for a in article["authors"]
-        ) + "</div>"
+        )
     elif "author_names" in article and article["author_names"]:
-        authors_html = f"<div class='meta'>{article['author_names']}</div>"
-    return f"""<div class="card">
+        authors_html = article["author_names"]
+
+    # Badges
+    badges = '<span class="badge badge-ai">AI co-generated</span>'
+    badges += '<span class="badge badge-format">Markdown</span>'
+    if status != "published":
+        badges += f'<span class="badge badge-status">{status}</span>'
+    if is_retraction:
+        badges += '<span class="badge" style="background:#fdf0f0;color:#c0392b">retraction</span>'
+
+    return f"""<div class="paper-card">
+<div class="paper-meta">{ark} &middot; posted {published}</div>
 <h2><a href="/article/{ark}">{title}</a></h2>
-{authors_html}
-{f'<div class="abstract">{abstract}</div>' if abstract else ''}
-{f'<div class="subjects">{subj_html}</div>' if subj_html else ''}
-<div class="meta">Published {published} &middot; ARK: {ark}</div>
+<div class="paper-authors">{authors_html}</div>
+{f'<p class="paper-abstract">{abstract}</p>' if abstract else ''}
+<div class="paper-badges">{badges}</div>
+{f'<div class="paper-tags">{tags_html}</div>' if tags_html else ''}
 </div>"""
 
 
@@ -526,18 +543,18 @@ def splash_page(request: Request):
         Authors classify their work using the OECD Fields of Science taxonomy.
         Each paper is tagged with 3 subcategories across these domains:
     </p>
-    <div class="subjects">
-        <span class="subject-tag">Natural sciences</span>
-        <span class="subject-tag">Engineering and technology</span>
-        <span class="subject-tag">Medical and health sciences</span>
-        <span class="subject-tag">Agricultural and veterinary sciences</span>
-        <span class="subject-tag">Social sciences</span>
-        <span class="subject-tag">Humanities and the arts</span>
+    <div class="subjects" style="display:flex;flex-wrap:wrap;gap:0.4rem">
+        <span class="oecd-tag" style="color:#2F5CFF;background:#E4E9FF">N &middot; Natural sciences</span>
+        <span class="oecd-tag" style="color:#E67E22;background:#FDF0E0">E &middot; Engineering & technology</span>
+        <span class="oecd-tag" style="color:#E74C3C;background:#FDEAEA">M &middot; Medical & health</span>
+        <span class="oecd-tag" style="color:#27AE60;background:#E8F8F0">A &middot; Agricultural & veterinary</span>
+        <span class="oecd-tag" style="color:#9B59B6;background:#F4ECF7">S &middot; Social sciences</span>
+        <span class="oecd-tag" style="color:#16A085;background:#E0F5F1">H &middot; Humanities & arts</span>
     </div>
 
     <h3>What a GenRxiv preprint looks like</h3>
     <div class="paper-card">
-        <div class="paper-meta">genrxiv:2026.00001 &middot; posted 2026-01-15</div>
+        <div class="paper-meta">ark:99999/genrxiv-2026-00001 &middot; posted 2026-01-15</div>
         <h4>Emergent Symbolic Reasoning in Multi-Agent LLM Systems Under Constrained Communication Bandwidth</h4>
         <p class="paper-authors">A. Chen, R. Okafor, with assistance from Claude 3.5 (Anthropic)</p>
         <p class="paper-abstract">
@@ -550,6 +567,11 @@ def splash_page(request: Request):
             <span class="badge badge-ai">AI co-generated</span>
             <span class="badge badge-format">Markdown</span>
             <span class="badge badge-status">Preprint</span>
+        </div>
+        <div class="paper-tags">
+            <span class="oecd-tag" style="color:#2F5CFF;background:#E4E9FF" title="Natural sciences > Computer and information sciences">N&middot;CS</span>
+            <span class="oecd-tag" style="color:#9B59B6;background:#F4ECF7" title="Social sciences > Psychology and cognitive sciences">S&middot;PSYCH</span>
+            <span class="oecd-tag" style="color:#E67E22;background:#FDF0E0" title="Engineering and technology > Electrical, electronic, information engineering">E&middot;EE</span>
         </div>
     </div>
 
@@ -745,13 +767,12 @@ def subjects_page(request: Request):
     if not rows:
         body = '<div class="empty"><h3>No subjects yet</h3><p>Subjects appear once articles are published.</p></div>'
     else:
-        # Scale font sizes by count
-        max_count = max(r["count"] for r in rows)
+        from oecd_codes import classification_tag
         links = []
         for r in rows:
-            size = 0.85 + (r["count"] / max_count) * 0.8
+            tag = classification_tag(r["subject"])
             links.append(
-                f'<a href="/subjects/{quote(r["subject"])}/articles" style="font-size:{size:.1f}rem">{r["subject"]} <span style="color:#888">({r["count"]})</span></a>'
+                f'<a href="/subjects/{quote(r["subject"])}/articles" style="text-decoration:none">{tag} <span style="color:#888;font-size:0.85rem">({r["count"]})</span></a>'
             )
         body = f"""
         <h1>Subjects</h1>
@@ -1664,9 +1685,8 @@ def submit_done_page(article_id: int, request: Request, retraction: str = ""):
         f'{a["name"]} <span class="orcid">{a["orcid"]}</span>' for a in author_rows
     )
     subjects = article["subjects"] or []
-    subjects_html = " ".join(
-        f'<span class="subject-tag">{s}</span>' for s in subjects
-    )
+    from oecd_codes import classification_tag
+    subjects_html = "".join(classification_tag(s) for s in subjects)
 
     # Article-specific CSS
     article_css = """
@@ -1996,9 +2016,8 @@ def dashboard_preview_page(article_id: int, request: Request):
         f'{a["name"]} <span class="orcid">{a["orcid"]}</span>' for a in author_rows
     )
     subjects = article["subjects"] or []
-    subjects_html = " ".join(
-        f'<span class="subject-tag">{s}</span>' for s in subjects
-    )
+    from oecd_codes import classification_tag
+    subjects_html = "".join(classification_tag(s) for s in subjects)
     status = article["status"]
     status_note = ""
     if status == "pending":

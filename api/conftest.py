@@ -143,7 +143,7 @@ def db(tmp_path):
         admin_id = admin_row["id"]
 
         # ── A published article ────────────────────────────────────────────
-        ark = "ark:99999/genrxiv-0001"
+        ark = "ark:99999/genrxiv-2026-00001"
 
         # Pre-rendered artefacts on disk so the HTML/PDF view endpoints never
         # need to call out to the conversion service during tests.

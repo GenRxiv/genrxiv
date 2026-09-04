@@ -14,8 +14,8 @@ genrxiv.org and supports version-specific access and multiple output formats
 
 ARKs are registered with the Name-to-Thing (N2T) resolver at n2t.net, which
 redirects requests to GenRxiv's resolver. This means an ARK cited as
-`ark:NAAN/genrxiv-0001` will resolve even without the genrxiv.org hostname,
-via `https://n2t.net/ark:NAAN/genrxiv-0001`.
+`ark:NAAN/genrxiv-2026-00001` will resolve even without the genrxiv.org hostname,
+via `https://n2t.net/ark:NAAN/genrxiv-2026-00001`.
 
 ## ARK anatomy
 
@@ -46,10 +46,10 @@ formats, which are both **variants**.
 ### GenRxiv ARK structure
 
 ```
-https://genrxiv.org/article/ark:99999/genrxiv-0001.v3.pdf
-\___________________________/ \__/\___/ \________/ \_____/
-              |                 |    |      |        |
-              |           ARK Label   |       Variant
+https://genrxiv.org/article/ark:99999/genrxiv-2026-00001.v3.pdf
+\___________________________/ \__/\___/ \____________/ \_____/
+              |                 |    |        |          |
+              |           ARK Label   |         Variant
               |                      |    (version + format)
 Name Mapping Authority (NMA)         |
                               Assigned Name
@@ -64,23 +64,28 @@ Name Mapping Authority (NMA)         |
 | URL prefix      | Name Mapping Authority (NMA)    | `https://genrxiv.org/article/`  |
 | Label           | ARK label                       | `ark:`                          |
 | NAAN            | Name Assigning Authority Number | `99999` (placeholder)           |
-| Base name       | Assigned Name                   | `genrxiv-0001`                  |
+| Base name       | Assigned Name                   | `genrxiv-2026-00001`            |
 | Version variant | Variant                         | `.v3`                           |
 | Format variant  | Variant                         | `.pdf`                          |
 
 The NMA is the hostname that resolves the ARK. GenRxiv registers
 `https://genrxiv.org/article/${pid}` as its resolver rule with N2T, where
-`${pid}` is replaced by the full ARK string (e.g. `ark:99999/genrxiv-0001`).
+`${pid}` is replaced by the full ARK string (e.g. `ark:99999/genrxiv-2026-00001`).
 
 ## Base name format
 
-GenRxiv base names follow the pattern `genrxiv-NNNN`, where `NNNN` is a
-zero-padded sequential article ID assigned at submission time.
+GenRxiv base names follow the pattern `genrxiv-YYYY-NNNNN`, where `YYYY` is
+the four-digit publication year and `NNNNN` is a zero-padded sequential
+article ID (5 digits, allowing up to 99,999 articles per year).
 
 Examples:
-- `genrxiv-0001` — the first article
-- `genrxiv-0002` — the second article
-- `genrxiv-0042` — the forty-second article
+- `genrxiv-2026-00001` — the first article published in 2026
+- `genrxiv-2026-00002` — the second article published in 2026
+- `genrxiv-2027-00001` — the first article published in 2027 (counter resets)
+
+This is similar to arXiv's year-based identifier scheme (e.g.
+`arXiv:2401.12345`). The base name uses dashes (not dots) so that ARK
+variant syntax (`.v3`, `.pdf`, `.v3.pdf`) works without ambiguity.
 
 ### Base name practices (registered with N2T)
 
@@ -123,14 +128,14 @@ is a variant.
 
 ### Version variants
 
-The base ARK (e.g. `ark:NAAN/genrxiv-0001`) always resolves to the
+The base ARK (e.g. `ark:NAAN/genrxiv-2026-00001`) always resolves to the
 **current version**. Specific versions are accessed by appending `.vN`:
 
 | ARK                              | Resolves to              |
 |----------------------------------|--------------------------|
-| `ark:NAAN/genrxiv-0001`          | Current version (HTML)   |
-| `ark:NAAN/genrxiv-0001.v1`       | Version 1 (HTML)         |
-| `ark:NAAN/genrxiv-0001.v3`       | Version 3 (HTML)         |
+| `ark:NAAN/genrxiv-2026-00001`          | Current version (HTML)   |
+| `ark:NAAN/genrxiv-2026-00001.v1`       | Version 1 (HTML)         |
+| `ark:NAAN/genrxiv-2026-00001.v3`       | Version 3 (HTML)         |
 
 When viewing a non-current version, GenRxiv displays a banner indicating
 that a newer version exists, with a link to the current version and the
@@ -156,20 +161,20 @@ then the format:
 
 | ARK                                  | Resolves to              |
 |--------------------------------------|--------------------------|
-| `ark:NAAN/genrxiv-0001`              | Current version, HTML    |
-| `ark:NAAN/genrxiv-0001.pdf`          | Current version, PDF     |
-| `ark:NAAN/genrxiv-0001.v3`           | Version 3, HTML          |
-| `ark:NAAN/genrxiv-0001.v3.pdf`       | Version 3, PDF           |
-| `ark:NAAN/genrxiv-0001.v3.md`        | Version 3, Markdown      |
-| `ark:NAAN/genrxiv-0001.v3.jsonld`    | Version 3, JSON-LD       |
-| `ark:NAAN/genrxiv-0001.v3.bib`       | Version 3, BibTeX        |
+| `ark:NAAN/genrxiv-2026-00001`              | Current version, HTML    |
+| `ark:NAAN/genrxiv-2026-00001.pdf`          | Current version, PDF     |
+| `ark:NAAN/genrxiv-2026-00001.v3`           | Version 3, HTML          |
+| `ark:NAAN/genrxiv-2026-00001.v3.pdf`       | Version 3, PDF           |
+| `ark:NAAN/genrxiv-2026-00001.v3.md`        | Version 3, Markdown      |
+| `ark:NAAN/genrxiv-2026-00001.v3.jsonld`    | Version 3, JSON-LD       |
+| `ark:NAAN/genrxiv-2026-00001.v3.bib`       | Version 3, BibTeX        |
 
 ### Version history
 
 The version history page is available at:
 
 ```
-https://genrxiv.org/article/ark:NAAN/genrxiv-0001/versions
+https://genrxiv.org/article/ark:NAAN/genrxiv-2026-00001/versions
 ```
 
 This page lists all versions of the article with their status (published,
@@ -193,14 +198,14 @@ https://genrxiv.org/article/${pid}
 
 N2T's suffix passthrough feature means that a single registered ARK
 automatically supports all variant suffixes without separate registration.
-For example, if `ark:NAAN/genrxiv-0001` is registered with the target URL
-`https://genrxiv.org/article/ark:NAAN/genrxiv-0001`, then:
+For example, if `ark:NAAN/genrxiv-2026-00001` is registered with the target URL
+`https://genrxiv.org/article/ark:NAAN/genrxiv-2026-00001`, then:
 
 | Incoming to N2T                              | N2T redirects to                                                      |
 |----------------------------------------------|-----------------------------------------------------------------------|
-| `ark:NAAN/genrxiv-0001`                      | `https://genrxiv.org/article/ark:NAAN/genrxiv-0001`                   |
-| `ark:NAAN/genrxiv-0001.v3`                   | `https://genrxiv.org/article/ark:NAAN/genrxiv-0001.v3`                |
-| `ark:NAAN/genrxiv-0001.v3.pdf`               | `https://genrxiv.org/article/ark:NAAN/genrxiv-0001.v3.pdf`            |
+| `ark:NAAN/genrxiv-2026-00001`                      | `https://genrxiv.org/article/ark:NAAN/genrxiv-2026-00001`                   |
+| `ark:NAAN/genrxiv-2026-00001.v3`                   | `https://genrxiv.org/article/ark:NAAN/genrxiv-2026-00001.v3`                |
+| `ark:NAAN/genrxiv-2026-00001.v3.pdf`               | `https://genrxiv.org/article/ark:NAAN/genrxiv-2026-00001.v3.pdf`            |
 
 No additional registrations are needed for version or format variants.
 
@@ -212,8 +217,8 @@ dot-variant syntax:
 ### Legacy ARK format (`ark:/`)
 
 GenRxiv originally generated ARKs with an extra slash after the colon:
-`ark:/99999/genrxiv-0001`. This has been corrected to the standard format
-`ark:99999/genrxiv-0001`. The resolver normalizes incoming ARKs by
+`ark:/99999/genrxiv-2026-00001`. This has been corrected to the standard format
+`ark:99999/genrxiv-2026-00001`. The resolver normalizes incoming ARKs by
 stripping the extra slash, so both formats resolve correctly.
 
 ### Legacy slash-separated routes
@@ -224,12 +229,12 @@ continue to work as backwards-compatible aliases:
 
 | Legacy URL                                          | Equivalent dot-variant URL                           |
 |-----------------------------------------------------|------------------------------------------------------|
-| `.../ark:NAAN/genrxiv-0001/pdf`                     | `.../ark:NAAN/genrxiv-0001.pdf`                      |
-| `.../ark:NAAN/genrxiv-0001/markdown`                | `.../ark:NAAN/genrxiv-0001.md`                       |
-| `.../ark:NAAN/genrxiv-0001/jsonld`                  | `.../ark:NAAN/genrxiv-0001.jsonld`                   |
-| `.../ark:NAAN/genrxiv-0001/bibtex`                  | `.../ark:NAAN/genrxiv-0001.bib`                      |
-| `.../ark:NAAN/genrxiv-0001/1`                       | `.../ark:NAAN/genrxiv-0001.v1`                       |
-| `.../ark:NAAN/genrxiv-0001/1/pdf`                   | `.../ark:NAAN/genrxiv-0001.v1.pdf`                   |
+| `.../ark:NAAN/genrxiv-2026-00001/pdf`                     | `.../ark:NAAN/genrxiv-2026-00001.pdf`                      |
+| `.../ark:NAAN/genrxiv-2026-00001/markdown`                | `.../ark:NAAN/genrxiv-2026-00001.md`                       |
+| `.../ark:NAAN/genrxiv-2026-00001/jsonld`                  | `.../ark:NAAN/genrxiv-2026-00001.jsonld`                   |
+| `.../ark:NAAN/genrxiv-2026-00001/bibtex`                  | `.../ark:NAAN/genrxiv-2026-00001.bib`                      |
+| `.../ark:NAAN/genrxiv-2026-00001/1`                       | `.../ark:NAAN/genrxiv-2026-00001.v1`                       |
+| `.../ark:NAAN/genrxiv-2026-00001/1/pdf`                   | `.../ark:NAAN/genrxiv-2026-00001.v1.pdf`                   |
 
 New citations should use the dot-variant syntax. The legacy routes exist
 solely to preserve existing external links.
@@ -273,7 +278,7 @@ GenRxiv's NAAN is registered with N2T via the NAAN request form at
 https://arks.org. The registration includes:
 
 - **Resolver rule:** `https://genrxiv.org/article/${pid}`
-- **Test ARK:** `genrxiv-0001` (resolves to the GenRxiv founding paper)
+- **Test ARK:** `genrxiv-2026-00001` (resolves to the GenRxiv founding paper)
 - **Base name practices:** NR (no re-assignment), LC (lowercase only)
 - **Data persistence:** Yes
 

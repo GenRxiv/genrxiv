@@ -232,7 +232,7 @@ Standard OAI-PMH 2.0 XML responses with proper error handling:
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://genrxiv.org/article/ark:/99999/genrxiv-0001</loc>
+    <loc>https://genrxiv.org/article/ark:/99999/genrxiv-2026-00001</loc>
     <lastmod>2026-09-03T12:00:00+00:00</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
@@ -251,9 +251,9 @@ Each published article emits Schema.org `ScholarlyArticle` JSON-LD:
 {
   "@context": "https://schema.org",
   "@type": "ScholarlyArticle",
-  "@id": "ark:/99999/genrxiv-0001",
-  "identifier": "ark:/99999/genrxiv-0001",
-  "url": "https://genrxiv.org/article/ark:/99999/genrxiv-0001",
+  "@id": "ark:/99999/genrxiv-2026-00001",
+  "identifier": "ark:/99999/genrxiv-2026-00001",
+  "url": "https://genrxiv.org/article/ark:/99999/genrxiv-2026-00001",
   "headline": "...",
   "abstract": "...",
   "author": [
@@ -323,7 +323,7 @@ Response:
 ```json
 {
   "id": 1,
-  "ark": "ark:/99999/genrxiv-0001",
+  "ark": "ark:/99999/genrxiv-2026-00001",
   "status": "pending",
   "submitted_at": "2026-09-03T12:00:00Z"
 }
