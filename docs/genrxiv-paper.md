@@ -22,27 +22,26 @@ AI-generated content. Some require disclosure statements that read as
 apologies; some have no policy at all. The result is that authors
 either hide AI involvement or avoid depositing the work entirely.
 
-GenRxiv takes the opposite position. It is a preprint archive where AI
-involvement is the expected condition of the venue, not an exception to
-be argued for. The archive does not peer-review submissions and does
-not evaluate scientific merit. Popularity is measured by download
-counts, tracked separately for human and agent traffic, so that both
-audiences contribute to a paper's visibility.
+GenRxiv takes the opposite position: AI involvement is treated as the
+normal case for the venue, and authors do not need to justify it. The
+archive does not peer-review submissions and does not evaluate
+scientific merit. Popularity is measured by download counts, tracked
+separately for human and agent traffic, so that both audiences
+contribute to a paper's visibility.
 
 The design is shaped by a few deliberate constraints. Submissions are
 Markdown only — no PDF, no LaTeX source, no Word documents. Authors are
 identified exclusively by ORCID iD [@orcid], with no email/password
 registration. Every paper is released under CC0 1.0 (Public Domain
-Dedication) [@cc0]. The archive exposes structured metadata through
-OAI-PMH 2.0 [@oai_pmh], schema.org JSON-LD [@schema_org], an Atom feed
-[@atom], and a plain-text agent guide, so that indexing services and
-autonomous agents can discover and read submissions without parsing
-PDFs. The source code is public [@genrxiv_repo] and the live archive
-is at genrxiv.org [@genrxiv_site].
+Dedication) [@cc0]. The archive also exposes structured metadata for
+machine consumption: OAI-PMH 2.0 [@oai_pmh], schema.org JSON-LD
+[@schema_org], an Atom feed [@atom], and a plain-text agent guide.
+Indexing services and autonomous agents can discover and read
+submissions this way without parsing PDFs. The source code is public
+[@genrxiv_repo] and the live archive is at genrxiv.org [@genrxiv_site].
 
-This paper describes the motivation, design, and architecture of
-GenRxiv, and discusses its limitations and the open questions it
-raises.
+This paper describes GenRxiv's motivation, design, and architecture,
+and discusses its limitations and open questions.
 
 ## 2. Context and Related Work
 
@@ -65,18 +64,17 @@ machine-readable metadata that distinguishes AI-generated work from
 human-authored work in a structured way.
 
 GenRxiv is not a competitor to these servers in the sense of covering
-the same content. It is a complementary venue for work where AI
-involvement is substantial — work that may not fit comfortably in a
-human-authored preprint server, or that benefits from being in a
-collection where AI involvement is the norm rather than the exception.
+the same content. It is a complementary venue for work that may not
+fit comfortably in a human-authored preprint server, or that benefits
+from sitting in a collection where AI involvement is simply assumed.
 
 The design also draws on the open access and open source traditions.
 The platform code is licensed under AGPL-3.0 [@agpl3], ensuring that
-derivative deployments remain open. Archived papers are CC0, removing
-all reuse barriers. This is a stronger commitment than the CC-BY
-licences used by most open access journals, and it reflects the
-archive's position that AI-generated research, once deposited, should
-be maximally reusable by both people and machines.
+derivative deployments remain open, and archived papers are CC0,
+removing all reuse barriers. This is a stronger commitment than the
+CC-BY licences used by most open access journals, reflecting the
+archive's position that AI-generated research should be maximally
+reusable by both people and machines once deposited.
 
 ## 3. Design Decisions
 
@@ -103,42 +101,44 @@ machine readability matters more than visual fidelity for this
 archive.
 
 Mathematics is written in LaTeX notation inside dollar signs and
-rendered by KaTeX [@katex]. Figures are referenced as Markdown images,
-with SVG preferred for diagrams and charts. Raster images are accepted
-but capped in size.
+rendered by KaTeX [@katex] — for example, $O(n \log n)$ renders as
+typeset mathematics rather than plain text. Figures are referenced as
+Markdown images, with SVG preferred for diagrams and charts (Figure 1
+in section 4 is one example). Raster images are accepted but capped
+in size.
 
 ### 3.2 ORCID as the only identity
 
 Every author is identified by an ORCID iD. There is no
 email/password registration, no local account creation, and no
 provision for anonymous submission. This choice ensures that
-attribution is verifiable — an ORCID iD resolves to a real person —
-and that the same person can be recognised across submissions.
+attribution is verifiable (an ORCID iD resolves to a real person) and
+that the same person can be recognised across submissions.
 
-The trade-off is that requiring an ORCID iD raises the barrier to
-submission. A researcher without an ORCID iD must register at
-orcid.org before they can deposit work. GenRxiv accepts this cost on
-the grounds that verifiable authorship is foundational to the
-archive's credibility: if authorship cannot be verified, the
-attribution data that underpins the archive's value is unreliable.
+The cost is a higher barrier to submission: a researcher without an
+ORCID iD must register at orcid.org before they can deposit work.
+GenRxiv accepts this cost on the grounds that verifiable authorship is
+foundational to the archive's credibility. If authorship cannot be
+verified, the attribution data that underpins the archive's value is
+unreliable.
 
 ### 3.3 CC0 for all submissions
 
 Every submission is released under CC0 1.0. There is no license
 negotiation, no choice of Creative Commons variant, and no option for
-all-rights-reserved. This is a stronger commitment than most open
-access venues, which typically default to CC-BY.
+all-rights-reserved. As noted in section 2, this is a stronger
+commitment than the CC-BY default used by most open access venues.
 
-The motivation is twofold. First, CC0 removes all reuse barriers —
+The motivation is twofold. First, CC0 removes all reuse barriers:
 anyone can reproduce, adapt, mine, or redistribute the work without
 attribution obligations. This is particularly important for machine
-readability: an agent that harvests and processes papers does not need
-to track licence terms. Second, a single licence simplifies the
-archive: there is no licence metadata to maintain, no mixed-licence
-collections to navigate, and no ambiguity about what a reader or
-harvester can do with the content.
+readability, since an agent that harvests and processes papers does
+not need to track licence terms. Second, a single licence simplifies
+the archive: there is no licence metadata to maintain, no
+mixed-licence collections to navigate, and no ambiguity about what a
+reader or harvester can do with the content.
 
-The trade-off is that CC0 is more permissive than some authors would
+The downside is that CC0 is more permissive than some authors would
 prefer. A researcher who wants attribution for their AI-generated work
 cannot require it through the archive. GenRxiv's position is that the
 benefit of maximal reusability outweighs this preference, and that
@@ -155,12 +155,26 @@ is frequently downloaded by both people and software agents is one
 that the community finds useful, regardless of whether anyone has
 vouched for it.
 
-The trade-off is that download counts are a coarse signal. They
-measure interest, not quality. A paper can be downloaded many times
-because it is controversial, not because it is correct. GenRxiv
-accepts this on the grounds that no single metric captures quality,
-and that download data is transparent and available for anyone who
-wants to analyse it more carefully.
+Formally, if $d_p^h(t)$ and $d_p^a(t)$ are the human and agent
+download counts for paper $p$ at time $t$, the total popularity signal
+is $d_p(t) = d_p^h(t) + d_p^a(t)$. Raw counts favour older papers, so a
+time-normalised rate,
+
+$$
+\rho_p(t) = \frac{d_p(t)}{t - t_0(p)},
+$$
+
+where $t_0(p)$ is the publication time, would put recent and
+long-standing papers on comparable footing. GenRxiv currently displays
+only the raw counts and leaves this kind of normalisation to anyone
+who wants to build on the public download data.
+
+Download counts are nonetheless a coarse signal: they measure
+interest, not quality. A paper can be downloaded many times because it
+is controversial, not because it is correct. GenRxiv accepts this on
+the grounds that no single metric captures quality, and that the
+underlying data is transparent enough for anyone to analyse it more
+carefully.
 
 ### 3.5 Agent-readable by design
 
@@ -176,14 +190,12 @@ front matter with all submission metadata (title, abstract, authors,
 subjects classified using the OECD Fields of Science taxonomy
 [@oecd_fos]) and Pandoc-style `@citekey` citations with a BibTeX block.
 When a human uploads such a file through the web form, the form
-auto-fills from the front matter. The human reviews and confirms; the
-agent does the preparation. This matters because ORCID authentication
-requires a browser-based OAuth flow that agents cannot perform
-themselves — but they can do everything else.
+auto-fills from the front matter, and the human reviews and confirms.
 
-This is a deliberate split: agents prepare, humans submit. It keeps
-authentication in human hands while allowing agents to do the
-mechanical work of formatting and metadata entry.
+This is a deliberate split: agents prepare, humans submit. ORCID
+authentication requires a browser-based OAuth flow that agents cannot
+perform themselves, so authentication stays in human hands while
+agents handle the mechanical work of formatting and metadata entry.
 
 ## 4. Architecture
 
@@ -192,7 +204,11 @@ GenRxiv is built as a small set of containerised services: a FastAPI
 conversion sidecar using Pandoc [@pandoc] and Tectonic [@tectonic] for
 rendering, and an nginx reverse proxy. A Cloudflare Tunnel
 [@cloudflare_tunnel] exposes the service to the public internet
-without opening inbound ports on the host.
+without opening inbound ports on the host. Figure 1 shows how a
+request reaches the archive and where the trust boundary described in
+section 4.1 sits.
+
+![Figure 1. A browser or agent reaches GenRxiv through a Cloudflare Tunnel and an nginx reverse proxy to the FastAPI API, which stores state in PostgreSQL. All Markdown rendering is delegated across a trust boundary to a sandboxed conversion sidecar running Pandoc and Tectonic.](data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NDAgMzQwIiBmb250LWZhbWlseT0iSGVsdmV0aWNhLCBBcmlhbCwgc2Fucy1zZXJpZiI+CiAgPGRlZnM+CiAgICA8bWFya2VyIGlkPSJhcnJvdyIgdmlld0JveD0iMCAwIDEwIDEwIiByZWZYPSI5IiByZWZZPSI1IiBtYXJrZXJXaWR0aD0iNyIgbWFya2VySGVpZ2h0PSI3IiBvcmllbnQ9ImF1dG8tc3RhcnQtcmV2ZXJzZSI+CiAgICAgIDxwYXRoIGQ9Ik0wLDAgTDEwLDUgTDAsMTAgeiIgZmlsbD0iIzFCMUUyNyIvPgogICAgPC9tYXJrZXI+CiAgPC9kZWZzPgoKICA8c3R5bGU+CiAgICAuYm94IHsgZmlsbDogI0VERUFFMjsgc3Ryb2tlOiAjMUIxRTI3OyBzdHJva2Utd2lkdGg6IDEuNTsgfQogICAgLmJvdW5kYXJ5IHsgZmlsbDogbm9uZTsgc3Ryb2tlOiAjMkY1Q0ZGOyBzdHJva2Utd2lkdGg6IDEuNTsgc3Ryb2tlLWRhc2hhcnJheTogNiA0OyB9CiAgICAubGFiZWwgeyBmaWxsOiAjMUIxRTI3OyBmb250LXNpemU6IDE0cHg7IHRleHQtYW5jaG9yOiBtaWRkbGU7IH0KICAgIC5zdWJsYWJlbCB7IGZpbGw6ICM0NDQ7IGZvbnQtc2l6ZTogMTFweDsgdGV4dC1hbmNob3I6IG1pZGRsZTsgfQogICAgLmVkZ2UgeyBzdHJva2U6ICMxQjFFMjc7IHN0cm9rZS13aWR0aDogMS41OyBmaWxsOiBub25lOyBtYXJrZXItZW5kOiB1cmwoI2Fycm93KTsgfQogIDwvc3R5bGU+CgogIDwhLS0gQnJvd3NlciAvIEFnZW50IC0tPgogIDxyZWN0IGNsYXNzPSJib3giIHg9IjI1MCIgeT0iMTAiIHdpZHRoPSIxNDAiIGhlaWdodD0iNDYiIHJ4PSI2Ii8+CiAgPHRleHQgY2xhc3M9ImxhYmVsIiB4PSIzMjAiIHk9IjM4Ij5Ccm93c2VyIC8gQWdlbnQ8L3RleHQ+CgogIDwhLS0gQ2xvdWRmbGFyZSBUdW5uZWwgLS0+CiAgPHJlY3QgY2xhc3M9ImJveCIgeD0iMjUwIiB5PSI4NiIgd2lkdGg9IjE0MCIgaGVpZ2h0PSI0NiIgcng9IjYiLz4KICA8dGV4dCBjbGFzcz0ibGFiZWwiIHg9IjMyMCIgeT0iMTE0Ij5DbG91ZGZsYXJlIFR1bm5lbDwvdGV4dD4KCiAgPCEtLSBuZ2lueCAtLT4KICA8cmVjdCBjbGFzcz0iYm94IiB4PSIyNTAiIHk9IjE2MiIgd2lkdGg9IjE0MCIgaGVpZ2h0PSI0NiIgcng9IjYiLz4KICA8dGV4dCBjbGFzcz0ibGFiZWwiIHg9IjMyMCIgeT0iMTkwIj5uZ2lueDwvdGV4dD4KCiAgPCEtLSBGYXN0QVBJIEFQSSAtLT4KICA8cmVjdCBjbGFzcz0iYm94IiB4PSIyNTAiIHk9IjIzOCIgd2lkdGg9IjE0MCIgaGVpZ2h0PSI0NiIgcng9IjYiLz4KICA8dGV4dCBjbGFzcz0ibGFiZWwiIHg9IjMyMCIgeT0iMjY2Ij5GYXN0QVBJIEFQSTwvdGV4dD4KCiAgPCEtLSBQb3N0Z3JlU1FMIC0tPgogIDxyZWN0IGNsYXNzPSJib3giIHg9IjQwIiB5PSIyMzgiIHdpZHRoPSIxNDAiIGhlaWdodD0iNDYiIHJ4PSI2Ii8+CiAgPHRleHQgY2xhc3M9ImxhYmVsIiB4PSIxMTAiIHk9IjI2NiI+UG9zdGdyZVNRTDwvdGV4dD4KCiAgPCEtLSBUcnVzdCBib3VuZGFyeSArIGNvbnZlcnNpb24gc2lkZWNhciAtLT4KICA8cmVjdCBjbGFzcz0iYm91bmRhcnkiIHg9IjQzMCIgeT0iMjIwIiB3aWR0aD0iMTkwIiBoZWlnaHQ9IjgwIiByeD0iOCIvPgogIDx0ZXh0IGNsYXNzPSJzdWJsYWJlbCIgeD0iNTI1IiB5PSIyMTIiPnRydXN0IGJvdW5kYXJ5PC90ZXh0PgogIDxyZWN0IGNsYXNzPSJib3giIHg9IjQ1MCIgeT0iMjM4IiB3aWR0aD0iMTUwIiBoZWlnaHQ9IjQ2IiByeD0iNiIvPgogIDx0ZXh0IGNsYXNzPSJsYWJlbCIgeD0iNTI1IiB5PSIyNjAiPkNvbnZlcnNpb24gc2lkZWNhcjwvdGV4dD4KICA8dGV4dCBjbGFzcz0ic3VibGFiZWwiIHg9IjUyNSIgeT0iMjc0Ij5QYW5kb2MgKyBUZWN0b25pYzwvdGV4dD4KCiAgPCEtLSBFZGdlcyAtLT4KICA8bGluZSBjbGFzcz0iZWRnZSIgeDE9IjMyMCIgeTE9IjU2IiB4Mj0iMzIwIiB5Mj0iODYiLz4KICA8bGluZSBjbGFzcz0iZWRnZSIgeDE9IjMyMCIgeTE9IjEzMiIgeDI9IjMyMCIgeTI9IjE2MiIvPgogIDxsaW5lIGNsYXNzPSJlZGdlIiB4MT0iMzIwIiB5MT0iMjA4IiB4Mj0iMzIwIiB5Mj0iMjM4Ii8+CiAgPGxpbmUgY2xhc3M9ImVkZ2UiIHgxPSIyNTAiIHkxPSIyNjEiIHgyPSIxODAiIHkyPSIyNjEiLz4KICA8bGluZSBjbGFzcz0iZWRnZSIgeDE9IjM5MCIgeTE9IjI2MSIgeDI9IjQzMCIgeTI9IjI2MSIvPgo8L3N2Zz4K)
 
 The application handles submission, moderation, article serving,
 OAI-PMH, authentication, statistics, and agent discovery. All database
@@ -206,15 +222,15 @@ iDs, not by a separate role table.
 
 The most important architectural decision is the isolation of the
 conversion service. The API never executes author-submitted content
-directly. All Markdown-to-HTML and Markdown-to-PDF rendering is
-delegated to a sandboxed sidecar with no published ports, per-job
-scratch directories, hard wall-clock timeouts, capped upload and image
-sizes, and Tectonic invoked with `--untrusted` (which disables
-shell-escape and restricts file system access).
+directly; all Markdown-to-HTML and Markdown-to-PDF rendering is
+delegated to a sandboxed sidecar. That sidecar has no published ports,
+per-job scratch directories, hard wall-clock timeouts, and capped
+upload and image sizes. Tectonic itself runs with `--untrusted`, which
+disables shell-escape and restricts file system access.
 
-This is the trust boundary of the system. Author-submitted Markdown
-is untrusted input; the conversion service is the only component that
-processes it, and it is resource-limited and isolated. If a
+The dashed line in Figure 1 marks this trust boundary. Author-submitted
+Markdown is untrusted input, and the conversion service is the only
+component that processes it, resource-limited and isolated. If a
 submission contains malformed content or a pathological Pandoc filter
 chain, the blast radius is a single failed conversion job, not the
 API or the database.
@@ -226,13 +242,12 @@ every published preprint. ARKs are free, resolvable through n2t.net,
 and persist across versions: when an author submits a revised version
 of a paper, the same ARK continues to resolve.
 
-ARKs are an interim step. The stated goal is to issue Crossref DOIs
+ARKs are an interim step. The goal is to issue Crossref DOIs
 [@crossref] once GenRxiv has a track record of published submissions,
 organisational backing, a sustainability plan, and Crossref membership
-approval. DOIs are a permanence commitment — once minted and
-registered, they must resolve forever — so they are not issued from
-day one. Starting with ARKs allows the archive to establish its
-identity and prove its persistence before taking on that obligation.
+approval. DOIs are a permanence commitment: once minted, they must
+resolve forever, so they are not issued from day one. ARKs let the
+archive establish its identity and prove its persistence first.
 
 ## 5. Limitations and Open Questions
 
@@ -266,11 +281,10 @@ under-resourced settings may not. The archive treats this as an
 acceptable cost of verifiable authorship, but it is a cost.
 
 **Sustainability is unproven.** GenRxiv is a small, self-hosted
-service. It has documented backup, restore, and deployment workflows,
-but it does not have the organisational backing or funding of arXiv or
-bioRxiv. Whether it can sustain operations over the long term — and
-whether it can earn the right to issue DOIs — depends on adoption and
-community support that have not yet been demonstrated.
+service with documented backup, restore, and deployment workflows, but
+without the organisational backing or funding of arXiv or bioRxiv.
+Sustaining operations, and earning the right to issue DOIs, depends on
+adoption and community support that have not yet been demonstrated.
 
 ## 6. Conclusion
 
@@ -281,13 +295,12 @@ Markdown submissions, verifiable ORCID authorship, CC0 licensing,
 download-based popularity tracking, and a machine-readable
 architecture that treats agents as first-class readers.
 
-The archive is live and accepting submissions. The questions that
-remain — whether download counts are a sufficient popularity signal,
-whether the Markdown-only format is too restrictive, whether a single
-licence is the right choice, and whether the archive can sustain
-itself — are empirical questions that the archive's own operation
-will answer over
-time.
+The archive is live and accepting submissions. Several questions
+remain open: whether download counts are a sufficient popularity
+signal, whether the Markdown-only format is too restrictive, whether a
+single licence is the right choice, and whether the archive can
+sustain itself. These are empirical questions, and the archive's own
+operation will answer them over time.
 
 ```bibtex
 @misc{genrxiv_repo,
