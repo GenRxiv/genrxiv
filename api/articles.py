@@ -37,6 +37,37 @@ ALLOWED_LICENSES = {
 
 ORCID_PATTERN = re.compile(r"^\d{4}-\d{4}-\d{4}-\d{3}[\dX]$")
 
+
+def _merge_front_matter(md_text: str, title: str, authors: list[dict], abstract: str) -> str:
+    """Merge form metadata into the Markdown file as YAML front matter.
+
+    If the file already has front matter, the form values override it.
+    If not, a new front matter block is prepended.
+    The stored file is always a complete document with front matter.
+    """
+    # Parse existing front matter
+    m = re.match(r'^---\s*\n(.*?)\n---\s*\n', md_text, re.DOTALL)
+    if m:
+        body = md_text[m.end():]
+    else:
+        body = md_text
+
+    # Build YAML front matter from form data
+    lines = ["---"]
+    lines.append(f'title: "{title}"')
+    lines.append(f'abstract: "{abstract}"')
+    lines.append("authors:")
+    for a in authors:
+        lines.append(f'  - orcid: "{a["orcid"]}"')
+        lines.append(f'    name: "{a["name"]}"')
+        if a.get("affiliation"):
+            lines.append(f'    affiliation: "{a["affiliation"]}"')
+    lines.append("---")
+
+    front_matter = "\n".join(lines)
+    return front_matter + "\n\n" + body
+
+
 # ─── Helpers ───────────────────────────────────────────────────────────────
 
 AGENT_PATTERNS = [
@@ -148,7 +179,11 @@ def assign_ark(article_id: int) -> str:
 
 
 def render_html(markdown: str) -> str:
-    """Call conversion service to render Markdown → HTML."""
+    """Call conversion service to render Markdown → HTML.
+
+    The conversion service parses YAML front matter (title, authors,
+    abstract) from the Markdown and renders it as a header block.
+    """
     with httpx.Client(timeout=120) as client:
         r = client.post(
             f"{config.convert_service_url}/render/html",
@@ -159,7 +194,11 @@ def render_html(markdown: str) -> str:
 
 
 def render_pdf(markdown: str) -> bytes:
-    """Call conversion service to render Markdown → PDF."""
+    """Call conversion service to render Markdown → PDF.
+
+    The conversion service parses YAML front matter (title, authors,
+    abstract) from the Markdown and renders it as a header block.
+    """
     import time
     time.sleep(1)  # Avoid rate limit on conversion service
     with httpx.Client(timeout=120) as client:
@@ -287,6 +326,140 @@ class AuthorInput(BaseModel):
     affiliation: str | None = None
 
 
+@router.post("/api/validate")
+@limiter.limit("20 per minute")
+async def validate_submission(
+    request: Request,
+    markdown: UploadFile = File(...),
+    title: str = Form(""),
+    authors: str = Form(""),
+    abstract: str = Form(""),
+    license: str = Form("CC0"),
+    license_url: str = Form("https://creativecommons.org/publicdomain/zero/1.0/"),
+    subjects: str = Form(""),
+    _author: dict = Depends(require_author),
+):
+    """Validate a submission without creating it. Returns errors, hints, and a preview."""
+    errors = []
+    hints = []
+
+    # Read and validate file
+    content = await markdown.read()
+    if len(content) > MAX_MARKDOWN_SIZE:
+        errors.append(f"File too large (max {MAX_MARKDOWN_SIZE // 1024 // 1024}MB)")
+    if not content:
+        errors.append("Markdown file is empty")
+    else:
+        ext = Path(markdown.filename or "").suffix.lower()
+        if ext not in ALLOWED_EXTENSIONS:
+            errors.append(f"File must be .md or .markdown, got: {ext or 'no extension'}")
+
+    # Validate title
+    try:
+        title = validate_title(title) if title else ""
+    except HTTPException as e:
+        errors.append(e.detail)
+    if not title:
+        errors.append("Title is required")
+
+    # Validate abstract
+    abstract = abstract.strip()
+    if not abstract:
+        errors.append("Abstract is required")
+    elif len(abstract) > MAX_ABSTRACT_LENGTH:
+        errors.append(f"Abstract too long (max {MAX_ABSTRACT_LENGTH} chars)")
+
+    # Validate authors
+    author_list = []
+    try:
+        author_list = json.loads(authors)
+        if not isinstance(author_list, list) or not author_list:
+            raise ValueError
+    except (json.JSONDecodeError, ValueError):
+        errors.append("Authors must be a JSON array of {orcid, name} objects")
+    else:
+        if len(author_list) > MAX_AUTHORS:
+            errors.append(f"Too many authors (max {MAX_AUTHORS})")
+        for a in author_list:
+            if not isinstance(a, dict) or "orcid" not in a or "name" not in a:
+                errors.append("Each author must have orcid and name")
+                break
+            try:
+                a["orcid"] = validate_orcid(a["orcid"])
+            except HTTPException:
+                errors.append(f"Invalid ORCID format: {a.get('orcid', '?')}")
+                break
+            a["name"] = a["name"].strip()[:200]
+            if not a["name"]:
+                errors.append("Author name cannot be empty")
+                break
+
+        # Check submitter is in author list
+        if author_list and not errors:
+            submitter_orcids = [a["orcid"] for a in author_list if isinstance(a, dict) and "orcid" in a]
+            if _author["orcid"] not in submitter_orcids:
+                errors.append(
+                    "The submitting author must be listed as one of the authors. "
+                    "You cannot submit on behalf of others without being an author yourself."
+                )
+
+    # Validate license
+    try:
+        validate_license(license, license_url)
+    except HTTPException as e:
+        errors.append(e.detail)
+
+    # Validate subjects
+    subj_list = []
+    try:
+        subj_list = validate_subjects(
+            [s.strip() for s in subjects.split(",") if s.strip()] if subjects else []
+        )
+    except HTTPException as e:
+        errors.append(e.detail)
+    if len(subj_list) != 3:
+        errors.append(f"Exactly 3 subject classifications are required (got {len(subj_list)})")
+
+    # Hints: check Markdown content for common issues
+    if content:
+        md_text = content.decode("utf-8", errors="replace")
+        if not md_text.strip():
+            hints.append("Markdown content is empty")
+        if "```bibtex" in md_text:
+            # Check for unclosed BibTeX block
+            bibtex_count = md_text.count("```bibtex")
+            closing_after = md_text.count("```", md_text.index("```bibtex") + len("```bibtex"))
+            if closing_after < bibtex_count:
+                hints.append("BibTeX block may be unclosed — check that each ```bibtex block has a closing ```")
+        if md_text.startswith("---"):
+            # Has front matter — check it closes
+            if "\n---\n" not in md_text[3:]:
+                hints.append("YAML front matter appears to be unclosed — add a closing --- line")
+        if "$" in md_text:
+            dollar_count = md_text.count("$")
+            if dollar_count % 2 != 0:
+                hints.append("Odd number of $ signs — some math expressions may be unclosed")
+        if "<html" in md_text.lower() or "<body" in md_text.lower():
+            hints.append("Raw HTML tags detected — GenRxiv renders Markdown only, HTML tags will be stripped")
+
+    # Build preview if no blocking errors
+    preview_html = None
+    if not errors and content:
+        try:
+            # Merge form metadata into front matter before rendering
+            merged_md = _merge_front_matter(md_text, title, author_list, abstract)
+            preview_html = render_html(merged_md)
+        except Exception as e:
+            hints.append(f"Preview rendering failed: {str(e)}")
+
+    return {
+        "valid": len(errors) == 0,
+        "errors": errors,
+        "hints": hints,
+        "preview": preview_html,
+    }
+
+
 @router.post("/api/submit")
 @limiter.limit("5 per minute")
 async def submit(
@@ -360,6 +533,10 @@ async def submit(
     )
     if len(subj_list) != 3:
         raise HTTPException(400, "Exactly 3 subject classifications are required")
+
+    # Merge form metadata into the Markdown as YAML front matter.
+    # The stored file is the complete document — front matter + body.
+    md_text = _merge_front_matter(md_text, title, author_list, abstract)
 
     # Insert article
     with get_conn().connection() as conn:
@@ -602,7 +779,7 @@ def download_pdf(ark: str, request: Request):
         filepath = safe_resolve_file(article["pdf_path"])
         if filepath:
             return FileResponse(filepath, media_type="application/pdf", filename=f"{ark.replace('/', '_')}.pdf")
-    # Fallback: render on the fly
+    # Fallback: render on the fly (front matter is in the stored markdown)
     pdf_bytes = render_pdf(article["source_markdown"])
     return Response(
         content=pdf_bytes,
@@ -744,7 +921,7 @@ def view_article(ark: str, request: Request):
         filepath = safe_resolve_file(article["html_path"])
         if filepath:
             return HTMLResponse(filepath.read_text(encoding="utf-8"))
-    # Fallback: render on the fly
+    # Fallback: render on the fly (front matter is in the stored markdown)
     html = render_html(article["source_markdown"])
     return HTMLResponse(html)
 
@@ -780,7 +957,7 @@ def moderate_article(
     """Approve or reject a submission."""
     with get_conn().connection() as conn:
         row = conn.execute(
-            "SELECT id, title, status, source_markdown, version FROM articles WHERE id = %s", (article_id,)
+            "SELECT id, title, abstract, status, source_markdown, version FROM articles WHERE id = %s", (article_id,)
         ).fetchone()
         if not row:
             raise HTTPException(404, "Article not found")
@@ -810,7 +987,9 @@ def moderate_article(
             else:
                 ark = assign_ark(article_id)
 
-            # Render HTML and PDF
+            # Render HTML and PDF — the conversion service reads
+            # title/authors/abstract from the YAML front matter in the
+            # stored Markdown, which was merged at submission time.
             html = render_html(row["source_markdown"])
             pdf = render_pdf(row["source_markdown"])
             html_path = save_article_file(article_id, "html", html)

@@ -79,6 +79,43 @@ class TestRenderHtml:
         assert "katex" in body.lower()  # KaTeX CSS/JS loaded
         assert "AI-generated research" in body  # standard banner
 
+    def test_metadata_header_injected(self, client):
+        """Front matter title/authors/abstract are rendered as a header block."""
+        content = (
+            b'---\n'
+            b'title: "My Test Paper Title"\n'
+            b'abstract: "This is the abstract of the test paper."\n'
+            b'authors:\n'
+            b'  - orcid: "0000-0000-0000-0000"\n'
+            b'    name: "Jane Doe"\n'
+            b'  - orcid: "0000-0000-0000-0001"\n'
+            b'    name: "John Smith"\n'
+            b'---\n\n'
+            b'# My Test Paper Title\n\n'
+            b'Body content here.\n'
+        )
+        r = client.post(
+            "/render/html",
+            files={"file": ("test.md", content, "text/markdown")},
+        )
+        assert r.status_code == 200
+        body = r.text
+        assert "paper-header" in body
+        assert "My Test Paper Title" in body
+        assert "Jane Doe" in body
+        assert "John Smith" in body
+        assert "orcid.org/0000-0000-0000-0000" in body
+        assert "This is the abstract of the test paper." in body
+
+    def test_no_front_matter_no_header(self, client, md_file):
+        """Without front matter, no metadata header is injected."""
+        r = client.post(
+            "/render/html",
+            files={"file": md_file},
+        )
+        assert r.status_code == 200
+        assert "paper-header" not in r.text
+
     def test_latex_rejected(self, client, tex_file):
         r = client.post(
             "/render/html",

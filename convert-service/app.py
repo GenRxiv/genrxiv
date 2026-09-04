@@ -14,6 +14,8 @@ GenRxiv accepts Markdown submissions only — no LaTeX uploads, no PDF uploads.
 The Markdown source is the version of record; HTML and PDF are renders.
 """
 import asyncio
+import json as _json
+import re
 import shutil
 import sqlite3
 import tempfile
@@ -212,9 +214,16 @@ async def _run_with_timeout(cmd: list[str], cwd: Path, timeout: int):
 
 @app.post("/convert/markdown")
 @limiter.limit("10 per minute")
-async def convert_markdown(request: Request, file: UploadFile = File(...)):
-    """Markdown -> PDF via Pandoc. Placeholder until the in-house MD->PDF
-    library is wired in here instead."""
+async def convert_markdown(
+    request: Request,
+    file: UploadFile = File(...),
+):
+    """Markdown -> PDF via Pandoc + Tectonic.
+
+    The Markdown file should include YAML front matter with title,
+    authors, and abstract; these are prepended to the body as a
+    header block in the PDF.
+    """
     if file.size and file.size > MAX_UPLOAD_BYTES:
         raise HTTPException(413, "File too large")
 
@@ -223,12 +232,20 @@ async def convert_markdown(request: Request, file: UploadFile = File(...)):
         tmp_path = Path(tmp)
         md_path = tmp_path / "input.md"
         md_bytes = await file.read()
-        md_path.write_bytes(md_bytes)
+        md_text = md_bytes.decode("utf-8", errors="replace")
+
+        # Parse front matter and extract body
+        meta, body_text = _parse_front_matter(md_text)
+
+        # Prepend metadata as Markdown header
+        header_md = _build_metadata_markdown_from_meta(meta)
+        if header_md:
+            body_text = header_md + "\n\n" + body_text
+        md_path.write_text(body_text, encoding="utf-8")
         out_pdf = tmp_path / "output.pdf"
 
         # Extract BibTeX citations if present
-        md_text = md_bytes.decode("utf-8", errors="replace")
-        cite_args = _prepare_citations(tmp_path, md_text)
+        cite_args = _prepare_citations(tmp_path, body_text)
 
         cmd = ["pandoc", str(md_path), "-o", str(out_pdf), "--pdf-engine=tectonic"] + cite_args
         await _run_with_timeout(cmd, cwd=tmp_path, timeout=COMPILE_TIMEOUT_SECONDS)
@@ -242,6 +259,139 @@ async def convert_markdown(request: Request, file: UploadFile = File(...)):
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+def _parse_front_matter(md_text: str) -> tuple[dict, str]:
+    """Parse YAML front matter from Markdown.
+
+    Returns (metadata_dict, body_text).
+    metadata_dict has keys: title, abstract, authors (list of {orcid, name}).
+    body_text is the Markdown without the front matter.
+    """
+    m = re.match(r'^---\s*\n(.*?)\n---\s*\n', md_text, re.DOTALL)
+    if not m:
+        return {}, md_text
+
+    yaml_text = m.group(1)
+    body = md_text[m.end():]
+
+    meta = {}
+    lines = yaml_text.split('\n')
+    current_key = None
+
+    for i, line in enumerate(lines):
+        # Nested object item: "  - orcid: ..." then "    name: ..."
+        obj_match = re.match(r'^\s+-\s+(\w+):\s*["\']?(.*?)["\']?\s*$', line)
+        if obj_match and current_key:
+            if not isinstance(meta.get(current_key), list):
+                meta[current_key] = []
+            obj = {obj_match[1]: obj_match[2]}
+            # Look ahead for more fields in this object
+            for j in range(i + 1, len(lines)):
+                nested = re.match(r'^\s+(\w+):\s*["\']?(.*?)["\']?\s*$', lines[j])
+                if nested:
+                    obj[nested[1]] = nested[2]
+                else:
+                    break
+            meta[current_key].append(obj)
+            continue
+
+        # Simple list item: "  - value"
+        list_match = re.match(r'^\s+-\s+["\']?(.*?)["\']?\s*$', line)
+        if list_match and current_key:
+            if not isinstance(meta.get(current_key), list):
+                meta[current_key] = []
+            meta[current_key].append(list_match[1])
+            continue
+
+        # Key-value: "key: value" or key: "value"
+        kv_match = re.match(r'^(\w+):\s*["\']?(.*?)["\']?\s*$', line)
+        if kv_match:
+            current_key = kv_match[1]
+            val = kv_match[2].strip()
+            if val:
+                meta[current_key] = val
+            # If no value, it's a list header — current_key is set for following list items
+
+    return meta, body
+
+
+def _build_metadata_header_from_meta(meta: dict) -> str:
+    """Build an HTML header block from parsed front matter metadata."""
+    import html as _html
+
+    parts = []
+    title = meta.get("title", "")
+    if title:
+        parts.append(f'<h1 class="paper-title">{_html.escape(title)}</h1>')
+
+    authors = meta.get("authors", [])
+    if isinstance(authors, list) and authors:
+        author_names = []
+        for a in authors:
+            if isinstance(a, dict) and a.get("name"):
+                name = _html.escape(a["name"])
+                orcid = a.get("orcid", "")
+                if orcid:
+                    author_names.append(
+                        f'<span class="paper-author">{name} '
+                        f'<a href="https://orcid.org/{_html.escape(orcid)}" '
+                        f'target="_blank" rel="noopener">'
+                        f'<img src="https://orcid.org/static/vectors/orcid.icon.svg" '
+                        f'alt="ORCID" style="width:0.9em;height:0.9em;vertical-align:middle;margin-left:0.2em">'
+                        f'</a></span>'
+                    )
+                else:
+                    author_names.append(f'<span class="paper-author">{name}</span>')
+        if author_names:
+            parts.append('<div class="paper-authors">' + ", ".join(author_names) + "</div>")
+
+    abstract = meta.get("abstract", "")
+    if abstract:
+        parts.append(
+            f'<div class="paper-abstract"><h2>Abstract</h2>'
+            f'<p>{_html.escape(abstract)}</p></div>'
+        )
+
+    if not parts:
+        return ""
+
+    return (
+        '<div class="paper-header" style="margin-bottom:2rem;padding-bottom:1.5rem;'
+        'border-bottom:1px solid var(--muted);">'
+        + "".join(parts)
+        + "</div>"
+    )
+
+
+def _build_metadata_markdown_from_meta(meta: dict) -> str:
+    """Build a Markdown header block from parsed front matter metadata (for PDF)."""
+    parts = []
+    title = meta.get("title", "")
+    if title:
+        parts.append(f"# {title}")
+
+    authors = meta.get("authors", [])
+    if isinstance(authors, list) and authors:
+        names = []
+        for a in authors:
+            if isinstance(a, dict) and a.get("name"):
+                orcid = a.get("orcid", "")
+                if orcid:
+                    names.append(f"{a['name']} (ORCID: {orcid})")
+                else:
+                    names.append(a["name"])
+        if names:
+            parts.append("\n".join(names))
+
+    abstract = meta.get("abstract", "")
+    if abstract:
+        parts.append(f"## Abstract\n\n{abstract}")
+
+    if not parts:
+        return ""
+
+    return "\n\n".join(parts)
 
 
 HTML_HEADER = """<!DOCTYPE html>
@@ -313,6 +463,11 @@ table { border-collapse: collapse; width: 100%; margin: 1.5rem 0; }
 th, td { border: 1px solid var(--muted); padding: 0.5rem 0.75rem; text-align: left; }
 th { background: rgba(0,0,0,0.03); }
 .katex-display { overflow-x: auto; overflow-y: hidden; padding: 0.5rem 0; }
+.paper-title { margin-bottom: 0.5rem; }
+.paper-authors { font-size: 1.1rem; color: #444; margin-bottom: 1rem; }
+.paper-author { white-space: nowrap; }
+.paper-abstract h2 { font-size: 1.2rem; margin-bottom: 0.3rem; }
+.paper-abstract p { font-size: 0.95rem; color: #444; }
 
 @media print {
     body {
@@ -341,12 +496,16 @@ HTML_FOOTER = """
 
 @app.post("/render/html")
 @limiter.limit("10 per minute")
-async def render_html(request: Request, file: UploadFile = File(...)):
+async def render_html(
+    request: Request,
+    file: UploadFile = File(...),
+):
     """
     Render Markdown to a standalone HTML page with KaTeX math.
 
-    `file`: a single .md file — the paper source. Figures may be
-    embedded as data URIs or referenced as separate submission files.
+    `file`: a single .md file — the paper source. The file should
+    include YAML front matter with title, authors, and abstract;
+    these are rendered as a header block at the top of the document.
 
     Returns a complete HTML document with KaTeX loaded via CDN,
     GenRxiv styling, and print-friendly CSS.
@@ -370,15 +529,21 @@ async def render_html(request: Request, file: UploadFile = File(...)):
         # Check image size limits (covers embedded data-URI images too)
         _check_image_limits(tmp_path)
 
-        # Extract BibTeX citations if present and prepare citeproc args
+        # Parse front matter and extract body
         md_text = md_bytes.decode("utf-8", errors="replace")
-        cite_args = _prepare_citations(tmp_path, md_text)
+        meta, body_text = _parse_front_matter(md_text)
+
+        # Write the body (without front matter) for Pandoc
+        body_path = tmp_path / "body.md"
+        body_path.write_text(body_text, encoding="utf-8")
+
+        # Extract BibTeX citations if present and prepare citeproc args
+        cite_args = _prepare_citations(tmp_path, body_text)
 
         # Render to HTML fragment via Pandoc
-        # --katex wraps math in spans that KaTeX auto-render processes
         cmd = [
             "pandoc",
-            str(src_path),
+            str(body_path),
             "-f", "markdown",
             "-t", "html5",
             "--katex",
@@ -387,8 +552,9 @@ async def render_html(request: Request, file: UploadFile = File(...)):
         stdout, _ = await _run_with_timeout(cmd, cwd=tmp_path, timeout=COMPILE_TIMEOUT_SECONDS)
         html_fragment = stdout.decode("utf-8", errors="replace")
 
-        # Wrap in the GenRxiv HTML template
-        full_html = HTML_HEADER + html_fragment + HTML_FOOTER
+        # Build metadata header from front matter and wrap in the GenRxiv HTML template
+        meta_header = _build_metadata_header_from_meta(meta)
+        full_html = HTML_HEADER + meta_header + html_fragment + HTML_FOOTER
 
         result_path = Path(tempfile.gettempdir()) / f"genrxiv-html-{job_id}.html"
         result_path.write_text(full_html, encoding="utf-8")

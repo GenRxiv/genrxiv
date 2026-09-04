@@ -498,6 +498,107 @@ class TestSubmissionValidation:
         assert "Empty file" in r.json()["detail"]
 
 
+# ─── Validation endpoint ────────────────────────────────────────────────────
+
+class TestValidateEndpoint:
+    KWS_3 = (
+        "Natural sciences > Computer and information sciences, "
+        "Natural sciences > Mathematics, "
+        "Social sciences > Economics and business"
+    )
+
+    def _validate(self, client, **overrides):
+        import json as _json
+        import io as _io
+        defaults = {
+            "title": "Validation Test Paper",
+            "authors": _json.dumps([{"orcid": "0000-0000-0000-0000", "name": "Test Author"}]),
+            "abstract": "A test abstract for validation testing.",
+            "subjects": self.KWS_3,
+            "license": "CC0",
+            "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        }
+        defaults.update(overrides)
+        md = _io.BytesIO(b"# Test\n\nContent with $E=mc^2$.")
+        return client.post(
+            "/api/validate",
+            files={"markdown": ("test.md", md, "text/markdown")},
+            data=defaults,
+        )
+
+    @requires_db
+    def test_validate_accepts_valid_submission(self, authed_client):
+        r = self._validate(authed_client)
+        assert r.status_code == 200
+        body = r.json()
+        assert body["valid"] is True
+        assert body["errors"] == []
+        # Preview rendering requires the conversion service, which is
+        # not reachable from the in-process TestClient. In production
+        # this returns a full HTML document.
+        # Just verify valid + no errors is the correct state.
+
+    @requires_db
+    def test_validate_rejects_missing_title(self, authed_client):
+        r = self._validate(authed_client, title="")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["valid"] is False
+        assert any("Title is required" in e for e in body["errors"])
+
+    @requires_db
+    def test_validate_rejects_missing_abstract(self, authed_client):
+        r = self._validate(authed_client, abstract="")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["valid"] is False
+        assert any("Abstract is required" in e for e in body["errors"])
+
+    @requires_db
+    def test_validate_rejects_wrong_subject_count(self, authed_client):
+        r = self._validate(authed_client, subjects="Natural sciences > Mathematics")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["valid"] is False
+        assert any("3 subject" in e for e in body["errors"])
+
+    @requires_db
+    def test_validate_rejects_submitter_not_in_authors(self, authed_client):
+        import json
+        r = self._validate(authed_client, authors=json.dumps([
+            {"orcid": "0000-0000-0000-0009", "name": "Someone Else"},
+        ]))
+        assert r.status_code == 200
+        body = r.json()
+        assert body["valid"] is False
+        assert any("must be listed" in e for e in body["errors"])
+
+    @requires_db
+    def test_validate_hints_unclosed_bibtex(self, authed_client):
+        import io
+        md = io.BytesIO(b"# Test\n\n```bibtex\n@article{x, title={X}\n")
+        r = authed_client.post(
+            "/api/validate",
+            files={"markdown": ("test.md", md, "text/markdown")},
+            data={
+                "title": "Test Paper",
+                "authors": '[{"orcid": "0000-0000-0000-0000", "name": "Test"}]',
+                "abstract": "Test abstract.",
+                "subjects": self.KWS_3,
+                "license": "CC0",
+                "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+            },
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert any("BibTeX" in h for h in body["hints"])
+
+    @requires_db
+    def test_validate_requires_auth(self, client):
+        r = client.post("/api/validate")
+        assert r.status_code == 401
+
+
 # ─── 18-21. Auth-gated pages (dashboard / admin) ────────────────────────────
 
 class TestAuthGated:

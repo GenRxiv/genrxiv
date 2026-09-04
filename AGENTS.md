@@ -251,12 +251,17 @@ subjects:
 ```
 
 When uploaded via the web form, the form auto-fills from the front
-matter. The authors list is the complete author list in publication
-order — the first entry is the lead author. The submitter (logged-in
-ORCID user) MUST be included in the author list — one of the human
-authors must submit, and you cannot remove yourself. If the front
-matter does not include the submitter's ORCID, they will be appended
-automatically. Pandoc strips the front matter during rendering.
+matter and the author can edit the values. On submission, the form
+data is merged back into the front matter — the stored Markdown file
+is always a complete document with title, abstract, and authors in
+the front matter. The authors list is the complete author list in
+publication order — the first entry is the lead author. The submitter
+(logged-in ORCID user) MUST be included in the author list — one of
+the human authors must submit, and you cannot remove yourself. If the
+front matter does not include the submitter's ORCID, they will be
+appended automatically. The conversion service parses the front
+matter and renders title, authors, and abstract as a header block at
+the top of the HTML and PDF output.
 
 ### Citations
 

@@ -347,6 +347,22 @@ Before submitting on behalf of a user, an agent MUST:
 5. Never submit on behalf of a user who is not present and authenticated.
    Do not cache or reuse session cookies across sessions.
 
+VALIDATION
+----------
+Endpoint: POST {config.base_url}/api/validate
+Content-Type: multipart/form-data
+Auth: Required (session cookie)
+Rate limit: 20 per minute
+
+Accepts the same fields as /api/submit but does not create a submission.
+Returns JSON with:
+  - valid: boolean (true if no blocking errors)
+  - errors: list of blocking error strings
+  - hints: list of non-blocking suggestions (e.g. unclosed BibTeX, odd $ count)
+  - preview: rendered HTML string (if valid)
+
+Use this to test a submission file before asking the user to confirm.
+
 SUBMISSION
 ----------
 Endpoint: POST {config.base_url}/api/submit
@@ -365,8 +381,11 @@ Required fields:
   license_url    - License URL (CC0 URL: https://creativecommons.org/publicdomain/zero/1.0/)
 
 Embedded metadata (YAML front matter):
-  The Markdown file can include YAML front matter at the top. When
-  uploaded via the web form, the form auto-fills from the front matter.
+  The Markdown file must include YAML front matter at the top with
+  title, abstract, and authors. When uploaded via the web form, the
+  form auto-fills from the front matter and the author can edit the
+  values. On submission, the form data is merged back into the front
+  matter — the stored Markdown file is always a complete document.
   The authors list is the complete author list in publication order —
   the first entry is the lead author. The submitter (logged-in ORCID
   user) MUST be included in the author list. If the front matter does
