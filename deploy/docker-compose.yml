@@ -76,6 +76,7 @@ services:
     depends_on:
       - api
       - convert
+      - matomo
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ../site:/site:ro
@@ -87,6 +88,49 @@ services:
           cpus: "0.5"
           memory: 128m
 
+  matomo_db:
+    image: mariadb:11-ubi
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MATOMO_DB_PASSWORD}
+      MARIADB_DATABASE: matomo
+    volumes:
+      - matomo_db:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mariadb-admin ping -h localhost -u root -p${MATOMO_DB_PASSWORD}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512m
+
+  matomo:
+    image: matomo:apache
+    restart: unless-stopped
+    depends_on:
+      matomo_db:
+        condition: service_healthy
+    environment:
+      MATOMO_DATABASE_HOST: matomo_db
+      MATOMO_DATABASE_ADAPTER: mysql
+      MATOMO_DATABASE_USERNAME: root
+      MATOMO_DATABASE_PASSWORD: ${MATOMO_DB_PASSWORD}
+      MATOMO_DATABASE_DBNAME: matomo
+    volumes:
+      - matomo_config:/var/www/html/config
+      - matomo_misc:/var/www/html/misc
+    expose:
+      - "80"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512m
+
   cloudflared:
     image: cloudflare/cloudflared:latest
     restart: unless-stopped
@@ -97,3 +141,6 @@ services:
 volumes:
   genrxiv_db:
   article_files:
+  matomo_db:
+  matomo_config:
+  matomo_misc:
