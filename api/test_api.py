@@ -519,7 +519,9 @@ class TestValidateEndpoint:
             "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
         }
         defaults.update(overrides)
-        md = _io.BytesIO(b"# Test\n\nContent with $E=mc^2$.")
+        # Generate a body with 200+ words to pass the minimum length check
+        body = "This is a test paper with sufficient content to pass the minimum word count validation check that we have implemented for the GenRxiv submission system. " * 8
+        md = _io.BytesIO(body.encode("utf-8"))
         return client.post(
             "/api/validate",
             files={"markdown": ("test.md", md, "text/markdown")},
@@ -703,6 +705,7 @@ class TestValidateEndpoint:
     def test_validate_no_duplicate_error_when_clean(self, authed_client):
         """No duplicate errors when title/abstract are only in front matter."""
         import io
+        body = b'Body content with no duplicate title or abstract. ' * 30
         md = io.BytesIO(
             b'---\n'
             b'title: "Clean Paper"\n'
@@ -710,8 +713,7 @@ class TestValidateEndpoint:
             b'authors:\n'
             b'  - orcid: "0000-0000-0000-0000"\n'
             b'    name: "Test Author"\n'
-            b'---\n\n'
-            b'Body content with no duplicate title or abstract.\n'
+            b'---\n\n' + body
         )
         r = authed_client.post(
             "/api/validate",
@@ -760,6 +762,216 @@ class TestValidateEndpoint:
         )
         assert r.status_code == 400
         assert "H1" in r.json()["detail"]
+
+    @requires_db
+    def test_validate_errors_undefined_citekey(self, authed_client):
+        """@citekey in body with no matching BibTeX entry should be a blocking error."""
+        import io
+        body = "This paper cites Smith [@smith2023] and Jones [@jones2024]. " * 15
+        md = io.BytesIO(
+            b'---\n'
+            b'title: "Test Paper"\n'
+            b'abstract: "Test abstract."\n'
+            b'authors:\n'
+            b'  - orcid: "0000-0000-0000-0000"\n'
+            b'    name: "Test Author"\n'
+            b'---\n\n' +
+            body.encode() + b'\n\n'
+            b'```bibtex\n'
+            b'@article{smith2023,\n'
+            b'  author = {Smith, Jane},\n'
+            b'  title = {A Test Paper},\n'
+            b'  journal = {Journal of Testing},\n'
+            b'  year = {2023},\n'
+            b'}\n'
+            b'```\n'
+        )
+        r = authed_client.post(
+            "/api/validate",
+            files={"markdown": ("test.md", md, "text/markdown")},
+            data={
+                "title": "Test Paper",
+                "authors": '[{"orcid": "0000-0000-0000-0000", "name": "Test Author"}]',
+                "abstract": "Test abstract.",
+                "subjects": self.KWS_3,
+                "license": "CC0",
+                "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+            },
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["valid"] is False
+        assert any("@jones2024" in e and "not defined" in e for e in body["errors"])
+
+    @requires_db
+    def test_validate_hints_unused_bibtex_entry(self, authed_client):
+        """BibTeX entry defined but never cited should be a hint."""
+        import io
+        body = "This paper cites Smith [@smith2023]. " * 30
+        md = io.BytesIO(
+            b'---\n'
+            b'title: "Test Paper"\n'
+            b'abstract: "Test abstract."\n'
+            b'authors:\n'
+            b'  - orcid: "0000-0000-0000-0000"\n'
+            b'    name: "Test Author"\n'
+            b'---\n\n' +
+            body.encode() + b'\n\n'
+            b'```bibtex\n'
+            b'@article{smith2023,\n'
+            b'  author = {Smith, Jane},\n'
+            b'  title = {A Test Paper},\n'
+            b'  journal = {Journal of Testing},\n'
+            b'  year = {2023},\n'
+            b'}\n'
+            b'@article{jones2024,\n'
+            b'  author = {Jones, Bob},\n'
+            b'  title = {Unused Paper},\n'
+            b'  journal = {Journal of Nothing},\n'
+            b'  year = {2024},\n'
+            b'}\n'
+            b'```\n'
+        )
+        r = authed_client.post(
+            "/api/validate",
+            files={"markdown": ("test.md", md, "text/markdown")},
+            data={
+                "title": "Test Paper",
+                "authors": '[{"orcid": "0000-0000-0000-0000", "name": "Test Author"}]',
+                "abstract": "Test abstract.",
+                "subjects": self.KWS_3,
+                "license": "CC0",
+                "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+            },
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert any("@jones2024" in h and "never cited" in h for h in body["hints"])
+
+    @requires_db
+    def test_validate_errors_empty_section(self, authed_client):
+        """## heading with no content should be a blocking error."""
+        import io
+        body = (
+            b'## Introduction\n\n'
+            b'This is a long introduction with enough words to pass the minimum count. ' * 20 + b'\n\n'
+            b'## Methods\n\n'
+            b'## Results\n\n'
+            b'The results were significant and showed a clear trend. ' * 15 + b'\n'
+        )
+        md = io.BytesIO(
+            b'---\n'
+            b'title: "Test Paper"\n'
+            b'abstract: "Test abstract."\n'
+            b'authors:\n'
+            b'  - orcid: "0000-0000-0000-0000"\n'
+            b'    name: "Test Author"\n'
+            b'---\n\n' + body
+        )
+        r = authed_client.post(
+            "/api/validate",
+            files={"markdown": ("test.md", md, "text/markdown")},
+            data={
+                "title": "Test Paper",
+                "authors": '[{"orcid": "0000-0000-0000-0000", "name": "Test Author"}]',
+                "abstract": "Test abstract.",
+                "subjects": self.KWS_3,
+                "license": "CC0",
+                "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+            },
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["valid"] is False
+        assert any("Methods" in e and "empty" in e for e in body["errors"])
+
+    @requires_db
+    def test_validate_hints_heading_hierarchy(self, authed_client):
+        """Skipped heading levels should be a hint."""
+        import io
+        body = (
+            b'# Top Level\n\n'
+            b'### Skipped Level\n\n'
+            b'Content here with enough words to pass the minimum count check. ' * 20 + b'\n'
+        )
+        md = io.BytesIO(
+            b'---\n'
+            b'title: "Test Paper"\n'
+            b'abstract: "Test abstract."\n'
+            b'authors:\n'
+            b'  - orcid: "0000-0000-0000-0000"\n'
+            b'    name: "Test Author"\n'
+            b'---\n\n' + body
+        )
+        r = authed_client.post(
+            "/api/validate",
+            files={"markdown": ("test.md", md, "text/markdown")},
+            data={
+                "title": "Test Paper",
+                "authors": '[{"orcid": "0000-0000-0000-0000", "name": "Test Author"}]',
+                "abstract": "Test abstract.",
+                "subjects": self.KWS_3,
+                "license": "CC0",
+                "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+            },
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert any("skips a level" in h for h in body["hints"])
+
+    @requires_db
+    def test_validate_errors_malformed_orcid_in_front_matter(self, authed_client):
+        """Malformed ORCID in front matter authors should be a blocking error."""
+        import io
+        body = "This is a test paper with sufficient content. " * 30
+        md = io.BytesIO(
+            b'---\n'
+            b'title: "Test Paper"\n'
+            b'abstract: "Test abstract."\n'
+            b'authors:\n'
+            b'  - orcid: "not-an-orcid"\n'
+            b'    name: "Test Author"\n'
+            b'---\n\n' +
+            body.encode()
+        )
+        r = authed_client.post(
+            "/api/validate",
+            files={"markdown": ("test.md", md, "text/markdown")},
+            data={
+                "title": "Test Paper",
+                "authors": '[{"orcid": "0000-0000-0000-0000", "name": "Test Author"}]',
+                "abstract": "Test abstract.",
+                "subjects": self.KWS_3,
+                "license": "CC0",
+                "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+            },
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["valid"] is False
+        assert any("malformed ORCID" in e for e in body["errors"])
+
+    @requires_db
+    def test_validate_errors_short_body(self, authed_client):
+        """Body under 200 words should be a blocking error."""
+        import io
+        md = io.BytesIO(b"Too short. Just a few words.")
+        r = authed_client.post(
+            "/api/validate",
+            files={"markdown": ("test.md", md, "text/markdown")},
+            data={
+                "title": "Test Paper",
+                "authors": '[{"orcid": "0000-0000-0000-0000", "name": "Test Author"}]',
+                "abstract": "Test abstract.",
+                "subjects": self.KWS_3,
+                "license": "CC0",
+                "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+            },
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["valid"] is False
+        assert any("200 words" in e for e in body["errors"])
 
     @requires_db
     def test_validate_requires_auth(self, client):

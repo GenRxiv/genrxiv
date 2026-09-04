@@ -72,57 +72,164 @@ def _check_duplicate_content(md_text: str, title: str, abstract: str) -> list[st
     """Check for title/abstract/references duplicated in both front matter and body.
 
     Returns a list of error messages (empty if no duplicates found).
+    This is the subset of _check_content_issues that is enforced on
+    both /api/submit and /api/validate.
+    """
+    all_errors, _ = _check_content_issues(md_text, title, abstract)
+    # Only return the duplication errors (title, abstract, references, ORCID)
+    dup_keywords = ["front matter", "rendered twice", "bibtex block", "malformed ORCID"]
+    return [e for e in all_errors if any(kw in e.lower() for kw in dup_keywords)]
+
+
+def _check_content_issues(md_text: str, title: str, abstract: str) -> tuple[list[str], list[str]]:
+    """Check for content issues in the Markdown file.
+
+    Returns (errors, hints).
+    Errors are blocking — the submission is rejected.
+    Hints are non-blocking suggestions.
     """
     errors = []
+    hints = []
 
     # Parse front matter
     fm_match = re.match(r'^---\s*\n(.*?)\n---\s*\n', md_text, re.DOTALL)
     if not fm_match:
-        return errors
+        # No front matter — check body-only issues
+        body_text = md_text
+    else:
+        fm_yaml = fm_match.group(1)
+        body_text = md_text[fm_match.end():]
 
-    fm_yaml = fm_match.group(1)
-    body_text = md_text[fm_match.end():]
+        # ── Duplicate title: front matter + H1 in body ──
+        fm_title_match = re.search(r'^title:\s*["\']?(.*?)["\']?\s*$', fm_yaml, re.MULTILINE)
+        has_fm_title = bool(fm_title_match) or bool(title)
+        effective_title = (fm_title_match.group(1).strip() if fm_title_match else "") or title
 
-    # Check for title in front matter + H1 in body
-    fm_title_match = re.search(r'^title:\s*["\']?(.*?)["\']?\s*$', fm_yaml, re.MULTILINE)
-    has_fm_title = bool(fm_title_match) or bool(title)
-    effective_title = (fm_title_match.group(1).strip() if fm_title_match else "") or title
+        if has_fm_title and effective_title:
+            body_h1_match = re.match(r'^#\s+(.+?)\s*$', body_text, re.MULTILINE)
+            if body_h1_match:
+                body_h1 = body_h1_match.group(1).strip()
+                if body_h1.lower() == effective_title.lower():
+                    errors.append(
+                        f'Title "{effective_title}" appears in both YAML front matter and as '
+                        f'an H1 ("# {body_h1}") in the body. Remove the H1 from the body — '
+                        f'the front matter title is rendered as the document header.'
+                    )
 
-    if has_fm_title and effective_title:
-        body_h1_match = re.match(r'^#\s+(.+?)\s*$', body_text, re.MULTILINE)
-        if body_h1_match:
-            body_h1 = body_h1_match.group(1).strip()
-            if body_h1.lower() == effective_title.lower():
-                errors.append(
-                    f'Title "{effective_title}" appears in both YAML front matter and as '
-                    f'an H1 ("# {body_h1}") in the body. Remove the H1 from the body — '
-                    f'the front matter title is rendered as the document header.'
-                )
+        # ── Duplicate abstract: front matter + ## Abstract in body ──
+        fm_abstract_match = re.search(r'^abstract:\s*["\']?(.*?)["\']?\s*$', fm_yaml, re.MULTILINE)
+        has_fm_abstract = bool(fm_abstract_match) or bool(abstract)
 
-    # Check for abstract in front matter + ## Abstract in body
-    fm_abstract_match = re.search(r'^abstract:\s*["\']?(.*?)["\']?\s*$', fm_yaml, re.MULTILINE)
-    has_fm_abstract = bool(fm_abstract_match) or bool(abstract)
-
-    if has_fm_abstract and re.search(r'^##\s*[Aa]bstract\s*$', body_text, re.MULTILINE):
-        errors.append(
-            'Abstract appears in both YAML front matter and as a "## Abstract" section '
-            'in the body. Remove the abstract section from the body — the front matter '
-            'abstract is rendered as the document header.'
-        )
-
-    # Check for BibTeX block + manual references section
-    has_bibtex = "```bibtex" in md_text
-    if has_bibtex:
-        ref_pattern = re.search(r'^##\s+(References|Bibliography|Works Cited|Literature Cited)\s*$', body_text, re.MULTILINE | re.IGNORECASE)
-        if ref_pattern:
+        if has_fm_abstract and re.search(r'^##\s*[Aa]bstract\s*$', body_text, re.MULTILINE):
             errors.append(
-                f'A "{ref_pattern.group(1)}" section was found in the body alongside a '
-                f'```bibtex block. The BibTeX block is used to render numbered references '
-                f'automatically — remove the manual "{ref_pattern.group(1)}" section from '
-                f'the body to avoid duplication.'
+                'Abstract appears in both YAML front matter and as a "## Abstract" section '
+                'in the body. Remove the abstract section from the body — the front matter '
+                'abstract is rendered as the document header.'
             )
 
-    return errors
+        # ── Duplicate references: BibTeX block + manual references section ──
+        has_bibtex = "```bibtex" in md_text
+        if has_bibtex:
+            ref_pattern = re.search(
+                r'^##\s+(References|Bibliography|Works Cited|Literature Cited)\s*$',
+                body_text, re.MULTILINE | re.IGNORECASE,
+            )
+            if ref_pattern:
+                errors.append(
+                    f'A "{ref_pattern.group(1)}" section was found in the body alongside a '
+                    f'```bibtex block. The BibTeX block is used to render numbered references '
+                    f'automatically — remove the manual "{ref_pattern.group(1)}" section from '
+                    f'the body to avoid duplication.'
+                )
+
+        # ── Front matter ORCID validation ──
+        # Check that authors in the front matter have valid ORCID format
+        fm_authors_match = re.search(r'^authors:\s*$', fm_yaml, re.MULTILINE)
+        if fm_authors_match:
+            # Find all orcid: entries in the authors list
+            for orc_match in re.finditer(r'^\s+-\s+orcid:\s*["\']?(.*?)["\']?\s*$', fm_yaml, re.MULTILINE):
+                fm_orcid = orc_match.group(1).strip()
+                if fm_orcid and not ORCID_PATTERN.match(fm_orcid):
+                    errors.append(
+                        f'Front matter author has malformed ORCID "{fm_orcid}" — '
+                        f'ORCIDs must be in the format XXXX-XXXX-XXXX-XXX(X).'
+                    )
+
+    # ── Citation consistency: @citekeys vs BibTeX entries ──
+    # Extract all @citekey references from the body
+    citekeys_used = set(re.findall(r'@(\w[\w-]*)', body_text))
+    # Remove false positives like @media, @import (CSS-like), email addresses
+    citekeys_used.discard("media")
+    citekeys_used.discard("import")
+    citekeys_used.discard("type")
+    citekeys_used.discard("param")
+    citekeys_used.discard("example")
+
+    # Extract all BibTeX entry keys from ```bibtex blocks
+    bibtex_keys = set()
+    bibtex_blocks = re.findall(r'```bibtex\n(.*?)```', md_text, re.DOTALL)
+    for block in bibtex_blocks:
+        for key_match in re.finditer(r'@\w+\s*\{\s*([^,\s]+)\s*,', block):
+            bibtex_keys.add(key_match.group(1))
+
+    if citekeys_used and bibtex_keys:
+        undefined = citekeys_used - bibtex_keys
+        if undefined:
+            for ck in sorted(undefined):
+                errors.append(
+                    f'Citation @{ck} is used in the body but not defined in the BibTeX block. '
+                    f'Add an entry for @{ck} or remove the citation.'
+                )
+
+        unused = bibtex_keys - citekeys_used
+        for ck in sorted(unused):
+            hints.append(
+                f'BibTeX entry @{ck} is defined but never cited in the body. '
+                f'Consider removing it if it is not needed.'
+            )
+
+    # ── Empty sections: ## heading with no content before next heading ──
+    # Match headings and check if there's content between them
+    heading_positions = []
+    for m in re.finditer(r'^(#{1,6})\s+(.+?)\s*$', body_text, re.MULTILINE):
+        heading_positions.append((m.start(), m.end(), len(m.group(1)), m.group(2)))
+
+    for i, (start, end, level, heading_text) in enumerate(heading_positions):
+        # Get text between this heading and the next
+        if i + 1 < len(heading_positions):
+            section_text = body_text[end:heading_positions[i + 1][0]]
+        else:
+            section_text = body_text[end:]
+
+        # Strip whitespace and check if empty
+        if not section_text.strip():
+            errors.append(
+                f'Section "{heading_text}" ({"#" * level}) is empty — '
+                f'add content or remove the heading.'
+            )
+
+    # ── Heading hierarchy: skipped levels ──
+    prev_level = 0
+    for _, _, level, heading_text in heading_positions:
+        if prev_level > 0 and level > prev_level + 1:
+            hints.append(
+                f'Heading "{heading_text}" ({"#" * level}) skips a level after '
+                f'a level-{prev_level} heading. Consider using {"#" * (prev_level + 1)} instead.'
+            )
+        prev_level = level
+
+    # ── Minimum content length ──
+    # Count words in the body (excluding front matter, code blocks, and headings)
+    body_for_count = re.sub(r'```[\s\S]*?```', '', body_text)  # Remove code blocks
+    body_for_count = re.sub(r'^#{1,6}\s+.*$', '', body_for_count, flags=re.MULTILINE)  # Remove headings
+    word_count = len(body_for_count.split())
+    if word_count < 200:
+        errors.append(
+            f'Body content is only {word_count} words — submissions should have '
+            f'at least 200 words of substantive content.'
+        )
+
+    return errors, hints
 
 
 # ─── Helpers ───────────────────────────────────────────────────────────────
@@ -493,9 +600,11 @@ async def validate_submission(
             if "\n---\n" not in md_text[3:]:
                 hints.append("YAML front matter appears to be unclosed — add a closing --- line")
 
-        # Check for duplicate title/abstract/references in front matter and body
-        dup_errors = _check_duplicate_content(md_text, title, abstract)
-        errors.extend(dup_errors)
+        # Check for content issues: duplicates, citations, empty sections,
+        # heading hierarchy, ORCID format, minimum length
+        content_errors, content_hints = _check_content_issues(md_text, title, abstract)
+        errors.extend(content_errors)
+        hints.extend(content_hints)
 
         if "$" in md_text:
             dollar_count = md_text.count("$")
