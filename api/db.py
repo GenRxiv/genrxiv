@@ -109,6 +109,17 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
     applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Screening reports (automated submission screening via Cloudflare Workers AI)
+CREATE TABLE IF NOT EXISTS screening_reports (
+    id SERIAL PRIMARY KEY,
+    article_id INTEGER REFERENCES articles(id) ON DELETE CASCADE,
+    model TEXT NOT NULL,
+    verdict TEXT NOT NULL,  -- "auto_approve" | "flag_for_review" | "screening_failed" | "screening_disabled"
+    report JSONB,           -- the normalized model report (or NULL if screening failed)
+    error TEXT,             -- error message if screening failed
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_articles_status ON articles(status);
 CREATE INDEX IF NOT EXISTS idx_articles_published_at ON articles(published_at DESC);
@@ -117,6 +128,7 @@ CREATE INDEX IF NOT EXISTS idx_downloads_downloaded_at ON downloads(downloaded_a
 CREATE INDEX IF NOT EXISTS idx_article_authors_article_id ON article_authors(article_id);
 CREATE INDEX IF NOT EXISTS idx_article_authors_author_id ON article_authors(author_id);
 CREATE INDEX IF NOT EXISTS idx_articles_supersedes_id ON articles(supersedes_id);
+CREATE INDEX IF NOT EXISTS idx_screening_reports_article_id ON screening_reports(article_id);
 """
 
 # Migrations for existing databases (idempotent — safe to run repeatedly)

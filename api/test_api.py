@@ -2200,3 +2200,414 @@ class TestMigrations:
         for num, name, path in migrations:
             content = path.read_text(encoding="utf-8")
             assert len(content) > 0, f"Migration {num:03d}_{name}.sql is empty"
+
+
+# ─── 26. Automated screening ───────────────────────────────────────────────
+
+class TestScreeningLogic:
+    """Unit tests for the screening module's pure logic (no API calls)."""
+
+    def test_extract_json_direct(self):
+        from screening import _extract_json
+        result = _extract_json('{"format_ok": true, "in_scope": true}')
+        assert result is not None
+        assert result["format_ok"] is True
+
+    def test_extract_json_with_markdown_fences(self):
+        from screening import _extract_json
+        result = _extract_json('```json\n{"format_ok": true}\n```')
+        assert result is not None
+        assert result["format_ok"] is True
+
+    def test_extract_json_with_surrounding_text(self):
+        from screening import _extract_json
+        result = _extract_json('Here is my response:\n{"format_ok": true, "flags": []}\nDone.')
+        assert result is not None
+        assert result["format_ok"] is True
+
+    def test_extract_json_invalid_returns_none(self):
+        from screening import _extract_json
+        assert _extract_json("not json at all") is None
+        assert _extract_json("{broken") is None
+
+    def test_normalize_report_fills_defaults(self):
+        from screening import _normalize_report
+        report = _normalize_report({"format_ok": "yes"})
+        assert report["format_ok"] is True
+        assert report["in_scope"] is False  # default
+        assert report["spam_likelihood"] == "low"  # default
+        assert report["flags"] == []
+        assert report["summary"] == ""
+
+    def test_normalize_report_handles_string_flags(self):
+        from screening import _normalize_report
+        report = _normalize_report({
+            "format_ok": True,
+            "in_scope": True,
+            "spam_likelihood": "medium",
+            "flags": ["no abstract", 42],
+        })
+        assert report["spam_likelihood"] == "medium"
+        assert "no abstract" in report["flags"]
+        assert "42" in report["flags"]
+
+    def test_is_auto_approvable_clean(self):
+        from screening import is_auto_approvable
+        report = {
+            "format_ok": True,
+            "in_scope": True,
+            "spam_likelihood": "low",
+            "has_abstract": True,
+            "has_references": True,
+            "flags": [],
+            "summary": "Looks good",
+        }
+        assert is_auto_approvable(report) is True
+
+    def test_is_auto_approvable_with_flags(self):
+        from screening import is_auto_approvable
+        report = {
+            "format_ok": True,
+            "in_scope": True,
+            "spam_likelihood": "low",
+            "has_abstract": True,
+            "flags": ["missing references"],
+        }
+        assert is_auto_approvable(report) is False
+
+    def test_is_auto_approvable_high_spam(self):
+        from screening import is_auto_approvable
+        report = {
+            "format_ok": True,
+            "in_scope": True,
+            "spam_likelihood": "high",
+            "has_abstract": True,
+            "flags": [],
+        }
+        assert is_auto_approvable(report) is False
+
+    def test_is_auto_approvable_not_in_scope(self):
+        from screening import is_auto_approvable
+        report = {
+            "format_ok": True,
+            "in_scope": False,
+            "spam_likelihood": "low",
+            "has_abstract": True,
+            "flags": [],
+        }
+        assert is_auto_approvable(report) is False
+
+    def test_is_auto_approvable_no_abstract(self):
+        from screening import is_auto_approvable
+        report = {
+            "format_ok": True,
+            "in_scope": True,
+            "spam_likelihood": "low",
+            "has_abstract": False,
+            "flags": [],
+        }
+        assert is_auto_approvable(report) is False
+
+    def test_is_auto_approvable_no_references_still_approved(self):
+        """has_references is NOT required for auto-approval."""
+        from screening import is_auto_approvable
+        report = {
+            "format_ok": True,
+            "in_scope": True,
+            "spam_likelihood": "low",
+            "has_abstract": True,
+            "has_references": False,
+            "flags": [],
+        }
+        assert is_auto_approvable(report) is True
+
+    def test_screen_submission_disabled_when_not_configured(self):
+        """When screening is disabled, returns screening_disabled verdict."""
+        from screening import screen_submission
+        # Screening is disabled by default in tests (no CF_API_TOKEN)
+        result = screen_submission("Title", "Abstract", "# Body")
+        assert result["verdict"] == "screening_disabled"
+        assert result["report"] is None
+
+
+class TestScreeningIntegration:
+    """Integration tests for the screening flow in the submit endpoint."""
+
+    @requires_db
+    def test_submit_with_screening_disabled_stays_pending(self, authed_client, monkeypatch):
+        """When screening is disabled, submission stays pending (existing behavior)."""
+        # Screening is disabled by default in test config
+        import io
+        md = io.BytesIO(b"# Test Paper\n\nThis is a test paper with some content.\n\n## Introduction\n\nWe study things.")
+        r = authed_client.post(
+            "/api/submit",
+            files={"markdown": ("test.md", md, "text/markdown")},
+            data={
+                "title": "Test Paper for Screening",
+                "authors": '[{"orcid": "0000-0000-0000-0000", "name": "Test"}]',
+                "abstract": "A test abstract for screening.",
+                "subjects": "Natural sciences > Mathematics, Natural sciences > Computer and information sciences, Social sciences > Economics and business",
+                "license": "CC0",
+                "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+            },
+        )
+        assert r.status_code == 200
+        data = r.json()
+        assert data["status"] == "pending"
+        assert data.get("screening") == "screening_disabled"
+
+    @requires_db
+    def test_submit_with_clean_screening_auto_approves(self, authed_client, monkeypatch):
+        """When screening returns clean, submission is auto-published."""
+        import screening as screening_module
+
+        # Mock screen_submission to return a clean verdict
+        clean_result = {
+            "verdict": "auto_approve",
+            "report": {
+                "format_ok": True,
+                "in_scope": True,
+                "spam_likelihood": "low",
+                "has_abstract": True,
+                "has_references": True,
+                "flags": [],
+                "summary": "Looks like a legitimate paper.",
+            },
+            "model": "@cf/meta/llama-3.2-3b-instruct",
+            "error": None,
+        }
+        monkeypatch.setattr(screening_module, "screen_submission", lambda *a, **kw: clean_result)
+        # Also patch the imported reference in articles module
+        import articles as articles_module
+        monkeypatch.setattr(articles_module, "screen_submission", lambda *a, **kw: clean_result, raising=False)
+
+        import io
+        md = io.BytesIO(b"# Test Paper\n\nThis is a test paper.\n\n## Introduction\n\nWe study things.")
+        r = authed_client.post(
+            "/api/submit",
+            files={"markdown": ("test.md", md, "text/markdown")},
+            data={
+                "title": "Auto-Approve Test",
+                "authors": '[{"orcid": "0000-0000-0000-0000", "name": "Test"}]',
+                "abstract": "A test abstract that should be auto-approved.",
+                "subjects": "Natural sciences > Mathematics, Natural sciences > Computer and information sciences, Social sciences > Economics and business",
+                "license": "CC0",
+                "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+            },
+        )
+        assert r.status_code == 200
+        data = r.json()
+        assert data["status"] == "published"
+        assert data.get("screening") == "auto_approve"
+        assert data["ark"] is not None
+
+    @requires_db
+    def test_submit_with_flagged_screening_stays_pending(self, authed_client, monkeypatch):
+        """When screening flags the submission, it stays pending for human review."""
+        import screening as screening_module
+
+        flagged_result = {
+            "verdict": "flag_for_review",
+            "report": {
+                "format_ok": False,
+                "in_scope": True,
+                "spam_likelihood": "low",
+                "has_abstract": True,
+                "has_references": False,
+                "flags": ["missing references", "unusual structure"],
+                "summary": "Missing references and unusual structure.",
+            },
+            "model": "@cf/meta/llama-3.2-3b-instruct",
+            "error": None,
+        }
+        monkeypatch.setattr(screening_module, "screen_submission", lambda *a, **kw: flagged_result)
+        import articles as articles_module
+        monkeypatch.setattr(articles_module, "screen_submission", lambda *a, **kw: flagged_result, raising=False)
+
+        import io
+        md = io.BytesIO(b"# Test Paper\n\nSome content.\n\n## Intro\n\nText.")
+        r = authed_client.post(
+            "/api/submit",
+            files={"markdown": ("test.md", md, "text/markdown")},
+            data={
+                "title": "Flagged Test",
+                "authors": '[{"orcid": "0000-0000-0000-0000", "name": "Test"}]',
+                "abstract": "An abstract that will be flagged.",
+                "subjects": "Natural sciences > Mathematics, Natural sciences > Computer and information sciences, Social sciences > Economics and business",
+                "license": "CC0",
+                "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+            },
+        )
+        assert r.status_code == 200
+        data = r.json()
+        assert data["status"] == "pending"
+        assert data.get("screening") == "flag_for_review"
+
+    @requires_db
+    def test_submit_with_screening_failure_stays_pending(self, authed_client, monkeypatch):
+        """When the screening API fails, submission stays pending (safe fallback)."""
+        import screening as screening_module
+
+        failed_result = {
+            "verdict": "flag_for_review",
+            "report": None,
+            "model": "@cf/meta/llama-3.2-3b-instruct",
+            "error": "Screening API call failed",
+        }
+        monkeypatch.setattr(screening_module, "screen_submission", lambda *a, **kw: failed_result)
+        import articles as articles_module
+        monkeypatch.setattr(articles_module, "screen_submission", lambda *a, **kw: failed_result, raising=False)
+
+        import io
+        md = io.BytesIO(b"# Test Paper\n\nContent here.\n\n## Intro\n\nText.")
+        r = authed_client.post(
+            "/api/submit",
+            files={"markdown": ("test.md", md, "text/markdown")},
+            data={
+                "title": "Screening Failure Test",
+                "authors": '[{"orcid": "0000-0000-0000-0000", "name": "Test"}]',
+                "abstract": "Abstract for failure test.",
+                "subjects": "Natural sciences > Mathematics, Natural sciences > Computer and information sciences, Social sciences > Economics and business",
+                "license": "CC0",
+                "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+            },
+        )
+        assert r.status_code == 200
+        data = r.json()
+        assert data["status"] == "pending"
+
+    @requires_db
+    def test_screening_report_saved_to_db(self, authed_client, monkeypatch, db):
+        """Screening reports are persisted for admin visibility."""
+        import screening as screening_module
+
+        clean_result = {
+            "verdict": "auto_approve",
+            "report": {
+                "format_ok": True,
+                "in_scope": True,
+                "spam_likelihood": "low",
+                "has_abstract": True,
+                "has_references": True,
+                "flags": [],
+                "summary": "Clean paper.",
+            },
+            "model": "@cf/meta/llama-3.2-3b-instruct",
+            "error": None,
+        }
+        monkeypatch.setattr(screening_module, "screen_submission", lambda *a, **kw: clean_result)
+        import articles as articles_module
+        monkeypatch.setattr(articles_module, "screen_submission", lambda *a, **kw: clean_result, raising=False)
+
+        import io
+        md = io.BytesIO(b"# Test Paper\n\nContent.\n\n## Intro\n\nText.")
+        r = authed_client.post(
+            "/api/submit",
+            files={"markdown": ("test.md", md, "text/markdown")},
+            data={
+                "title": "Report Saved Test",
+                "authors": '[{"orcid": "0000-0000-0000-0000", "name": "Test"}]',
+                "abstract": "Abstract for report save test.",
+                "subjects": "Natural sciences > Mathematics, Natural sciences > Computer and information sciences, Social sciences > Economics and business",
+                "license": "CC0",
+                "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+            },
+        )
+        article_id = r.json()["id"]
+
+        # Verify the screening report was saved
+        from screening import get_screening_report
+        report = get_screening_report(article_id)
+        assert report is not None
+        assert report["verdict"] == "auto_approve"
+        assert report["model"] == "@cf/meta/llama-3.2-3b-instruct"
+        assert report["report"]["summary"] == "Clean paper."
+
+    @requires_db
+    def test_admin_queue_shows_screening_flags(self, authed_client, admin_client, monkeypatch, db):
+        """The admin moderation queue shows screening flags for pending submissions."""
+        import screening as screening_module
+
+        flagged_result = {
+            "verdict": "flag_for_review",
+            "report": {
+                "format_ok": False,
+                "in_scope": True,
+                "spam_likelihood": "medium",
+                "has_abstract": True,
+                "has_references": False,
+                "flags": ["missing references"],
+                "summary": "Missing references.",
+            },
+            "model": "@cf/meta/llama-3.2-3b-instruct",
+            "error": None,
+        }
+        monkeypatch.setattr(screening_module, "screen_submission", lambda *a, **kw: flagged_result)
+        import articles as articles_module
+        monkeypatch.setattr(articles_module, "screen_submission", lambda *a, **kw: flagged_result, raising=False)
+
+        import io
+        md = io.BytesIO(b"# Test Paper\n\nContent.\n\n## Intro\n\nText.")
+        authed_client.post(
+            "/api/submit",
+            files={"markdown": ("test.md", md, "text/markdown")},
+            data={
+                "title": "Flagged for Admin View",
+                "authors": '[{"orcid": "0000-0000-0000-0000", "name": "Test"}]',
+                "abstract": "Abstract for admin view test.",
+                "subjects": "Natural sciences > Mathematics, Natural sciences > Computer and information sciences, Social sciences > Economics and business",
+                "license": "CC0",
+                "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+            },
+        )
+
+        r = admin_client.get("/admin")
+        assert r.status_code == 200
+        assert "Screening: flagged" in r.text
+        assert "missing references" in r.text
+
+    @requires_db
+    def test_admin_submission_detail_shows_screening_report(self, authed_client, admin_client, monkeypatch, db):
+        """The admin submission detail page shows the full screening report."""
+        import screening as screening_module
+
+        flagged_result = {
+            "verdict": "flag_for_review",
+            "report": {
+                "format_ok": True,
+                "in_scope": False,
+                "spam_likelihood": "high",
+                "has_abstract": True,
+                "has_references": False,
+                "flags": ["appears to be an advertisement"],
+                "summary": "This looks like an ad, not a paper.",
+            },
+            "model": "@cf/meta/llama-3.2-3b-instruct",
+            "error": None,
+        }
+        monkeypatch.setattr(screening_module, "screen_submission", lambda *a, **kw: flagged_result)
+        import articles as articles_module
+        monkeypatch.setattr(articles_module, "screen_submission", lambda *a, **kw: flagged_result, raising=False)
+
+        import io
+        md = io.BytesIO(b"# Buy Now\n\nContent.\n\n## Intro\n\nText.")
+        r = authed_client.post(
+            "/api/submit",
+            files={"markdown": ("test.md", md, "text/markdown")},
+            data={
+                "title": "Ad Submission",
+                "authors": '[{"orcid": "0000-0000-0000-0000", "name": "Test"}]',
+                "abstract": "Abstract for ad test.",
+                "subjects": "Natural sciences > Mathematics, Natural sciences > Computer and information sciences, Social sciences > Economics and business",
+                "license": "CC0",
+                "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+            },
+        )
+        article_id = r.json()["id"]
+
+        r = admin_client.get(f"/admin/submission/{article_id}")
+        assert r.status_code == 200
+        assert "Automated Screening Report" in r.text
+        assert "Flagged for human review" in r.text
+        assert "appears to be an advertisement" in r.text
+        assert "This looks like an ad, not a paper." in r.text

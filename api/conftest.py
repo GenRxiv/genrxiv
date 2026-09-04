@@ -85,6 +85,7 @@ requires_db = pytest.mark.skipif(no_db, reason="No test database (set DATABASE_U
 # ─── Fixtures ───────────────────────────────────────────────────────────────
 
 DROP_SQL = """
+DROP TABLE IF EXISTS screening_reports CASCADE;
 DROP TABLE IF EXISTS sessions CASCADE;
 DROP TABLE IF EXISTS downloads CASCADE;
 DROP TABLE IF EXISTS article_authors CASCADE;

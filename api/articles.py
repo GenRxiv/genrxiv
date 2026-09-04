@@ -1259,12 +1259,50 @@ async def submit(
     except Exception:
         pass  # Don't let ORCID API failure block submission
 
+    # ── Automated screening ──────────────────────────────────────────────
+    # Run the screening model on the submission. If it comes back clean,
+    # auto-publish immediately. If flagged (or if screening fails), the
+    # submission stays pending for human review. The model never auto-rejects.
+    screening_verdict = "screening_disabled"
+    submitted_at_iso = row["submitted_at"].isoformat()
+    try:
+        from screening import screen_submission, save_screening_report
+        result = screen_submission(title, abstract, md_text)
+        screening_verdict = result["verdict"]
+        save_screening_report(article_id, result)
+
+        if result["verdict"] == "auto_approve":
+            # Auto-publish: replicate the admin approve flow
+            with get_conn().connection() as conn:
+                approve_row = conn.execute(
+                    "SELECT id, title, abstract, status, source_markdown, version, submitted_at FROM articles WHERE id = %s",
+                    (article_id,),
+                ).fetchone()
+                ark, version = _approve_article(
+                    conn, article_id, approve_row,
+                    moderator_id=_author["id"],
+                    note="Auto-approved by automated screening",
+                )
+                conn.commit()
+            notify_approved(article_id, ark, approve_row["title"], "Auto-approved by automated screening")
+            return {
+                "id": article_id,
+                "ark": ark,
+                "status": "published",
+                "version": version,
+                "submitted_at": approve_row["submitted_at"].isoformat(),
+                "screening": screening_verdict,
+            }
+    except Exception:
+        pass  # Don't let screening failure block submission — stays pending
+
     return {
         "id": article_id,
         "ark": assign_ark(article_id),
         "status": "pending",
         "version": version,
-        "submitted_at": row["submitted_at"].isoformat(),
+        "submitted_at": submitted_at_iso,
+        "screening": screening_verdict,
     }
 
 
@@ -1693,47 +1731,9 @@ def moderate_article(
             raise HTTPException(400, f"Article is already {row['status']}")
 
         if action.action == "approve":
-            # If this is a new version, transfer the ARK from the previous version
-            existing = conn.execute(
-                "SELECT ark, supersedes_id FROM articles WHERE id = %s", (article_id,)
-            ).fetchone()
-            if existing and existing["supersedes_id"]:
-                # Get the ARK from the previous version
-                prev = conn.execute(
-                    "SELECT ark FROM articles WHERE id = %s", (existing["supersedes_id"],)
-                ).fetchone()
-                if prev and prev["ark"]:
-                    ark = prev["ark"]
-                    # Mark the previous version as superseded and clear its ARK
-                    # so the new version is the only one with this ARK
-                    conn.execute(
-                        "UPDATE articles SET status = 'superseded', ark = NULL WHERE id = %s",
-                        (existing["supersedes_id"],),
-                    )
-                else:
-                    ark = assign_ark(article_id)
-            else:
-                ark = assign_ark(article_id)
-
-            # Render HTML and PDF — the conversion service reads
-            # title/authors/abstract from the YAML front matter in the
-            # stored Markdown, which was merged at submission time.
-            html = render_html(row["source_markdown"])
-            pdf = render_pdf(row["source_markdown"])
-            html_path = save_article_file(article_id, "html", html)
-            pdf_path = save_article_file(article_id, "pdf", pdf)
-
-            conn.execute(
-                """UPDATE articles
-                   SET status = 'published', ark = %s, html_path = %s, pdf_path = %s,
-                       published_at = now(), moderated_by = %s, moderated_at = now(),
-                       moderation_note = %s
-                   WHERE id = %s""",
-                (ark, html_path, pdf_path, admin["id"], action.note or None, article_id),
-            )
-            conn.commit()
+            ark, version = _approve_article(conn, article_id, row, admin["id"], action.note)
             notify_approved(article_id, ark, row["title"], action.note)
-            return {"id": article_id, "ark": ark, "status": "published", "version": row["version"]}
+            return {"id": article_id, "ark": ark, "status": "published", "version": version}
 
         elif action.action == "reject":
             conn.execute(
@@ -1749,6 +1749,58 @@ def moderate_article(
 
         else:
             raise HTTPException(400, "action must be 'approve' or 'reject'")
+
+
+def _approve_article(
+    conn,
+    article_id: int,
+    row: dict,
+    moderator_id: int,
+    note: str = "",
+) -> tuple[str, int]:
+    """Approve a pending article: assign ARK, render HTML/PDF, mark published.
+
+    Handles version transfer (if the article supersedes a previous version,
+    the ARK moves from the old version to the new one).
+
+    Returns (ark, version). Caller is responsible for committing the
+    transaction and sending notifications.
+    """
+    # If this is a new version, transfer the ARK from the previous version
+    existing = conn.execute(
+        "SELECT ark, supersedes_id FROM articles WHERE id = %s", (article_id,)
+    ).fetchone()
+    if existing and existing["supersedes_id"]:
+        prev = conn.execute(
+            "SELECT ark FROM articles WHERE id = %s", (existing["supersedes_id"],)
+        ).fetchone()
+        if prev and prev["ark"]:
+            ark = prev["ark"]
+            conn.execute(
+                "UPDATE articles SET status = 'superseded', ark = NULL WHERE id = %s",
+                (existing["supersedes_id"],),
+            )
+        else:
+            ark = assign_ark(article_id)
+    else:
+        ark = assign_ark(article_id)
+
+    # Render HTML and PDF
+    html = render_html(row["source_markdown"])
+    pdf = render_pdf(row["source_markdown"])
+    html_path = save_article_file(article_id, "html", html)
+    pdf_path = save_article_file(article_id, "pdf", pdf)
+
+    conn.execute(
+        """UPDATE articles
+           SET status = 'published', ark = %s, html_path = %s, pdf_path = %s,
+               published_at = now(), moderated_by = %s, moderated_at = now(),
+               moderation_note = %s
+           WHERE id = %s""",
+        (ark, html_path, pdf_path, moderator_id, note or None, article_id),
+    )
+
+    return ark, row["version"]
 
 
 # ─── Stats ─────────────────────────────────────────────────────────────────

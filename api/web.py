@@ -2337,12 +2337,28 @@ def admin_page(request: Request, withdrawn: str = ""):
     </div>"""
 
     if pending:
+        # Fetch screening reports for pending submissions
+        from screening import get_screening_report
         pending_cards = []
         for p in pending:
             submitted = _format_date(p.get("submitted_at"))
+            # Get screening report if available
+            screening = get_screening_report(p["id"])
+            screening_html = ""
+            if screening:
+                if screening["verdict"] == "auto_approve":
+                    screening_html = '<div class="meta" style="margin-top:0.5rem"><span class="status-badge status-published">Screening: auto-approve</span></div>'
+                elif screening["verdict"] == "flag_for_review":
+                    flags = ""
+                    if screening["report"] and screening["report"].get("flags"):
+                        flags = " — " + ", ".join(screening["report"]["flags"])
+                    screening_html = f'<div class="meta" style="margin-top:0.5rem"><span class="status-badge status-pending" style="background:#fffdf0;color:#b48a00;border:1px solid #b48a00">Screening: flagged{flags}</span></div>'
+                elif screening["error"]:
+                    screening_html = f'<div class="meta" style="margin-top:0.5rem"><span class="status-badge status-rejected">Screening error: {screening["error"]}</span></div>'
             pending_cards.append(f"""<div class="card">
 <h2>{p['title']}</h2>
 <div class="meta">Submitted by <a href="/author/{p['submitter_orcid']}">{p['submitter_name']}</a> on {submitted}</div>
+{screening_html}
 <div style="margin-top:1rem;display:flex;gap:0.5rem">
     <form method="post" action="/admin/articles/{p['id']}" style="display:inline">
         <input type="hidden" name="action" value="approve">
@@ -2413,6 +2429,40 @@ def admin_submission_detail(article_id: int, request: Request):
         for a in authors
     )
 
+    # Screening report (if automated screening ran)
+    from screening import get_screening_report
+    screening = get_screening_report(article_id)
+    screening_section = ""
+    if screening:
+        verdict_label = {
+            "auto_approve": "Auto-approved (clean)",
+            "flag_for_review": "Flagged for human review",
+            "screening_failed": "Screening failed",
+            "screening_disabled": "Screening not enabled",
+        }.get(screening["verdict"], screening["verdict"])
+        report_details = ""
+        if screening["report"]:
+            r = screening["report"]
+            flags_html = ", ".join(r.get("flags", [])) or "none"
+            report_details = f"""
+            <p><strong>format_ok:</strong> {r.get('format_ok')}</p>
+            <p><strong>in_scope:</strong> {r.get('in_scope')}</p>
+            <p><strong>spam_likelihood:</strong> {r.get('spam_likelihood')}</p>
+            <p><strong>has_abstract:</strong> {r.get('has_abstract')}</p>
+            <p><strong>has_references:</strong> {r.get('has_references')}</p>
+            <p><strong>flags:</strong> {flags_html}</p>
+            <p><strong>summary:</strong> {r.get('summary', '')}</p>
+            """
+        elif screening["error"]:
+            report_details = f"<p><strong>Error:</strong> {screening['error']}</p>"
+        screening_section = f"""
+    <div class="card">
+        <h3>Automated Screening Report</h3>
+        <p><strong>Verdict:</strong> {verdict_label} &middot; <strong>Model:</strong> {screening['model']}</p>
+        {report_details}
+    </div>
+    """
+
     # Show a preview of the markdown (first 2000 chars)
     md_preview = article["source_markdown"][:2000]
     if len(article["source_markdown"]) > 2000:
@@ -2434,6 +2484,8 @@ def admin_submission_detail(article_id: int, request: Request):
     {f'<div class="card"><h3>Abstract</h3><p>{article["abstract"]}</p></div>' if article.get('abstract') else ''}
 
     {f'<div class="card"><h3>Subjects</h3><p>{", ".join(article["subjects"])}</p></div>' if article.get('subjects') else ''}
+
+    {screening_section}
 
     <div class="card">
         <h3>Markdown Preview</h3>

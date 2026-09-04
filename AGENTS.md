@@ -50,7 +50,7 @@ cd convert-service && pip install -r requirements-dev.txt
 pytest test_app.py -v
 
 # Without DATABASE_URL_TEST, DB-dependent tests are skipped automatically.
-# Total: 195 tests (154 API + 16 browser + 25 convert service).
+# Total: 215 tests (174 API + 16 browser + 25 convert service).
 ```
 
 CI runs all suites on every push/PR (`.github/workflows/tests.yml`).
@@ -93,13 +93,17 @@ See `deploy/.env.example` for the full list. Key ones:
 - `ARK_NAAN` — ARK Name Assigning Authority Number (default: 99999)
 - `CF_TUNNEL_TOKEN` — Cloudflare Tunnel token
 - `SMTP_*` — Resend SMTP for email notifications
+- `SCREENING_ENABLED` — Set to `true`/`1`/`yes` to enable automated screening
+- `CF_API_TOKEN` — Cloudflare API token with Workers AI permission
+- `CF_ACCOUNT_ID` — Cloudflare account ID for Workers AI
+- `SCREENING_MODEL` — Workers AI model name (default: `@cf/meta/llama-3.2-3b-instruct`)
 
 **Never commit `.env`.** It is gitignored. A pre-commit hook blocks secrets.
 
 ## Database schema
 
-Seven tables: `authors`, `articles`, `article_authors`, `downloads`,
-`sessions`, `settings`, `schema_migrations`.
+Eight tables: `authors`, `articles`, `article_authors`, `downloads`,
+`sessions`, `settings`, `schema_migrations`, `screening_reports`.
 Schema is in `api/db.py` (`SCHEMA_SQL`). Tables are created automatically
 on API startup via `init_schema()`.
 
@@ -324,6 +328,36 @@ scope and legal/scholarly purpose:
 
 Schema columns (migration `007_retraction_and_withdrawal.sql`):
 `articles.is_retraction`, `articles.withdrawn_at`, `articles.withdrawal_reason`.
+
+### Automated submission screening
+
+GenRxiv can auto-screen submissions using a small language model via
+Cloudflare Workers AI. This is the arXiv model: screening (is this a
+paper-shaped object in scope?), not peer review (is the science correct?).
+
+**Flow:**
+1. After a submission passes structural validation, the screening model
+   evaluates the title, abstract, and truncated body.
+2. The model returns a structured JSON report: `format_ok`, `in_scope`,
+   `spam_likelihood`, `has_abstract`, `has_references`, `flags`, `summary`.
+3. If the report is clean (all checks pass, no flags, low spam), the
+   submission is **auto-published** immediately.
+4. If the report has any flags, the submission stays **pending** for human
+   review. The admin queue and submission detail page show the screening
+   report alongside the submission.
+5. The model **never auto-rejects**. Flagged submissions wait for a human.
+
+**Configuration** (env vars):
+- `SCREENING_ENABLED=true` — enable screening
+- `CF_API_TOKEN` — Cloudflare API token with Workers AI permission
+- `CF_ACCOUNT_ID` — Cloudflare account ID
+- `SCREENING_MODEL` — model name (default: `@cf/meta/llama-3.2-3b-instruct`)
+
+When screening is disabled (default), all submissions stay pending for
+manual admin approval — the existing behavior is unchanged.
+
+Screening reports are stored in the `screening_reports` table for audit.
+Module: `api/screening.py`. Migration: `008_screening_reports.sql`.
 
 ## Agent discovery endpoints
 

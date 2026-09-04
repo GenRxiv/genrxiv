@@ -45,6 +45,12 @@ class Config:
     # Admin ORCIDs (can moderate)
     admin_orcids: tuple = ()
 
+    # Automated screening (Cloudflare Workers AI)
+    screening_enabled: bool = False
+    screening_cf_api_token: str = ""
+    screening_cf_account_id: str = ""
+    screening_model: str = "@cf/meta/llama-3.2-3b-instruct"
+
     @classmethod
     def from_env(cls) -> "Config":
         admin_orcids = tuple(
@@ -63,6 +69,10 @@ class Config:
             smtp_username=os.environ.get("SMTP_USERNAME", ""),
             smtp_password=os.environ.get("SMTP_PASSWORD", ""),
             admin_orcids=admin_orcids,
+            screening_enabled=os.environ.get("SCREENING_ENABLED", "").lower() in ("1", "true", "yes"),
+            screening_cf_api_token=os.environ.get("CF_API_TOKEN", ""),
+            screening_cf_account_id=os.environ.get("CF_ACCOUNT_ID", ""),
+            screening_model=os.environ.get("SCREENING_MODEL", "@cf/meta/llama-3.2-3b-instruct"),
         )
 
 
