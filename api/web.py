@@ -548,11 +548,11 @@ def splash_page(request: Request):
 
     <h3>Submission standards</h3>
     <p>
-        GenRxiv starts from the assumption that AI was involved. That's the
-        premise, not the exception. So there's one rule: state plainly what
-        the AI did. A single honest sentence is enough &mdash; "drafted by an LLM,
-        verified and revised by the authors" or "fully generated, checked for
-        accuracy." The disclosure is about honesty, not paperwork.
+        Every submission comes with a simple commitment: the author has
+        reviewed the work and checked it for accuracy, whether AI was
+        involved or not. That's it &mdash; no separate disclosure required,
+        no paperwork about what the AI did. The responsibility is the same
+        regardless of how the work was produced.
     </p>
     <p>
         Beyond that: submit in Markdown (there's a ready-made
