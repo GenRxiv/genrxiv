@@ -65,6 +65,9 @@ class Config:
     screening_cf_account_id: str = ""
     screening_model: str = "@cf/meta/llama-3.2-3b-instruct"
 
+    # Analytics (Umami)
+    umami_website_id: str = ""
+
     @classmethod
     def from_env(cls) -> "Config":
         admin_orcids = tuple(
@@ -107,6 +110,7 @@ class Config:
             screening_cf_api_token=os.environ.get("CF_API_TOKEN", ""),
             screening_cf_account_id=os.environ.get("CF_ACCOUNT_ID", ""),
             screening_model=os.environ.get("SCREENING_MODEL", "@cf/meta/llama-3.2-3b-instruct"),
+            umami_website_id=os.environ.get("UMAMI_WEBSITE_ID", ""),
         )
 
 
