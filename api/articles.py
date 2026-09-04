@@ -435,6 +435,43 @@ async def validate_submission(
             # Has front matter — check it closes
             if "\n---\n" not in md_text[3:]:
                 hints.append("YAML front matter appears to be unclosed — add a closing --- line")
+
+            # Parse front matter to check for duplicated title/abstract in body
+            fm_match = re.match(r'^---\s*\n(.*?)\n---\s*\n', md_text, re.DOTALL)
+            if fm_match:
+                fm_yaml = fm_match.group(1)
+                body_text = md_text[fm_match.end():]
+
+                # Extract title from front matter
+                fm_title_match = re.search(r'^title:\s*["\']?(.*?)["\']?\s*$', fm_yaml, re.MULTILINE)
+                if fm_title_match:
+                    fm_title = fm_title_match.group(1).strip()
+                    # Check if the body starts with an H1 that matches the title
+                    body_h1_match = re.match(r'^#\s+(.+?)\s*$', body_text, re.MULTILINE)
+                    if body_h1_match:
+                        body_h1 = body_h1_match.group(1).strip()
+                        # Compare case-insensitively, ignoring surrounding quotes
+                        if body_h1.lower() == fm_title.lower():
+                            hints.append(
+                                f'Title "{fm_title}" appears in both YAML front matter and as an H1 '
+                                f'in the body — it will be rendered twice. Remove the H1 from the body.'
+                            )
+                        elif body_h1.lower().startswith(fm_title.lower()[:20]):
+                            hints.append(
+                                f'The body starts with "# {body_h1}" which looks similar to the '
+                                f'front matter title "{fm_title}" — it may be rendered twice. '
+                                f'Consider removing the H1 from the body.'
+                            )
+
+                # Check for abstract section in body
+                fm_abstract_match = re.search(r'^abstract:\s*["\']?(.*?)["\']?\s*$', fm_yaml, re.MULTILINE)
+                if fm_abstract_match and re.search(r'^##\s*[Aa]bstract\s*$', body_text, re.MULTILINE):
+                    hints.append(
+                        'Abstract appears in both YAML front matter and as a "## Abstract" '
+                        'section in the body — it will be rendered twice. Remove the abstract '
+                        'section from the body.'
+                    )
+
         if "$" in md_text:
             dollar_count = md_text.count("$")
             if dollar_count % 2 != 0:
