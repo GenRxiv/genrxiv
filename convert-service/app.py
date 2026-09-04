@@ -506,12 +506,18 @@ async def render_html(
         md_text = md_bytes.decode("utf-8", errors="replace")
         meta, body_text = _parse_front_matter(md_text)
 
-        # Write the body (without front matter) for Pandoc
-        body_path = tmp_path / "body.md"
-        body_path.write_text(body_text, encoding="utf-8")
-
-        # Extract BibTeX citations if present and prepare citeproc args
+        # Extract BibTeX citations if present and prepare citeproc args.
+        # _prepare_citations writes the cleaned markdown (without the
+        # bibtex block) to tmp_path / "input.md" and returns pandoc args.
         cite_args = _prepare_citations(tmp_path, body_text)
+
+        # Use the cleaned markdown if citations were found, otherwise
+        # write the original body for Pandoc.
+        if cite_args:
+            body_path = tmp_path / "input.md"
+        else:
+            body_path = tmp_path / "body.md"
+            body_path.write_text(body_text, encoding="utf-8")
 
         # Render to HTML fragment via Pandoc
         cmd = [
