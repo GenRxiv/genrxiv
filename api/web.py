@@ -610,10 +610,6 @@ def splash_page(request: Request):
     <form id="interest-form">
         <label class="field-label" for="email">Email</label>
         <input type="email" id="email" name="email" placeholder="you@example.com" required>
-        <div class="checkbox-row">
-            <input type="checkbox" id="notify" name="notify_on_launch" value="yes">
-            <label for="notify">Notify me when GenRxiv goes live</label>
-        </div>
         <button type="submit">Send</button>
         <div class="confirm" id="confirm-message">Thanks &mdash; we'll be in touch.</div>
     </form>
