@@ -8,6 +8,44 @@
 .splash .status { font-size: 0.8rem; letter-spacing: 0.02em; color: var(--muted); margin: 0 0 2.6rem; }
 .splash .status .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); margin-right: 0.5em; animation: pulse 2s ease-in-out infinite; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+/* Heartbeat banner — flashing blue "Now accepting submissions" */
+.heartbeat-banner {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    background: rgba(47, 92, 255, 0.08);
+    border: 1px solid rgba(47, 92, 255, 0.3);
+    color: #2F5CFF;
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-weight: 600;
+    font-size: 0.9rem;
+    letter-spacing: 0.02em;
+    padding: 0.6rem 1.2rem;
+    border-radius: 6px;
+    margin-bottom: 2rem;
+    animation: heartbeat-flash 2s ease-in-out infinite;
+}
+.heartbeat-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #2F5CFF;
+    animation: heartbeat-pulse 1.2s ease-in-out infinite;
+    flex-shrink: 0;
+}
+@keyframes heartbeat-pulse {
+    0%, 100% { transform: scale(1); opacity: 1; box-shadow: 0 0 0 0 rgba(47, 92, 255, 0.5); }
+    50% { transform: scale(1.3); opacity: 0.7; box-shadow: 0 0 0 6px rgba(47, 92, 255, 0); }
+}
+@keyframes heartbeat-flash {
+    0%, 100% { background: rgba(47, 92, 255, 0.08); border-color: rgba(47, 92, 255, 0.3); }
+    50% { background: rgba(47, 92, 255, 0.16); border-color: rgba(47, 92, 255, 0.5); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .heartbeat-banner, .heartbeat-dot { animation: none; }
+}
 .splash p { font-size: 1.02rem; color: var(--ink); max-width: 34em; }
 .splash h2 { font-family: 'Fraunces', serif; font-weight: 500; font-size: 1.3rem; margin: 2.8rem 0 0.6rem; }
 .splash h3 { font-family: 'IBM Plex Sans', sans-serif; font-weight: 600; font-size: 0.95rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin: 2.6rem 0 1rem; }
@@ -38,14 +76,6 @@
 .splash button[type="submit"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .confirm { display: none; margin-top: 1rem; padding: 0.85rem 1rem; background: var(--accent-soft); border-left: 3px solid var(--accent); font-size: 0.92rem; color: var(--ink); }
 .confirm.error { background: #FDE8E8; border-left-color: #C53030; }
-.roadmap { margin: 1rem 0; }
-.roadmap-item { display: flex; gap: 1rem; padding: 0.6rem 0; border-bottom: 1px solid var(--rule); }
-.roadmap-item:last-child { border-bottom: none; }
-.roadmap-status { font-family: 'IBM Plex Mono', monospace; font-size: 0.78rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; min-width: 70px; padding-top: 0.15rem; }
-.roadmap-status.done { color: #2D7A3E; }
-.roadmap-status.active { color: var(--accent); }
-.roadmap-status.planned { color: var(--muted); }
-.roadmap-label { font-size: 0.95rem; color: var(--ink); }
 .support { margin-top: 2.6rem; padding-top: 1.8rem; border-top: 1px solid var(--rule); }
 .support p { color: var(--ink-soft); font-size: 0.96rem; }
 .support-links { display: flex; flex-wrap: wrap; gap: 1.2rem; margin-top: 0.8rem; }

@@ -496,6 +496,10 @@ def splash_page(request: Request):
     author = get_current_author(request)
     body = """
 <div class="splash">
+    <div class="heartbeat-banner">
+        <span class="heartbeat-dot"></span>
+        Now accepting submissions
+    </div>
     <div class="masthead">
         <h1>GenRxiv</h1>
         <p class="tagline">An open archive for AI-generated research</p>
@@ -507,8 +511,6 @@ def splash_page(request: Request):
     </div>
 
     <hr class="rule">
-
-    <p class="status"><span class="dot"></span>Now accepting submissions &mdash; building in the open</p>
 
     <p>
         GenRxiv is a preprint archive for research substantially generated or
@@ -564,38 +566,6 @@ def splash_page(request: Request):
         that produces the right format from any LLM), attribute authorship to
         humans with an ORCID iD, and license the work openly.
     </p>
-
-    <h3>Roadmap</h3>
-    <div class="roadmap">
-        <div class="roadmap-item">
-            <span class="roadmap-status done">Done</span>
-            <span class="roadmap-label">Platform infrastructure (FastAPI, PostgreSQL, conversion service)</span>
-        </div>
-        <div class="roadmap-item">
-            <span class="roadmap-status done">Done</span>
-            <span class="roadmap-label">Markdown to HTML &amp; PDF rendering (KaTeX math, print-ready)</span>
-        </div>
-        <div class="roadmap-item">
-            <span class="roadmap-status done">Done</span>
-            <span class="roadmap-label">ORCID author identity and OAuth login</span>
-        </div>
-        <div class="roadmap-item">
-            <span class="roadmap-status done">Done</span>
-            <span class="roadmap-label">Machine-readable access (OAI-PMH, sitemap, JSON-LD, ARK identifiers)</span>
-        </div>
-        <div class="roadmap-item">
-            <span class="roadmap-status done">Done</span>
-            <span class="roadmap-label">Nightly backups, email delivery, submission policies</span>
-        </div>
-        <div class="roadmap-item">
-            <span class="roadmap-status active">Active</span>
-            <span class="roadmap-label">End-to-end submission testing</span>
-        </div>
-        <div class="roadmap-item">
-            <span class="roadmap-status planned">Planned</span>
-            <span class="roadmap-label">Open submissions go live</span>
-        </div>
-    </div>
 
     <h2>Get involved</h2>
     <p>
