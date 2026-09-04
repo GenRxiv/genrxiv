@@ -351,14 +351,19 @@ VALIDATION
 ----------
 Endpoint: POST {config.base_url}/api/validate
 Content-Type: multipart/form-data
-Auth: Required (session cookie)
+Auth: Optional (session cookie)
 Rate limit: 20 per minute
 
 Accepts the same fields as /api/submit but does not create a submission.
+No authentication required — agents can lint documents before the
+human author is logged in. When unauthenticated, the submitter-in-
+author-list check is skipped (all other checks still run).
+
 Returns JSON with:
   - valid: boolean (true if no blocking errors)
   - errors: list of blocking error strings
-  - hints: list of non-blocking suggestions (e.g. unclosed BibTeX, odd $ count)
+  - hints: list of non-blocking suggestions (e.g. unclosed BibTeX,
+    odd $ count, unused BibTeX entries, skipped heading levels)
   - preview: rendered HTML string (if valid)
 
 Use this to test a submission file before asking the user to confirm.

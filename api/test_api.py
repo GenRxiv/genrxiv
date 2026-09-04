@@ -1020,9 +1020,55 @@ class TestValidateEndpoint:
         assert any("200 words" in e for e in body["errors"])
 
     @requires_db
-    def test_validate_requires_auth(self, client):
-        r = client.post("/api/validate")
-        assert r.status_code == 401
+    def test_validate_works_without_auth(self, client):
+        """Validate should work without authentication (lint mode)."""
+        import json as _json
+        import io as _io
+        body = "This is a test paper with sufficient content to pass the minimum word count validation check that we have implemented for the GenRxiv submission system. " * 8
+        md = _io.BytesIO(body.encode("utf-8"))
+        r = client.post(
+            "/api/validate",
+            files={"markdown": ("test.md", md, "text/markdown")},
+            data={
+                "title": "Unauth Validation Test",
+                "authors": _json.dumps([{"orcid": "0000-0000-0000-0000", "name": "Test Author"}]),
+                "abstract": "A test abstract for validation testing.",
+                "subjects": self.KWS_3,
+                "license": "CC0",
+                "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+            },
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["valid"] is True
+        assert body["errors"] == []
+
+    @requires_db
+    def test_validate_unauth_skips_submitter_check(self, client):
+        """Without auth, the submitter-in-author-list check is skipped."""
+        import json as _json
+        import io as _io
+        body = "This is a test paper with sufficient content to pass the minimum word count validation check that we have implemented for the GenRxiv submission system. " * 8
+        md = _io.BytesIO(body.encode("utf-8"))
+        # The author list does NOT include the submitter (there is no submitter)
+        # This should still be valid when unauthenticated
+        r = client.post(
+            "/api/validate",
+            files={"markdown": ("test.md", md, "text/markdown")},
+            data={
+                "title": "Unauth Test",
+                "authors": _json.dumps([{"orcid": "0000-0000-0000-0001", "name": "Someone Else"}]),
+                "abstract": "A test abstract for validation testing.",
+                "subjects": self.KWS_3,
+                "license": "CC0",
+                "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+            },
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["valid"] is True
+        # No submitter check error
+        assert not any("submitting author" in e for e in body["errors"])
 
 
 # ─── 18-21. Auth-gated pages (dashboard / admin) ────────────────────────────

@@ -512,9 +512,14 @@ async def validate_submission(
     license: str = Form("CC0"),
     license_url: str = Form("https://creativecommons.org/publicdomain/zero/1.0/"),
     subjects: str = Form(""),
-    _author: dict = Depends(require_author),
+    author: dict | None = Depends(get_current_author),
 ):
-    """Validate a submission without creating it. Returns errors, hints, and a preview."""
+    """Validate a submission without creating it. Returns errors, hints, and a preview.
+
+    This endpoint does not require authentication — agents can lint
+    documents before the human author is logged in. The submitter-in-
+    author-list check is only applied when authenticated.
+    """
     errors = []
     hints = []
 
@@ -569,10 +574,10 @@ async def validate_submission(
                 errors.append("Author name cannot be empty")
                 break
 
-        # Check submitter is in author list
-        if author_list and not errors:
+        # Check submitter is in author list (only when authenticated)
+        if author_list and not errors and author:
             submitter_orcids = [a["orcid"] for a in author_list if isinstance(a, dict) and "orcid" in a]
-            if _author["orcid"] not in submitter_orcids:
+            if author["orcid"] not in submitter_orcids:
                 errors.append(
                     "The submitting author must be listed as one of the authors. "
                     "You cannot submit on behalf of others without being an author yourself."
