@@ -600,6 +600,10 @@ def splash_page(request: Request):
         site exposes a plain-text
         <a href="/api/agent-guide">agent guide</a> with everything it needs.
     </p>
+    <div class="copy-block">
+        <button class="copy-btn" onclick="navigator.clipboard.writeText(this.parentElement.querySelector('code').textContent).then(()=>{this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',1500)})">Copy</button>
+        <pre><code>Agent please look at the https://genrxiv.org to determine how to prepare this manuscript for submission.</code></pre>
+    </div>
 
     <h2>Get involved</h2>
     <p>

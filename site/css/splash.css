@@ -47,6 +47,11 @@
     .heartbeat-banner, .heartbeat-dot { animation: none; }
 }
 .splash p { font-size: 1.02rem; color: var(--ink); max-width: 34em; }
+.copy-block { position: relative; margin: 1.2rem 0; max-width: 34em; }
+.copy-block pre { background: var(--card); border: 1px solid var(--rule); border-radius: 6px; padding: 1rem 1.2rem; margin: 0; overflow-x: auto; }
+.copy-block code { font-family: 'IBM Plex Mono', monospace; font-size: 0.88rem; color: var(--ink); white-space: pre-wrap; word-break: break-word; }
+.copy-btn { position: absolute; top: 0.5rem; right: 0.5rem; background: var(--paper-warm); border: 1px solid var(--rule); border-radius: 4px; padding: 0.3rem 0.7rem; font-size: 0.8rem; font-family: 'IBM Plex Sans', sans-serif; color: var(--ink-soft); cursor: pointer; transition: all 0.15s ease; }
+.copy-btn:hover { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
 .splash h2 { font-family: 'Fraunces', serif; font-weight: 500; font-size: 1.3rem; margin: 2.8rem 0 0.6rem; }
 .splash h3 { font-family: 'IBM Plex Sans', sans-serif; font-weight: 600; font-size: 0.95rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin: 2.6rem 0 1rem; }
 .subjects { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1rem 0 0; }
