@@ -31,7 +31,7 @@ router = APIRouter()
 REPOSITORY_NAME = "GenRxiv"
 ADMIN_EMAIL = "admin@genrxiv.org"
 GRANULARITY = "YYYY-MM-DDThh:mm:ssZ"
-DELETED_RECORD = "no"
+DELETED_RECORD = "transient"  # withdrawn articles are marked deleted, not purged
 PROTOCOL_VERSION = "2.0"
 
 METADATA_FORMATS = {
@@ -260,11 +260,25 @@ def oai_pmh(
             return Response(_oai_error("idDoesNotExist", "Unknown identifier"), media_type="text/xml")
         with get_conn().connection() as conn:
             row = conn.execute(
-                "SELECT * FROM articles WHERE ark = %s AND status = 'published'", (ark,)
+                "SELECT * FROM articles WHERE ark = %s AND status IN ('published', 'withdrawn')", (ark,)
             ).fetchone()
         if not row:
             return Response(_oai_error("idDoesNotExist", "Unknown identifier"), media_type="text/xml")
-        body = f"  <GetRecord>\n{_build_record(row, metadataPrefix)}\n  </GetRecord>"
+        # Withdrawn records: return a header with status="deleted" and no metadata,
+        # per OAI-PMH 2.0 §3.5 (transient deletion policy).
+        if row["status"] == "withdrawn":
+            datestamp = _format_date(row["withdrawn_at"]) if row.get("withdrawn_at") else _format_date(row["submitted_at"])
+            oai_id = escape(_oai_identifier(row["ark"]))
+            body = (
+                f"  <GetRecord>\n"
+                f"    <header status=\"deleted\">\n"
+                f"      <identifier>{oai_id}</identifier>\n"
+                f"      <datestamp>{datestamp}</datestamp>\n"
+                f"    </header>\n"
+                f"  </GetRecord>"
+            )
+        else:
+            body = f"  <GetRecord>\n{_build_record(row, metadataPrefix)}\n  </GetRecord>"
 
     # ─── ListIdentifiers / ListRecords ─────────────────────────────────────
     elif verb in ("ListIdentifiers", "ListRecords"):

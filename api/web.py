@@ -1607,9 +1607,10 @@ def submit_page(request: Request):
 
 
 @router.get("/submit/done/{article_id}", include_in_schema=False, response_class=HTMLResponse)
-def submit_done_page(article_id: int, request: Request):
+def submit_done_page(article_id: int, request: Request, retraction: str = ""):
     """Show submission confirmation with rendered article preview."""
     author = require_author(request)
+    is_retraction = bool(retraction)
     with get_conn().connection() as conn:
         article = conn.execute(
             """SELECT id, ark, title, abstract, status, version, submitted_at,
@@ -1672,8 +1673,8 @@ def submit_done_page(article_id: int, request: Request):
 
     body = f"""
     <div class="card" style="margin-bottom:1.5rem;border-left:4px solid #2D7A3E">
-        <h2 style="color:#2D7A3E">Submission received</h2>
-        <p>Your paper has been submitted and is awaiting moderation.</p>
+        <h2 style="color:#2D7A3E">{"Retraction submitted" if is_retraction else "Submission received"}</h2>
+        <p>{"Your retraction notice has been submitted and is awaiting moderation. Once approved, the ARK will point to the retraction notice and the original will be preserved in the version history." if is_retraction else "Your paper has been submitted and is awaiting moderation."}</p>
         <p style="margin-top:0.5rem">
             <strong>Status:</strong> <span class="status-badge status-pending">pending</span>
             &middot; <strong>ARK:</strong> {ark}
@@ -1859,6 +1860,7 @@ def dashboard_page(request: Request, deleted: str = ""):
             actions = [f'<a href="/dashboard/preview/{r["id"]}" class="btn" style="font-size:0.8rem;padding:0.3rem 0.8rem">Preview</a>']
             if r["status"] in ("published", "superseded"):
                 actions.append(f'<a href="/submit-version/{r["id"]}" class="btn" style="font-size:0.8rem;padding:0.3rem 0.8rem">Submit new version</a>')
+                actions.append(f'<a href="/dashboard/retract/{r["id"]}" class="btn" style="font-size:0.8rem;padding:0.3rem 0.8rem;border-color:#b48a00;color:#b48a00">Retract</a>')
             if r["status"] in ("pending", "rejected"):
                 actions.append(f'<a href="/dashboard/delete/{r["id"]}" class="btn btn-danger" style="font-size:0.8rem;padding:0.3rem 0.8rem">Delete</a>')
             actions_html = " ".join(actions)
@@ -2080,6 +2082,80 @@ def dashboard_delete_submit(article_id: int, request: Request):
     return RedirectResponse(url="/dashboard?deleted=1", status_code=303)
 
 
+# ─── Author retraction (published articles) ────────────────────────────────
+#
+# A retraction is a new version of the article that goes through the normal
+# moderation pipeline. On approval the ARK transfers to the retraction notice
+# and the original is preserved as a superseded version. This keeps the
+# scholarly record intact (the ARK persists, citations resolve to the
+# retraction notice) — unlike hard delete, which would break external links.
+
+@router.get("/dashboard/retract/{article_id}", include_in_schema=False, response_class=HTMLResponse)
+def dashboard_retract_confirm(article_id: int, request: Request):
+    """Confirmation page for retracting a published article."""
+    author = require_author(request)
+    with get_conn().connection() as conn:
+        article = conn.execute(
+            "SELECT id, title, status, version FROM articles WHERE id = %s",
+            (article_id,),
+        ).fetchone()
+        if not article:
+            raise HTTPException(404, "Article not found")
+        is_author_row = conn.execute(
+            "SELECT 1 FROM article_authors WHERE article_id = %s AND author_id = %s",
+            (article_id, author["id"]),
+        ).fetchone()
+    if not is_author_row:
+        raise HTTPException(403, "You can only retract your own articles")
+    if article["status"] not in ("published", "superseded"):
+        body = f"""
+        <div class="card" style="border-left:4px solid #c0392b">
+            <h2>Cannot retract this submission</h2>
+            <p>Only published articles can be retracted. This submission is
+            <strong>{article['status']}</strong>.
+            {"Use the Delete button to remove a pending or rejected submission." if article['status'] in ('pending', 'rejected') else ""}</p>
+            <p style="margin-top:1rem"><a href="/dashboard" class="btn">&larr; Back to My Submissions</a></p>
+        </div>
+        """
+        return _page("Cannot retract", body, author, current_path="/dashboard")
+    body = f"""
+    <div class="card" style="border-left:4px solid #b48a00;background:#fffdf0">
+        <h2>Retract this article</h2>
+        <p>You are about to submit a <strong>retraction notice</strong> for
+        <strong>&ldquo;{article['title']}&rdquo;</strong> (v{article['version']}).</p>
+        <p style="margin-top:0.5rem;font-size:0.9rem;color:#555">
+            A retraction is a new version of the article that goes through
+            moderation. Once approved, the ARK will point to the retraction
+            notice and the original will be preserved in the version history.
+            The ARK stays valid — external citations will resolve to the
+            retraction notice rather than silently breaking.
+        </p>
+        <form method="post" action="/dashboard/retract/{article_id}" style="margin-top:1rem">
+            <div class="form-group">
+                <label>Reason for retraction</label>
+                <textarea name="reason" rows="4" required
+                    placeholder="Explain why this article is being retracted (e.g. an error in the results, the data could not be reproduced...)"></textarea>
+                <div class="hint">This text appears on the retraction notice page.</div>
+            </div>
+            <button type="submit" class="btn btn-danger">Submit retraction for review</button>
+            <a href="/dashboard" class="btn" style="margin-left:0.5rem">Cancel</a>
+        </form>
+    </div>
+    """
+    return _page("Retract article?", body, author, current_path="/dashboard")
+
+
+@router.post("/dashboard/retract/{article_id}", include_in_schema=False)
+def dashboard_retract_submit(article_id: int, request: Request, reason: str = Form(...)):
+    """Create a retraction version and send it through moderation."""
+    author = require_author(request)
+    from articles import create_retraction
+    result = create_retraction(article_id, reason, author)
+    return RedirectResponse(
+        url=f"/submit/done/{result['id']}?retraction=1", status_code=303
+    )
+
+
 # ─── Profile page ──────────────────────────────────────────────────────────
 
 @router.get("/profile", include_in_schema=False, response_class=HTMLResponse)
@@ -2220,9 +2296,15 @@ def update_profile_affiliation(request: Request, affiliation: str = Form(default
 # ─── Admin page ────────────────────────────────────────────────────────────
 
 @router.get("/admin", include_in_schema=False, response_class=HTMLResponse)
-def admin_page(request: Request):
+def admin_page(request: Request, withdrawn: str = ""):
     """Admin moderation queue and stats."""
     admin = require_admin(request)
+    withdrawn_banner = ""
+    if withdrawn:
+        withdrawn_banner = (
+            '<div class="card" style="margin-bottom:1.5rem;border-left:4px solid #c0392b;background:#fdf0f0">'
+            "Article withdrawn. The ARK now resolves to a tombstone page.</div>"
+        )
     with get_conn().connection() as conn:
         pending = conn.execute(
             """SELECT a.id, a.title, a.submitted_at,
@@ -2292,6 +2374,7 @@ def admin_page(request: Request):
 
     body = f"""
     <h1>Admin Dashboard</h1>
+    {withdrawn_banner}
     {stats_html}
     {queue_html}
     {recent_html}
@@ -2370,9 +2453,38 @@ def admin_submission_detail(article_id: int, request: Request):
     </div>
     ''' if article['status'] == 'pending' else ''}
 
+    {f'''
+    <div class="card" style="margin-top:1.5rem;border-left:4px solid #c0392b">
+        <h3 style="color:#c0392b">Withdraw this article</h3>
+        <p style="font-size:0.9rem;color:#555">
+            Withdrawal removes the content from public access but keeps the ARK
+            resolving to a tombstone page. Use this for DMCA/DSA takedowns,
+            research-integrity findings, or legal orders. A reason is required
+            and is recorded for audit.
+        </p>
+        <form method="post" action="/admin/articles/{article_id}/withdraw" style="margin-top:0.5rem">
+            <div class="form-group">
+                <label>Reason (required)</label>
+                <input type="text" name="reason" required
+                    placeholder="e.g. DMCA notice #123, integrity case #456">
+            </div>
+            <button type="submit" class="btn btn-danger">Withdraw article</button>
+        </form>
+    </div>
+    ''' if article['status'] == 'published' else ''}
+
     <div style="margin-top:1.5rem"><a href="/admin">&larr; Back to queue</a></div>
     """
     return _page(f"Submission: {article['title']}", body, admin)
+
+
+@router.post("/admin/articles/{article_id}/withdraw", include_in_schema=False)
+def admin_withdraw_submit(article_id: int, request: Request, reason: str = Form("")):
+    """Withdraw a published article (admin only, recorded reason)."""
+    admin = require_admin(request)
+    from articles import withdraw_article
+    withdraw_article(article_id, reason, admin)
+    return RedirectResponse(url="/admin?withdrawn=1", status_code=303)
 
 
 # ─── Admin form-based moderation (POST handler for HTML forms) ─────────────

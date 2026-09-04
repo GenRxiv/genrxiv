@@ -1300,6 +1300,299 @@ class TestDashboardButtons:
         # ...but NOT for the published seeded article
         assert f"/dashboard/delete/{db['article_id']}" not in r.text
 
+    @requires_db
+    def test_dashboard_lists_retract_button_for_published(self, authed_client, db):
+        r = authed_client.get("/dashboard")
+        assert r.status_code == 200
+        # Retract button present for the published seeded article
+        assert f"/dashboard/retract/{db['article_id']}" in r.text
+        assert ">Retract<" in r.text
+        # Not present for pending (which gets Delete instead)
+        pending_id = _insert_submission(db, title="A Pending One")
+        r2 = authed_client.get("/dashboard")
+        # The pending one has no retract link
+        assert f"/dashboard/retract/{pending_id}" not in r2.text
+
+
+# ─── 21c. Author retraction flow ───────────────────────────────────────────
+
+class TestRetraction:
+    @requires_db
+    def test_retract_confirm_requires_auth(self, client, db):
+        r = client.get(f"/dashboard/retract/{db['article_id']}")
+        assert r.status_code == 401
+
+    @requires_db
+    def test_retract_confirm_published_shows_form(self, authed_client, db):
+        r = authed_client.get(f"/dashboard/retract/{db['article_id']}")
+        assert r.status_code == 200
+        assert "Retract this article" in r.text
+        assert "Submit retraction for review" in r.text
+        assert "reason" in r.text.lower()
+
+    @requires_db
+    def test_retract_confirm_non_author_returns_403(self, admin_client, db):
+        # admin is not an author of the seeded article
+        r = admin_client.get(f"/dashboard/retract/{db['article_id']}")
+        assert r.status_code == 403
+
+    @requires_db
+    def test_retract_confirm_pending_shows_cannot_retract(self, authed_client, db):
+        article_id = _insert_submission(db, title="A Pending One")
+        r = authed_client.get(f"/dashboard/retract/{article_id}")
+        assert r.status_code == 200
+        assert "Cannot retract" in r.text
+
+    @requires_db
+    def test_retract_creates_pending_retraction_version(self, authed_client, db):
+        r = authed_client.post(
+            f"/dashboard/retract/{db['article_id']}",
+            data={"reason": "The results could not be reproduced."},
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        assert r.headers["location"].startswith("/submit/done/")
+        # A new pending retraction version exists in the DB
+        from db import get_conn
+        with get_conn().connection() as conn:
+            row = conn.execute(
+                """SELECT id, title, status, version, supersedes_id, is_retraction
+                   FROM articles WHERE supersedes_id = %s AND is_retraction = TRUE
+                   ORDER BY id DESC LIMIT 1""",
+                (db["article_id"],),
+            ).fetchone()
+            assert row is not None
+            assert row["status"] == "pending"
+            assert row["version"] == 2
+            assert row["supersedes_id"] == db["article_id"]
+            assert "Retraction:" in row["title"]
+
+    @requires_db
+    def test_retract_non_author_returns_403(self, admin_client, db):
+        r = admin_client.post(
+            f"/dashboard/retract/{db['article_id']}",
+            data={"reason": "not my paper"},
+            follow_redirects=False,
+        )
+        assert r.status_code == 403
+
+    @requires_db
+    def test_retraction_approved_transfers_ark_and_shows_banner(
+        self, authed_client, admin_client, client, db
+    ):
+        # Submit a retraction
+        r = authed_client.post(
+            f"/dashboard/retract/{db['article_id']}",
+            data={"reason": "Data error."},
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        from db import get_conn
+        with get_conn().connection() as conn:
+            row = conn.execute(
+                "SELECT id FROM articles WHERE supersedes_id = %s AND is_retraction = TRUE "
+                "ORDER BY id DESC LIMIT 1",
+                (db["article_id"],),
+            ).fetchone()
+            retraction_id = row["id"]
+        # Admin approves the retraction
+        ar = admin_client.patch(
+            f"/admin/articles/{retraction_id}",
+            json={"action": "approve"},
+        )
+        assert ar.status_code == 200
+        # The ARK now belongs to the retraction version
+        with get_conn().connection() as conn:
+            retr = conn.execute(
+                "SELECT ark, status, is_retraction FROM articles WHERE id = %s",
+                (retraction_id,),
+            ).fetchone()
+            assert retr["status"] == "published"
+            assert retr["is_retraction"] is True
+            assert retr["ark"] == db["ark"]
+            # Original is superseded and lost its ARK
+            orig = conn.execute(
+                "SELECT ark, status FROM articles WHERE id = %s",
+                (db["article_id"],),
+            ).fetchone()
+            assert orig["status"] == "superseded"
+            assert orig["ark"] is None
+        # The public article page shows the retraction banner
+        page = client.get(f"/article/{db['ark']}")
+        assert page.status_code == 200
+        assert "has been retracted" in page.text
+
+    @requires_db
+    def test_version_history_marks_retraction(self, authed_client, admin_client, client, db):
+        authed_client.post(
+            f"/dashboard/retract/{db['article_id']}",
+            data={"reason": "test"},
+            follow_redirects=False,
+        )
+        from db import get_conn
+        with get_conn().connection() as conn:
+            row = conn.execute(
+                "SELECT id FROM articles WHERE supersedes_id = %s AND is_retraction = TRUE "
+                "ORDER BY id DESC LIMIT 1",
+                (db["article_id"],),
+            ).fetchone()
+            retraction_id = row["id"]
+        admin_client.patch(
+            f"/admin/articles/{retraction_id}", json={"action": "approve"}
+        )
+        page = client.get(f"/article/{db['ark']}/versions")
+        assert page.status_code == 200
+        assert "retraction" in page.text.lower()
+
+
+# ─── 21d. Admin withdrawal (tombstone) flow ────────────────────────────────
+
+class TestWithdrawal:
+    @requires_db
+    def test_withdraw_requires_admin(self, client, authed_client, db):
+        # Unauthenticated
+        r = client.post(
+            f"/admin/articles/{db['article_id']}/withdraw",
+            data={"reason": "DMCA"},
+            follow_redirects=False,
+        )
+        assert r.status_code == 401
+        # Non-admin
+        r = authed_client.post(
+            f"/admin/articles/{db['article_id']}/withdraw",
+            data={"reason": "DMCA"},
+            follow_redirects=False,
+        )
+        assert r.status_code == 403
+
+    @requires_db
+    def test_withdraw_published_sets_withdrawn_status(self, admin_client, db):
+        r = admin_client.post(
+            f"/admin/articles/{db['article_id']}/withdraw",
+            data={"reason": "DMCA notice #123"},
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        assert "withdrawn=1" in r.headers["location"]
+        from db import get_conn
+        with get_conn().connection() as conn:
+            row = conn.execute(
+                "SELECT status, withdrawal_reason, withdrawn_at, ark FROM articles WHERE id = %s",
+                (db["article_id"],),
+            ).fetchone()
+            assert row["status"] == "withdrawn"
+            assert row["withdrawal_reason"] == "DMCA notice #123"
+            assert row["withdrawn_at"] is not None
+            # ARK is preserved
+            assert row["ark"] == db["ark"]
+
+    @requires_db
+    def test_withdraw_pending_returns_400(self, admin_client, db):
+        article_id = _insert_submission(db, title="Pending")
+        r = admin_client.post(
+            f"/admin/articles/{article_id}/withdraw",
+            data={"reason": "test"},
+            follow_redirects=False,
+        )
+        assert r.status_code == 400
+
+    @requires_db
+    def test_withdraw_empty_reason_returns_400(self, admin_client, db):
+        r = admin_client.post(
+            f"/admin/articles/{db['article_id']}/withdraw",
+            data={"reason": ""},
+            follow_redirects=False,
+        )
+        assert r.status_code == 400
+
+    @requires_db
+    def test_withdrawn_article_html_shows_tombstone(self, admin_client, client, db):
+        admin_client.post(
+            f"/admin/articles/{db['article_id']}/withdraw",
+            data={"reason": "Takedown notice"},
+            follow_redirects=False,
+        )
+        r = client.get(f"/article/{db['ark']}")
+        assert r.status_code == 200
+        assert "Article withdrawn" in r.text
+        assert "Takedown notice" in r.text
+        # The original body content is NOT served (the title appears in the
+        # tombstone notice, but the body text from the seeded article must not)
+        assert "Some body text." not in r.text
+
+    @requires_db
+    def test_withdrawn_pdf_returns_410(self, admin_client, client, db):
+        admin_client.post(
+            f"/admin/articles/{db['article_id']}/withdraw",
+            data={"reason": "x"},
+            follow_redirects=False,
+        )
+        assert client.get(f"/article/{db['ark']}/pdf").status_code == 410
+
+    @requires_db
+    def test_withdrawn_markdown_returns_410(self, admin_client, client, db):
+        admin_client.post(
+            f"/admin/articles/{db['article_id']}/withdraw",
+            data={"reason": "x"},
+            follow_redirects=False,
+        )
+        assert client.get(f"/article/{db['ark']}/markdown").status_code == 410
+
+    @requires_db
+    def test_withdrawn_jsonld_returns_410(self, admin_client, client, db):
+        admin_client.post(
+            f"/admin/articles/{db['article_id']}/withdraw",
+            data={"reason": "x"},
+            follow_redirects=False,
+        )
+        assert client.get(f"/article/{db['ark']}/jsonld").status_code == 410
+
+    @requires_db
+    def test_withdrawn_excluded_from_sitemap(self, admin_client, client, db):
+        # Before withdrawal, the article is in the sitemap
+        before = client.get("/sitemap.xml").text
+        assert db["ark"] in before
+        admin_client.post(
+            f"/admin/articles/{db['article_id']}/withdraw",
+            data={"reason": "x"},
+            follow_redirects=False,
+        )
+        after = client.get("/sitemap.xml").text
+        assert db["ark"] not in after
+
+    @requires_db
+    def test_oai_identify_advertises_transient_deletion(self, client):
+        r = client.get("/oai", params={"verb": "Identify"})
+        assert r.status_code == 200
+        assert "<deletedRecord>transient</deletedRecord>" in r.text
+
+    @requires_db
+    def test_oai_getrecord_withdrawn_returns_deleted_header(self, admin_client, client, db):
+        admin_client.post(
+            f"/admin/articles/{db['article_id']}/withdraw",
+            data={"reason": "x"},
+            follow_redirects=False,
+        )
+        oai_id = f"oai:genrxiv.org:{db['ark']}"
+        r = client.get("/oai", params={"verb": "GetRecord", "identifier": oai_id, "metadataPrefix": "oai_dc"})
+        assert r.status_code == 200
+        assert 'status="deleted"' in r.text
+        assert "<GetRecord>" in r.text
+
+    @requires_db
+    def test_admin_submission_detail_shows_withdraw_form_for_published(self, admin_client, db):
+        r = admin_client.get(f"/admin/submission/{db['article_id']}")
+        assert r.status_code == 200
+        assert "Withdraw this article" in r.text
+        assert f"/admin/articles/{db['article_id']}/withdraw" in r.text
+
+    @requires_db
+    def test_admin_submission_detail_no_withdraw_form_for_pending(self, admin_client, db):
+        article_id = _insert_submission(db, title="Pending")
+        r = admin_client.get(f"/admin/submission/{article_id}")
+        assert r.status_code == 200
+        assert "Withdraw this article" not in r.text
+
 
 # ─── 22-25. Article viewing (JSON-LD / HTML / PDF / Markdown) ───────────────
 

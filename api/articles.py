@@ -670,6 +670,211 @@ def delete_article(article_id: int, author_id: int) -> dict:
     return {"id": article_id, "title": row["title"], "status": row["status"]}
 
 
+def get_article_by_ark_including_withdrawn(ark: str) -> dict | None:
+    """Like ``get_article_by_ark`` but also returns withdrawn articles.
+
+    Used by the public article HTML route so a withdrawn article's ARK still
+    resolves (to a tombstone page) instead of 404ing. Download endpoints
+    (pdf/markdown/jsonld/bibtex) keep using ``get_article_by_ark`` so they
+    do not serve withdrawn content.
+    """
+    with get_conn().connection() as conn:
+        row = conn.execute(
+            """SELECT a.*, array_agg(aa.author_id ORDER BY aa."order") AS author_ids
+               FROM articles a
+               LEFT JOIN article_authors aa ON a.id = aa.article_id
+               WHERE a.ark = %s AND a.status IN ('published', 'withdrawn')
+               GROUP BY a.id""",
+            (ark,),
+        ).fetchone()
+    return row
+
+
+def _build_retraction_markdown(original: dict, authors: list[dict], reason: str) -> str:
+    """Build the Markdown body for a one-click author retraction notice.
+
+    The front matter is merged in by the caller via ``_merge_front_matter``;
+    this returns just the body (the retraction notice itself).
+    """
+    from datetime import datetime, timezone
+    date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    original_title = original["title"]
+    ark = original.get("ark") or ""
+    reason_escaped = (reason or "").strip() or "No reason provided."
+    ark_line = f" The original article was available at `{ark}`." if ark else ""
+    body = f"""# Retraction Notice
+
+This article, "{original_title}", has been **retracted by the author** on {date_str}.{ark_line}
+
+## Reason
+
+{reason_escaped}
+
+## Note
+
+This retraction notice is the current version of record. The original
+version is preserved in the version history. Readers who encounter the
+original content should treat it as retracted.
+"""
+    return body
+
+
+def create_retraction(article_id: int, reason: str, author: dict) -> dict:
+    """Create a retraction version of an author's own published article.
+
+    The retraction is a new article row with ``supersedes_id`` set to the
+    original, ``is_retraction = True``, and ``status = 'pending'`` so it goes
+    through the normal moderation pipeline. On approval the ARK transfers to
+    the retraction version and the original is marked superseded (existing
+    ``moderate_article`` logic handles this).
+
+    Returns a descriptor of the new pending retraction submission.
+    """
+    reason = (reason or "").strip()[:2000]
+    with get_conn().connection() as conn:
+        # Load the original article and verify the caller is one of its authors.
+        original = conn.execute(
+            "SELECT id, ark, title, abstract, subjects, version, status, source_markdown "
+            "FROM articles WHERE id = %s",
+            (article_id,),
+        ).fetchone()
+        if not original:
+            raise HTTPException(404, "Article not found")
+        is_author = conn.execute(
+            "SELECT 1 FROM article_authors WHERE article_id = %s AND author_id = %s",
+            (article_id, author["id"]),
+        ).fetchone()
+        if not is_author:
+            raise HTTPException(403, "You can only retract your own articles")
+        if original["status"] not in ("published", "superseded"):
+            raise HTTPException(
+                400,
+                f"Only published articles can be retracted (this one is {original['status']})",
+            )
+
+        # Find the latest version in the chain (the root may be the original
+        # or an earlier version; supersedes_id always points at the root).
+        root_id = article_id
+        latest = conn.execute(
+            "SELECT version FROM articles WHERE id = %s OR supersedes_id = %s "
+            "ORDER BY version DESC LIMIT 1",
+            (root_id, root_id),
+        ).fetchone()
+        version = (latest["version"] + 1) if latest else original["version"] + 1
+
+        # Authors of the original (preserved on the retraction notice).
+        author_rows = conn.execute(
+            """SELECT a.orcid, a.name, a.affiliation
+               FROM authors a
+               JOIN article_authors aa ON a.id = aa.author_id
+               WHERE aa.article_id = %s
+               ORDER BY aa."order\"""",
+            (article_id,),
+        ).fetchall()
+        author_list = [
+            {"orcid": r["orcid"], "name": r["name"], "affiliation": r.get("affiliation")}
+            for r in author_rows
+        ]
+        if not author_list:
+            # Fallback: at least the submitter
+            author_list = [{"orcid": author["orcid"], "name": author["name"]}]
+
+        retraction_title = f"Retraction: {original['title']}"
+        retraction_abstract = (
+            f'This article has been retracted by the author. Reason: {reason or "No reason provided."}'
+        )
+        subjects = list(original["subjects"] or [])
+
+        body = _build_retraction_markdown(original, author_list, reason)
+        md_text = _merge_front_matter(
+            body, retraction_title, author_list, retraction_abstract, subjects
+        )
+
+        row = conn.execute(
+            """INSERT INTO articles
+                   (title, abstract, license, license_url, subjects,
+                    source_markdown, submitted_by, status, version,
+                    supersedes_id, is_retraction)
+               VALUES (%s, %s, 'CC0',
+                       'https://creativecommons.org/publicdomain/zero/1.0/',
+                       %s, %s, %s, 'pending', %s, %s, TRUE)
+               RETURNING id, submitted_at""",
+            (
+                retraction_title,
+                retraction_abstract,
+                subjects,
+                md_text,
+                author["id"],
+                version,
+                root_id,
+            ),
+        ).fetchone()
+        new_id = row["id"]
+
+        # Link the same authors to the retraction version.
+        for i, a in enumerate(author_list):
+            existing = conn.execute(
+                "SELECT id FROM authors WHERE orcid = %s", (a["orcid"],)
+            ).fetchone()
+            if existing:
+                conn.execute(
+                    "INSERT INTO article_authors (article_id, author_id, \"order\") "
+                    "VALUES (%s, %s, %s) ON CONFLICT DO NOTHING",
+                    (new_id, existing["id"], i),
+                )
+        conn.commit()
+
+    return {
+        "id": new_id,
+        "retraction_of": article_id,
+        "status": "pending",
+        "version": version,
+        "title": retraction_title,
+    }
+
+
+def withdraw_article(article_id: int, reason: str, admin: dict) -> dict:
+    """Withdraw a published article (admin only).
+
+    Sets status to 'withdrawn', records the reason and timestamp. The ARK is
+    preserved so it resolves to a tombstone page; the content is no longer
+    served. Used for DMCA/DSA takedowns and research-integrity findings.
+    """
+    reason = (reason or "").strip()[:2000]
+    if not reason:
+        raise HTTPException(400, "A withdrawal reason is required (for the audit trail)")
+    with get_conn().connection() as conn:
+        row = conn.execute(
+            "SELECT id, title, ark, status FROM articles WHERE id = %s",
+            (article_id,),
+        ).fetchone()
+        if not row:
+            raise HTTPException(404, "Article not found")
+        if row["status"] != "published":
+            raise HTTPException(
+                400,
+                f"Only published articles can be withdrawn (this one is {row['status']})",
+            )
+        conn.execute(
+            """UPDATE articles
+               SET status = 'withdrawn',
+                   withdrawn_at = now(),
+                   withdrawal_reason = %s,
+                   moderated_by = %s,
+                   moderated_at = now()
+               WHERE id = %s""",
+            (reason, admin["id"], article_id),
+        )
+        conn.commit()
+    return {
+        "id": article_id,
+        "title": row["title"],
+        "ark": row["ark"],
+        "status": "withdrawn",
+        "reason": reason,
+    }
+
+
 def build_jsonld(article: dict, authors: list[dict]) -> dict:
     """Build Schema.org ScholarArticle JSON-LD."""
     base = config.base_url
@@ -1225,10 +1430,18 @@ def article_versions(article_id: int):
 # NOTE: Specific routes (with suffixes) must be registered BEFORE the
 # catch-all {ark:path} route, otherwise FastAPI matches the catch-all first.
 
+def _withdrawn_gone(ark: str):
+    """Raise 410 Gone if the article exists but is withdrawn."""
+    article = get_article_by_ark_including_withdrawn(ark)
+    if article and article["status"] == "withdrawn":
+        raise HTTPException(410, "This article has been withdrawn and is no longer available")
+
+
 @router.get("/article/{ark:path}/pdf")
 def download_pdf(ark: str, request: Request):
     """Download article as PDF."""
     ark = unquote(ark)
+    _withdrawn_gone(ark)
     article = get_article_by_ark(ark)
     if not article:
         raise HTTPException(404, "Article not found")
@@ -1250,6 +1463,7 @@ def download_pdf(ark: str, request: Request):
 def download_markdown(ark: str, request: Request):
     """Download original Markdown source."""
     ark = unquote(ark)
+    _withdrawn_gone(ark)
     article = get_article_by_ark(ark)
     if not article:
         raise HTTPException(404, "Article not found")
@@ -1265,6 +1479,7 @@ def download_markdown(ark: str, request: Request):
 def article_jsonld(ark: str):
     """Get article as JSON-LD."""
     ark = unquote(ark)
+    _withdrawn_gone(ark)
     article = get_article_by_ark(ark)
     if not article:
         raise HTTPException(404, "Article not found")
@@ -1280,6 +1495,7 @@ def article_bibtex(ark: str):
     If the article has no BibTeX references, returns 404.
     """
     ark = unquote(ark)
+    _withdrawn_gone(ark)
     article = get_article_by_ark(ark)
     if not article:
         raise HTTPException(404, "Article not found")
@@ -1298,6 +1514,7 @@ def article_references(ark: str):
     title, year, and other fields. Useful for agents and harvesting.
     """
     ark = unquote(ark)
+    _withdrawn_gone(ark)
     article = get_article_by_ark(ark)
     if not article:
         raise HTTPException(404, "Article not found")
@@ -1320,7 +1537,7 @@ def article_versions_page(ark: str, request: Request):
     with get_conn().connection() as conn:
         root_id = article["supersedes_id"] or article["id"]
         versions = conn.execute(
-            """SELECT id, version, title, status, ark, published_at, submitted_at
+            """SELECT id, version, title, status, ark, is_retraction, published_at, submitted_at
                FROM articles
                WHERE id = %s OR supersedes_id = %s
                ORDER BY version DESC""",
@@ -1335,8 +1552,9 @@ def article_versions_page(ark: str, request: Request):
         published = _format_date(v.get("published_at"))
         submitted = _format_date(v.get("submitted_at"))
         link = f'<a href="/article/{v["ark"]}">v{v["version"]}</a>' if v.get("ark") else f"v{v['version']}"
+        retraction_badge = ' <span class="status-badge" style="background:#fdf0f0;color:#c0392b;border:1px solid #c0392b">retraction</span>' if v.get("is_retraction") else ""
         version_rows.append(f"""<tr>
-<td><strong>{link}</strong>{' <span class="status-badge status-published">current</span>' if is_current else ''}</td>
+<td><strong>{link}</strong>{' <span class="status-badge status-published">current</span>' if is_current else ''}{retraction_badge}</td>
 <td>{v['title']}</td>
 <td><span class="status-badge {status_class}">{v['status']}</span></td>
 <td>{submitted}</td>
@@ -1371,17 +1589,69 @@ def article_versions_page(ark: str, request: Request):
 def view_article(ark: str, request: Request):
     """View article as HTML."""
     ark = unquote(ark)
-    article = get_article_by_ark(ark)
+    # Use the including-withdrawn lookup so a withdrawn article's ARK still
+    # resolves (to a tombstone page) rather than 404ing.
+    article = get_article_by_ark_including_withdrawn(ark)
     if not article:
         raise HTTPException(404, "Article not found")
+
+    # Withdrawn articles: render a tombstone page instead of the content.
+    if article["status"] == "withdrawn":
+        from web import _page, _format_date
+        from auth import get_current_author
+        withdrawn_at = _format_date(article.get("withdrawn_at"))
+        reason = article.get("withdrawal_reason") or ""
+        body = f"""
+        <div class="card" style="border-left:4px solid #c0392b;background:#fdf0f0">
+            <h1 style="color:#c0392b">Article withdrawn</h1>
+            <p>This article (<strong>{article['title']}</strong>) has been
+            withdrawn from GenRxiv and is no longer available.</p>
+            <p style="margin-top:0.5rem">
+                <strong>ARK:</strong> {ark}<br>
+                <strong>Withdrawn:</strong> {withdrawn_at}
+            </p>
+            {f'<div style="margin-top:1rem;padding:0.8rem;background:#fff;border:1px solid #e0d6d6;border-radius:4px"><strong>Reason:</strong> {reason}</div>' if reason else ''}
+            <p style="margin-top:1rem;font-size:0.85rem;color:#666">
+                The identifier ({ark}) remains valid and resolves to this
+                notice. The full text is no longer served. For questions about
+                this withdrawal, contact the GenRxiv moderators.
+            </p>
+        </div>
+        """
+        author = get_current_author(request)
+        return _page("Article withdrawn", body, author)
+
     track_download(article["id"], "html", request)
+
+    # Retraction notice: prepend a prominent banner to the rendered HTML.
+    retraction_banner = ""
+    if article.get("is_retraction"):
+        retraction_banner = (
+            '<div style="background:#fdf0f0;border-left:4px solid #c0392b;'
+            'padding:1rem 1.5rem;margin:0 0 1.5rem 0;font-size:1.05rem">'
+            '<strong style="color:#c0392b">This article has been retracted.</strong> '
+            "This page is the retraction notice and is the current version of record. "
+            'See the <a href="/article/{ark}/versions">version history</a> for the original.</div>'
+        ).replace("{ark}", ark)
+
     if article["html_path"]:
         filepath = safe_resolve_file(article["html_path"])
         if filepath:
-            return HTMLResponse(filepath.read_text(encoding="utf-8"))
+            html = filepath.read_text(encoding="utf-8")
+            if retraction_banner:
+                html = _inject_retraction_banner(html, retraction_banner)
+            return HTMLResponse(html)
     # Fallback: render on the fly (front matter is in the stored markdown)
     html = render_html(article["source_markdown"])
+    if retraction_banner:
+        html = _inject_retraction_banner(html, retraction_banner)
     return HTMLResponse(html)
+
+
+def _inject_retraction_banner(html: str, banner: str) -> str:
+    """Insert the retraction banner right after <body> in a rendered HTML doc."""
+    import re as _re
+    return _re.sub(r"(<body[^>]*>)", r"\1" + banner, html, count=1, flags=_re.IGNORECASE)
 
 
 # ─── Moderation (admin) ────────────────────────────────────────────────────

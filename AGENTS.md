@@ -50,7 +50,7 @@ cd convert-service && pip install -r requirements-dev.txt
 pytest test_app.py -v
 
 # Without DATABASE_URL_TEST, DB-dependent tests are skipped automatically.
-# Total: 152 tests (111 API + 16 browser + 25 convert service).
+# Total: 195 tests (154 API + 16 browser + 25 convert service).
 ```
 
 CI runs all suites on every push/PR (`.github/workflows/tests.yml`).
@@ -295,6 +295,35 @@ is accepted.
 
 Exactly 3 OECD Fields of Science classifications are required.
 Fetch the taxonomy at `GET /api/fos`. Format: "Domain > Subdomain".
+
+### Article removal: delete, retraction, and withdrawal
+
+GenRxiv has three distinct removal mechanisms, each with a different
+scope and legal/scholarly purpose:
+
+| Mechanism | Who | Scope | ARK behaviour |
+|---|---|---|---|
+| Hard delete | Author | `pending` / `rejected` only | No ARK yet — row + files removed |
+| Retraction | Author (one-click) | `published` / `superseded` | ARK transfers to the retraction notice; original preserved as superseded |
+| Withdrawal | Admin (reason required) | `published` | ARK persists, resolves to a tombstone page; content no longer served |
+
+- **Hard delete** (`/dashboard/delete/{id}`): the author can permanently
+  remove an unpublished submission. Published articles cannot be hard-deleted
+  — their ARK is a persistent identifier that may be cited externally.
+- **Retraction** (`/dashboard/retract/{id}`): the author submits a retraction
+  notice (a new version with `is_retraction = TRUE`) that goes through the
+  normal moderation pipeline. On approval the ARK transfers to the retraction
+  notice and the article page shows a "this article has been retracted"
+  banner. This is the scholarly norm (COPE) and preserves the citation record.
+- **Withdrawal** (`/admin/articles/{id}/withdraw`): admin-only, used for
+  DMCA/DSA takedowns and research-integrity findings. Sets `status =
+  'withdrawn'`, records `withdrawal_reason` and `withdrawn_at`. The ARK
+  resolves to a tombstone page; PDF/Markdown/JSON-LD/BibTeX return `410 Gone`.
+  OAI-PMH advertises `deletedRecord: transient` and returns a `status="deleted"`
+  header for withdrawn records; sitemap and feeds exclude them.
+
+Schema columns (migration `007_retraction_and_withdrawal.sql`):
+`articles.is_retraction`, `articles.withdrawn_at`, `articles.withdrawal_reason`.
 
 ## Agent discovery endpoints
 

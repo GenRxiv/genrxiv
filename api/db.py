@@ -61,7 +61,10 @@ CREATE TABLE IF NOT EXISTS articles (
     published_at TIMESTAMPTZ,
     moderated_by INTEGER REFERENCES authors(id),
     moderated_at TIMESTAMPTZ,
-    moderation_note TEXT
+    moderation_note TEXT,
+    is_retraction BOOLEAN NOT NULL DEFAULT FALSE,
+    withdrawn_at TIMESTAMPTZ,
+    withdrawal_reason TEXT
 );
 
 -- Article-author link (many-to-many)
