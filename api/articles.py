@@ -4,6 +4,7 @@ GenRxiv API — article submission, viewing, and moderation.
 import hashlib
 import io
 import json
+import logging
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -21,6 +22,7 @@ from notifications import notify_approved, notify_rejected
 from ratelimit import limiter
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 # ─── Constants ─────────────────────────────────────────────────────────────
 
@@ -1281,8 +1283,12 @@ async def submit(
         result = screen_submission(title, abstract, md_text)
         screening_verdict = result["verdict"]
         save_screening_report(article_id, result)
+    except Exception as e:
+        logger.error("Screening failed for article %s: %s", article_id, e)
+        screening_verdict = "screening_error"
 
-        if result["verdict"] == "auto_approve":
+    if screening_verdict == "auto_approve":
+        try:
             # Auto-publish: replicate the admin approve flow
             with get_conn().connection() as conn:
                 approve_row = conn.execute(
@@ -1304,8 +1310,9 @@ async def submit(
                 "submitted_at": approve_row["submitted_at"].isoformat(),
                 "screening": screening_verdict,
             }
-    except Exception:
-        pass  # Don't let screening failure block submission — stays pending
+        except Exception as e:
+            logger.error("Auto-approval failed for article %s (screening said auto_approve): %s", article_id, e)
+            # Fall through to pending — the submission stays for human review
 
     return {
         "id": article_id,
