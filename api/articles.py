@@ -26,7 +26,6 @@ router = APIRouter()
 
 MAX_TITLE_LENGTH = 500
 MAX_ABSTRACT_LENGTH = 5000
-MAX_AI_DISCLOSURE_LENGTH = 2000
 MAX_SUBJECTS = 20
 MAX_SUBJECT_LENGTH = 100
 MAX_AUTHORS = 50
@@ -295,7 +294,7 @@ async def submit(
     markdown: UploadFile = File(...),
     title: str = Form(...),
     authors: str = Form(...),
-    ai_disclosure: str = Form(""),
+    ai_disclosure: str = Form(""),  # deprecated, kept for backward compat
     abstract: str = Form(""),
     license: str = Form("CC0"),
     license_url: str = Form("https://creativecommons.org/publicdomain/zero/1.0/"),
@@ -323,9 +322,6 @@ async def submit(
         raise HTTPException(400, "Abstract is required")
     if len(abstract) > MAX_ABSTRACT_LENGTH:
         raise HTTPException(400, f"Abstract too long (max {MAX_ABSTRACT_LENGTH} chars)")
-    ai_disclosure = ai_disclosure.strip()
-    if len(ai_disclosure) > MAX_AI_DISCLOSURE_LENGTH:
-        raise HTTPException(400, f"AI disclosure too long (max {MAX_AI_DISCLOSURE_LENGTH} chars)")
     license, license_url = validate_license(license, license_url)
 
     # Parse authors JSON
@@ -531,7 +527,6 @@ def get_article_meta(article_id: int, format: str = Query("json")):
         "ark": row["ark"],
         "title": row["title"],
         "abstract": row["abstract"],
-        "ai_disclosure": row["ai_disclosure"],
         "license": row["license"],
         "license_url": row["license_url"],
         "subjects": row["subjects"],
@@ -758,7 +753,7 @@ def moderation_queue(_admin: dict = Depends(require_admin)):
     """List pending submissions."""
     with get_conn().connection() as conn:
         rows = conn.execute(
-            """SELECT a.id, a.title, a.ai_disclosure, a.submitted_at,
+            """SELECT a.id, a.title, a.submitted_at,
                       a.submitted_by, au.name as submitter_name, au.orcid as submitter_orcid
                FROM articles a
                LEFT JOIN authors au ON a.submitted_by = au.id

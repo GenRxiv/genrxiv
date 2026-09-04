@@ -18,9 +18,8 @@ Preprint servers exist for most fields — arXiv for physics and maths, bioRxiv
 for biology, ChemRxiv for chemistry. None were designed with AI-generated work
 in mind, and most are still working out what to do about it.
 
-GenRxiv starts from the other end. It assumes AI involvement and asks authors
-to disclose it plainly, so the work can be read, cited, and evaluated with that
-context in the open rather than guessed at.
+GenRxiv starts from the other end. It assumes AI involvement is the default,
+not an exception to be argued for.
 
 GenRxiv is not peer-reviewed and does not evaluate the scientific quality of
 submissions. Community endorsement (upvotes by other ORCID-identified authors)
@@ -32,7 +31,6 @@ is the signal layer, not editorial gatekeeping.
 |---|---|
 | **Submissions** | Markdown only — rendered to HTML (primary) with PDF on demand |
 | **Author identity** | ORCID iD, so attribution is verifiable |
-| **Disclosure** | Authors confirm they reviewed and verified AI-generated content |
 | **Classification** | Exactly 3 OECD Fields of Science subject classifications per paper |
 | **Machine access** | OAI-PMH metadata endpoint, sitemap, Atom feed, schema.org JSON-LD, public stats API, agent discovery manifest |
 | **Licensing** | CC0 (Public Domain Dedication) — all submissions |
@@ -45,7 +43,7 @@ is the signal layer, not editorial gatekeeping.
 Authors prepare papers by pasting
 [docs/AUTHOR_PROMPT.md](docs/AUTHOR_PROMPT.md) into any LLM along with
 their research content. The prompt produces a Markdown document with
-LaTeX math (`$...$`), SVG figures, an AI-involvement disclosure, and a
+LaTeX math (`$...$`), SVG figures, and a
 license statement — ready to submit as-is.
 
 ### Space-efficient by design

@@ -6,10 +6,6 @@ This is a test submission to verify the GenRxiv submission pipeline,
 including Markdown-to-HTML rendering, PDF generation, and ARK
 identifier assignment.
 
-## AI Involvement
-
-Drafted by an LLM, verified and revised by the authors.
-
 ## Body
 
 This paper tests the rendering of common Markdown elements.

@@ -26,12 +26,10 @@ either hide AI involvement or avoid depositing the work entirely.
 
 GenRxiv takes the opposite position. It is a preprint archive where AI
 involvement is the expected condition of the venue, not an exception to
-be argued for. Authors disclose what the AI did and what they
-themselves verified, and the work is read with that context in the open
-rather than guessed at. The archive does not peer-review submissions
-and does not evaluate scientific merit. Quality signal comes from
-community endorsement: ORCID-identified authors can endorse papers
-they find useful, and endorsement counts are public.
+be argued for. The archive does not peer-review submissions and does
+not evaluate scientific merit. Quality signal comes from community
+endorsement: ORCID-identified authors can endorse papers they find
+useful, and endorsement counts are public.
 
 The design is shaped by a few deliberate constraints. Submissions are
 Markdown only — no PDF, no LaTeX source, no Word documents. Authors are
@@ -70,10 +68,9 @@ human-authored work in a structured way.
 
 GenRxiv is not a competitor to these servers in the sense of covering
 the same content. It is a complementary venue for work where AI
-involvement is substantial and disclosed — work that may not fit
-comfortably in a human-authored preprint server, or that benefits from
-being in a collection where the AI involvement is the norm rather than
-the exception.
+involvement is substantial — work that may not fit comfortably in a
+human-authored preprint server, or that benefits from being in a
+collection where AI involvement is the norm rather than the exception.
 
 The design also draws on the open access and open source traditions.
 The platform code is licensed under AGPL-3.0 [@agpl3], ensuring that
@@ -154,8 +151,8 @@ the legal licence.
 ### 3.4 Endorsement instead of peer review
 
 GenRxiv does not peer-review submissions. Moderation is a thin layer
-that checks format and disclosure completeness — not scientific merit.
-The quality signal is endorsement: any ORCID-identified author can
+that checks format and completeness — not scientific merit. The
+quality signal is endorsement: any ORCID-identified author can
 endorse any published paper, and endorsement counts are displayed
 publicly.
 
@@ -163,8 +160,8 @@ This model has precedents. bioRxiv uses an endorsement system for
 screening submissions (an existing member must endorse a new
 submission before it is posted). GenRxiv's model is different:
 endorsement happens *after* publication, not before. Every submission
-that passes format and disclosure checks is published; endorsement is
-the community's way of saying "this is worth reading."
+that passes format checks is published; endorsement is the community's
+way of saying "this is worth reading."
 
 The trade-off is that endorsement can be gamed. An author could create
 ORCID iDs and endorse their own work, or coordinate with colleagues to
@@ -295,7 +292,7 @@ community support that have not yet been demonstrated.
 
 GenRxiv is a small, opinionated archive built on a simple premise:
 AI-generated research deserves a dedicated home where AI involvement
-is disclosed openly rather than hidden. It pairs that premise with
+is the norm rather than the exception. It pairs that premise with
 Markdown submissions, verifiable ORCID authorship, CC0 licensing,
 community endorsement, and a machine-readable architecture that
 treats agents as first-class readers.

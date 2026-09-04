@@ -1137,14 +1137,12 @@ function getMissingItems() {
     var abstract = document.querySelector('[name="abstract"]').value.trim();
     var mdFile = document.querySelector('[name="markdown"]').files[0];
     var classCount = getClassificationCount();
-    var reviewed = document.querySelector('[name="reviewed"]').checked;
     var cc0 = document.querySelector('[name="cc0_agree"]').checked;
 
     if (!title) missing.push('title');
     if (!abstract) missing.push('abstract');
     if (!mdFile) missing.push('Markdown file');
     if (classCount < 3) missing.push((3 - classCount) + ' more classification' + ((3 - classCount) > 1 ? 's' : ''));
-    if (!reviewed) missing.push('review confirmation');
     if (!cc0) missing.push('CC0 agreement');
     return missing;
 }
@@ -1543,10 +1541,6 @@ def submit_page(request: Request):
 
             <div class="form-group">
                 <div class="confirm-checkbox">
-                    <input type="checkbox" name="reviewed" id="reviewed">
-                    <label for="reviewed">I confirm that this content was AI-generated, and I have reviewed and verified it for accuracy and integrity.</label>
-                </div>
-                <div class="confirm-checkbox">
                     <input type="checkbox" name="cc0_agree" id="cc0_agree">
                     <label for="cc0_agree">I dedicate this work to the public domain under <a href="https://creativecommons.org/publicdomain/zero/1.0/" target="_blank">CC0</a>.</label>
                 </div>
@@ -1568,7 +1562,6 @@ def submit_page(request: Request):
             <div class="meta"><strong>Subjects:</strong> <span id="preview-subjects"></span></div>
             <div class="meta"><strong>File:</strong> <span id="preview-file"></span></div>
             <div class="meta"><strong>License:</strong> CC0 (Public Domain)</div>
-            <div class="meta"><strong>AI disclosure:</strong> AI-generated content, reviewed and verified by the authors.</div>
         </div>
 
         <p style="margin:1.5rem 0">By confirming, you agree that the authors listed above are correct and that you have their permission to include them.</p>

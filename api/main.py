@@ -342,7 +342,6 @@ Before submitting on behalf of a user, an agent MUST:
    - The CC0 public domain dedication
 4. Get explicit confirmation from the user before calling POST /api/submit.
    The user must agree that:
-   - The content was AI-generated and they have reviewed and verified it
    - The authors listed are correct and they have permission to include them
    - They dedicate the work to the public domain under CC0
 5. Never submit on behalf of a user who is not present and authenticated.

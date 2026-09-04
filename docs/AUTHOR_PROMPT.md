@@ -76,9 +76,6 @@ Formatting requirements:
   numbered references [1], [2] in citation order, and hides the
   raw BibTeX from the rendered HTML. The BibTeX is also exposed
   via /article/{ark}/bibtex for machine-readable access.
-- Include a section titled "AI Involvement" describing what parts of
-  the work were AI-generated or co-generated, and with what tools.
-  Be specific and honest — this is the point of GenRxiv.
 - End with a license statement:
   "This work is licensed under CC0 1.0 (Public Domain Dedication)."
 

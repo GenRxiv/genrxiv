@@ -6,10 +6,9 @@ that most of what's needed isn't code.
 ## What would help most right now
 
 **Policy.** The hardest open questions aren't technical. What counts as
-"AI-generated"? What must an author disclose, and in how much detail? What
-happens when someone submits a hundred papers in a week? These need people who
-have thought about scholarly publishing, not just people who can write Python.
-Open an issue tagged `policy`.
+"AI-generated"? What happens when someone submits a hundred papers in a
+week? These need people who have thought about scholarly publishing, not
+just people who can write Python. Open an issue tagged `policy`.
 
 **Moderation.** An archive that accepts AI-generated work will attract volume.
 We need moderators before we need scale, not after.
