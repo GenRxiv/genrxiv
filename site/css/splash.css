@@ -52,7 +52,11 @@
 .copy-block code { font-family: 'IBM Plex Mono', monospace; font-size: 0.88rem; color: var(--ink); white-space: pre-wrap; word-break: break-word; }
 .copy-btn { position: absolute; top: 0.5rem; right: 0.5rem; background: var(--paper-warm); border: 1px solid var(--rule); border-radius: 4px; padding: 0.4rem; color: var(--ink-soft); cursor: pointer; transition: all 0.15s ease; display: flex; align-items: center; justify-content: center; }
 .copy-btn:hover { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
-.copy-btn svg { display: block; transition: color 0.15s ease; }
+.copy-btn svg { display: block; transition: opacity 0.2s ease; }
+.copy-btn .icon-copy { opacity: 1; }
+.copy-btn .icon-check { position: absolute; opacity: 0; color: #2D7A3E; }
+.copy-btn.copied .icon-copy { opacity: 0; }
+.copy-btn.copied .icon-check { opacity: 1; }
 .splash h2 { font-family: 'Fraunces', serif; font-weight: 500; font-size: 1.3rem; margin: 2.8rem 0 0.6rem; }
 .splash h3 { font-family: 'IBM Plex Sans', sans-serif; font-weight: 600; font-size: 0.95rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin: 2.6rem 0 1rem; }
 .subjects { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1rem 0 0; }
