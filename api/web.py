@@ -242,7 +242,6 @@ def _header_html(author: dict | None, current_path: str = "") -> str:
         )
         auth_area = (
             f'<a href="/auth/orcid?redirect=/dashboard" style="color:var(--ink);text-decoration:none">Sign in with ORCID</a>'
-            + (f'<span style="color:var(--rule);margin:0 0.3rem">|</span><a href="/auth/github?redirect=/dashboard" style="color:var(--ink);text-decoration:none">GitHub</a>' if config.github_client_id else '')
             + f'{submit_link}'
         )
     return f"""<nav style="display:flex;justify-content:space-between;align-items:center;padding:0.6rem 1.5rem;border-bottom:1px solid var(--rule);font-size:0.9rem">
@@ -260,9 +259,13 @@ def _header_html(author: dict | None, current_path: str = "") -> str:
 
 
 def _footer_html() -> str:
+    reviewer_link = ""
+    if config.github_client_id:
+        reviewer_link = f' &middot; <a href="/auth/github?redirect=/admin">Reviewer login (GitHub)</a>'
     return f"""<footer>
 <p>{config.site_name} &mdash; An open archive for AI-generated research.</p>
-<p><a href="/api/articles">API</a> &middot; <a href="/oai?verb=Identify">OAI-PMH</a> &middot; <a href="/feed.xml">Feed</a> &middot; <a href="/sitemap.xml">Sitemap</a> &middot; <a href="/robots.txt">robots.txt</a> &middot; <a href="/code-of-conduct">Code of Conduct</a></p>
+<p><a href="/api/articles">API</a> &middot; <a href="/oai?verb=Identify">OAI-PMH</a> &middot; <a href="/feed.xml">Feed</a> &middot; <a href="/sitemap.xml">Sitemap</a> &middot; <a href="/robots.txt">robots.txt</a> &middot; <a href="/code-of-conduct">Code of Conduct</a>{reviewer_link}</p>
+<p style="font-size:0.85rem;color:var(--ink-soft)">Interested in helping review submissions? <a href="mailto:{config.contact_email if hasattr(config, 'contact_email') and config.contact_email else 'admin@genrxiv.org'}">Get in touch</a>. Already a reviewer? <a href="/auth/github?redirect=/admin">Log in with GitHub</a>.</p>
 </footer>"""
 
 
@@ -1508,7 +1511,6 @@ def submit_page(request: Request):
             <h3>Sign in to submit</h3>
             <p>You need an ORCID to submit to {config.site_name}.</p>
             <p style="margin-top:1rem"><a href="/auth/orcid?redirect=/submit" class="btn btn-primary">Sign in with ORCID</a></p>
-            {"<p style='margin-top:0.5rem;font-size:0.85rem;color:var(--ink-soft)'>Admins and reviewers can also <a href='/auth/github?redirect=/admin'>sign in with GitHub</a>.</p>" if config.github_client_id else ""}
         </div>
         """
         return _page("Submit", body, None, current_path="/submit")
@@ -2872,10 +2874,16 @@ def admin_roles_page(request: Request, q: str = ""):
 
         orcid_display = a["orcid"] or ""
         github_display = f' &middot; GitHub: {a["github_id"]}' if a.get("github_id") else ""
+        github_form = f'''<form method="post" action="/admin/authors/{a["id"]}/github" style="margin-top:0.5rem;display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">
+            <label style="font-size:0.85rem;color:var(--muted)">GitHub handle:</label>
+            <input type="text" name="github_id" value="{a["github_id"] or ""}" placeholder="username" style="width:150px;padding:0.3rem 0.5rem;border:1px solid var(--rule);border-radius:4px;font-size:0.85rem">
+            <button type="submit" class="btn" style="font-size:0.8rem">Save</button>
+        </form>'''
         cards.append(f"""<div class="card">
 <h2>{a['name']}{env_note}</h2>
 <div class="meta">{role_badge} &middot; {orcid_display}{github_display} &middot; Joined {_format_date(a.get('created_at'))}</div>
 {actions}
+{github_form}
 </div>""")
 
     body = f"""
@@ -2900,4 +2908,14 @@ def admin_roles_update(request: Request, author_id: int, role: str = Form(...)):
     from articles import update_author_role, RoleAction
     admin = require_admin(request)
     update_author_role(author_id, RoleAction(role=role), admin)
+    return RedirectResponse(url="/admin/roles", status_code=303)
+
+
+@router.post("/admin/authors/{author_id}/github", include_in_schema=False)
+def admin_github_update(request: Request, author_id: int, github_id: str = Form("")):
+    """Update an author's GitHub handle via the HTML form (admin only)."""
+    from articles import update_author_github, GitHubHandleUpdate
+    admin = require_admin(request)
+    handle = github_id.strip() if github_id else ""
+    update_author_github(author_id, GitHubHandleUpdate(github_id=handle or None), admin)
     return RedirectResponse(url="/admin/roles", status_code=303)

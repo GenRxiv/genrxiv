@@ -2018,6 +2018,54 @@ def update_author_role(
     }
 
 
+class GitHubHandleUpdate(BaseModel):
+    github_id: str | None = None
+
+
+@router.patch("/admin/authors/{author_id}/github", include_in_schema=False)
+def update_author_github(
+    author_id: int,
+    action: GitHubHandleUpdate,
+    admin: dict = Depends(require_admin),
+):
+    """Add or update a GitHub handle for an author (admin only).
+
+    This links the author's ORCID-based account to their GitHub identity,
+    so they can sign in with either method. The GitHub handle must be
+    unique across all authors.
+    """
+    github_id = action.github_id.strip() if action.github_id else None
+
+    with get_conn().connection() as conn:
+        row = conn.execute(
+            "SELECT id, name, orcid, github_id FROM authors WHERE id = %s",
+            (author_id,),
+        ).fetchone()
+        if not row:
+            raise HTTPException(404, "Author not found")
+
+        if github_id:
+            # Check uniqueness (excluding this author)
+            existing = conn.execute(
+                "SELECT id FROM authors WHERE github_id = %s AND id != %s",
+                (github_id, author_id),
+            ).fetchone()
+            if existing:
+                raise HTTPException(400, f"GitHub handle '{github_id}' is already linked to another author")
+
+        conn.execute(
+            "UPDATE authors SET github_id = %s WHERE id = %s",
+            (github_id, author_id),
+        )
+        conn.commit()
+
+    return {
+        "id": author_id,
+        "name": row["name"],
+        "github_id": github_id,
+    }
+
+
 # ─── Maintenance mode (admin) ──────────────────────────────────────────────
 
 @router.get("/admin/maintenance", include_in_schema=False)
