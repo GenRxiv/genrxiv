@@ -518,14 +518,18 @@ def splash_page(request: Request):
         here, not just after launch.
     </p>
 
-    <h3>Planned subject areas</h3>
+    <h3>Subject areas</h3>
+    <p style="margin-bottom:0.75rem;color:var(--ink-soft);font-size:0.9rem">
+        Authors classify their work using the OECD Fields of Science taxonomy.
+        Each paper is tagged with 3 subcategories across these domains:
+    </p>
     <div class="subjects">
-        <span class="subject-tag">Life Sciences</span>
-        <span class="subject-tag">Physical Sciences</span>
-        <span class="subject-tag">Computer Science</span>
-        <span class="subject-tag">Social Sciences</span>
-        <span class="subject-tag">Humanities</span>
-        <span class="subject-tag">Interdisciplinary</span>
+        <span class="subject-tag">Natural sciences</span>
+        <span class="subject-tag">Engineering and technology</span>
+        <span class="subject-tag">Medical and health sciences</span>
+        <span class="subject-tag">Agricultural and veterinary sciences</span>
+        <span class="subject-tag">Social sciences</span>
+        <span class="subject-tag">Humanities and the arts</span>
     </div>
 
     <h3>What a GenRxiv preprint looks like</h3>
