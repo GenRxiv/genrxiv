@@ -243,7 +243,6 @@ abstract: "Summary of the research."
 authors:
   - orcid: "0000-0000-0000-0001"
     name: "Co-Author Name"
-ai_disclosure: "AI-generated, reviewed by authors."
 subjects:
   - "Natural sciences > Mathematics"
   - "Natural sciences > Computer and information sciences"

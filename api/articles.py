@@ -295,7 +295,7 @@ async def submit(
     markdown: UploadFile = File(...),
     title: str = Form(...),
     authors: str = Form(...),
-    ai_disclosure: str = Form(...),
+    ai_disclosure: str = Form(""),
     abstract: str = Form(""),
     license: str = Form("CC0"),
     license_url: str = Form("https://creativecommons.org/publicdomain/zero/1.0/"),
@@ -324,8 +324,6 @@ async def submit(
     if len(abstract) > MAX_ABSTRACT_LENGTH:
         raise HTTPException(400, f"Abstract too long (max {MAX_ABSTRACT_LENGTH} chars)")
     ai_disclosure = ai_disclosure.strip()
-    if not ai_disclosure:
-        raise HTTPException(400, "AI disclosure is required")
     if len(ai_disclosure) > MAX_AI_DISCLOSURE_LENGTH:
         raise HTTPException(400, f"AI disclosure too long (max {MAX_AI_DISCLOSURE_LENGTH} chars)")
     license, license_url = validate_license(license, license_url)

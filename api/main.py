@@ -48,7 +48,6 @@ app = FastAPI(
         "- `title`: Article title\n"
         "- `abstract`: Article abstract\n"
         "- `authors`: JSON array of `{orcid, name}` objects\n"
-        "- `ai_disclosure`: AI involvement disclosure\n"
         "- `subjects`: Comma-separated OECD FOS classifications (exactly 3)\n"
         "- `license`: `CC0`\n"
         "- `license_url`: CC0 URL\n\n"
@@ -361,7 +360,6 @@ Required fields:
   title          - Article title (string)
   abstract       - Article abstract (string)
   authors        - JSON array of {{"orcid": "0000-0000-0000-0000", "name": "Author Name"}}
-  ai_disclosure  - Description of AI involvement (string)
   subjects       - Comma-separated OECD FOS classifications (exactly 3 required)
                    Format: "Category > Field", e.g. "Natural sciences > Computer and information sciences"
   license        - License identifier ("CC0")
@@ -383,7 +381,6 @@ Embedded metadata (YAML front matter):
       name: "Lead Author"
     - orcid: "0000-0000-0000-0001"
       name: "Co-Author Name"
-  ai_disclosure: "AI-generated, reviewed by authors."
   subjects:
     - "Natural sciences > Mathematics"
     - "Natural sciences > Computer and information sciences"
@@ -427,7 +424,6 @@ The file should have this structure:
   authors:
     - orcid: "0000-0000-0000-0001"
       name: "Co-Author Name"
-  ai_disclosure: "Describe what AI did and that the author reviewed it."
   subjects:
     - "Natural sciences > Mathematics"
     - "Natural sciences > Computer and information sciences"

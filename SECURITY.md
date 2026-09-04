@@ -58,7 +58,7 @@ We follow coordinated disclosure:
 - **Parameterized SQL:** All database queries use psycopg3's
   parameterized queries. No string interpolation in SQL.
 - **Input validation:** ORCID iD format validation (regex), title
-  length limits (500 chars), abstract (5000), AI disclosure (2000),
+  length limits (500 chars), abstract (5000),
   subject classification count (exactly 3 OECD FOS required) and
   length (100) limits, author count (50), license whitelist (CC0
   only), file extension whitelist (.md, .markdown), file size limit

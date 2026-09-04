@@ -22,7 +22,6 @@ Formatting requirements:
       name: "Author Name"
     - orcid: "0000-0000-0000-0001"
       name: "Co-Author Name"
-  ai_disclosure: "Describe what parts were AI-generated and with what tools."
   subjects:
     - "Natural sciences > Mathematics"
     - "Natural sciences > Computer and information sciences"

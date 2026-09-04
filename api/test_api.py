@@ -427,12 +427,6 @@ class TestSubmissionValidation:
         assert "Exactly 3 subject classifications" in r.json()["detail"]
 
     @requires_db
-    def test_submit_rejects_missing_ai_disclosure(self, authed_client):
-        """AI disclosure is required (FastAPI returns 422 for missing required Form field)."""
-        r = self._submit(authed_client, ai_disclosure="")
-        assert r.status_code in (400, 422)
-
-    @requires_db
     def test_submit_rejects_invalid_authors_json(self, authed_client):
         """Authors must be valid JSON."""
         r = self._submit(authed_client, authors="not json")

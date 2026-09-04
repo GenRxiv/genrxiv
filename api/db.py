@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS articles (
     ark TEXT UNIQUE,
     title TEXT NOT NULL,
     abstract TEXT,
-    ai_disclosure TEXT NOT NULL,
+    ai_disclosure TEXT,
     license TEXT NOT NULL DEFAULT 'CC0',
     license_url TEXT NOT NULL DEFAULT 'https://creativecommons.org/publicdomain/zero/1.0/',
     subjects TEXT[] DEFAULT '{}',

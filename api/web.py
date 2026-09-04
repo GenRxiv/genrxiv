@@ -1308,12 +1308,6 @@ function fillFormFromFrontMatter(meta) {
         if (abstractInput) abstractInput.value = meta.abstract;
     }
 
-    // AI disclosure
-    if (meta.ai_disclosure) {
-        var disclosureInput = document.querySelector('[name="ai_disclosure"]');
-        if (disclosureInput) disclosureInput.value = meta.ai_disclosure;
-    }
-
     // Authors (array of {orcid, name} objects) — replaces all author entries
     if (meta.authors && Array.isArray(meta.authors)) {
         var container = document.getElementById('co-authors');
@@ -1502,7 +1496,6 @@ def submit_page(request: Request):
             <input type="hidden" name="authors" id="authors-json" value="">
             <input type="hidden" name="license" value="CC0">
             <input type="hidden" name="license_url" value="https://creativecommons.org/publicdomain/zero/1.0/">
-            <input type="hidden" name="ai_disclosure" value="AI-generated content, reviewed and verified by the authors.">
 
             <div class="form-group">
                 <label>Markdown file (.md)</label>
@@ -1587,7 +1580,6 @@ def submit_page(request: Request):
             <input type="hidden" name="authors" id="confirm-authors">
             <input type="hidden" name="license" value="CC0">
             <input type="hidden" name="license_url" value="https://creativecommons.org/publicdomain/zero/1.0/">
-            <input type="hidden" name="ai_disclosure" value="AI-generated content, reviewed and verified by the authors.">
             <input type="hidden" name="subjects" id="confirm-subjects">
             <!-- File needs to be re-attached — we'll use JS to copy it -->
             <input type="file" name="markdown" id="confirm-markdown" style="display:none">
@@ -1652,10 +1644,6 @@ def submit_version_page(article_id: int, request: Request):
             <label>Authors (JSON array)</label>
             <textarea name="authors" required>[{{"orcid": "{author['orcid']}", "name": "{author['name']}"}}]</textarea>
             <div class="hint">JSON array of {{"orcid": "...", "name": "...", "affiliation": "..."}} objects.</div>
-        </div>
-        <div class="form-group">
-            <label>AI disclosure</label>
-            <textarea name="ai_disclosure" required placeholder="State plainly what the AI did.">Drafted by an AI, verified by the authors.</textarea>
         </div>
         <div class="form-group">
             <label>Abstract (optional)</label>
@@ -1920,7 +1908,7 @@ def admin_page(request: Request):
     admin = require_admin(request)
     with get_conn().connection() as conn:
         pending = conn.execute(
-            """SELECT a.id, a.title, a.ai_disclosure, a.submitted_at,
+            """SELECT a.id, a.title, a.submitted_at,
                       au.name as submitter_name, au.orcid as submitter_orcid
                FROM articles a
                LEFT JOIN authors au ON a.submitted_by = au.id
@@ -1956,7 +1944,6 @@ def admin_page(request: Request):
             pending_cards.append(f"""<div class="card">
 <h2>{p['title']}</h2>
 <div class="meta">Submitted by <a href="/author/{p['submitter_orcid']}">{p['submitter_name']}</a> on {submitted}</div>
-<div class="abstract"><strong>AI disclosure:</strong> {p['ai_disclosure']}</div>
 <div style="margin-top:1rem;display:flex;gap:0.5rem">
     <form method="post" action="/admin/articles/{p['id']}" style="display:inline">
         <input type="hidden" name="action" value="approve">
@@ -2042,11 +2029,6 @@ def admin_submission_detail(article_id: int, request: Request):
     <div class="card">
         <h3>Authors</h3>
         <ul style="margin-left:1.5rem;margin-top:0.5rem">{authors_html}</ul>
-    </div>
-
-    <div class="card">
-        <h3>AI Disclosure</h3>
-        <p>{article['ai_disclosure']}</p>
     </div>
 
     {f'<div class="card"><h3>Abstract</h3><p>{article["abstract"]}</p></div>' if article.get('abstract') else ''}

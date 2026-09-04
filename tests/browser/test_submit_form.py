@@ -230,7 +230,6 @@ abstract: "This abstract was parsed from YAML front matter."
 authors:
   - orcid: "0000-0000-0000-0001"
     name: "Co-Author One"
-ai_disclosure: "AI-generated and reviewed by the authors."
 subjects:
   - "Natural sciences > Mathematics"
   - "Natural sciences > Computer and information sciences"
@@ -248,7 +247,6 @@ Body text here.
     assert result is not None, "parseYamlFrontMatter function not found"
     assert result["title"] == "Test Paper From Front Matter"
     assert result["abstract"] == "This abstract was parsed from YAML front matter."
-    assert result["ai_disclosure"] == "AI-generated and reviewed by the authors."
     assert isinstance(result["authors"], list)
     assert result["authors"][0]["orcid"] == "0000-0000-0000-0001"
     assert result["authors"][0]["name"] == "Co-Author One"
