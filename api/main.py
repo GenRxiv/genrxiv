@@ -351,14 +351,13 @@ VALIDATION
 ----------
 Endpoint: POST {config.base_url}/api/validate
 Content-Type: multipart/form-data
-Auth: None required
+Auth: None
 Rate limit: 20 per minute
 
 Accepts the same fields as /api/submit but does not create a submission.
-No authentication required — agents can lint documents at any time,
-before the human author is logged in. All checks run except the
-submitter-in-author-list check (which requires knowing who the
-submitter is).
+No authentication required — agents can lint documents at any time.
+The submitter-in-author-list check is NOT performed here (it requires
+a session cookie from ORCID login). That check runs only on /api/submit.
 
 Returns JSON with:
   - valid: boolean (true if no blocking errors)

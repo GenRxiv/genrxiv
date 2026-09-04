@@ -611,17 +611,6 @@ class TestValidateEndpoint:
         assert any("3 subject" in e for e in body["errors"])
 
     @requires_db
-    def test_validate_rejects_submitter_not_in_authors(self, authed_client):
-        import json
-        r = self._validate(authed_client, authors=json.dumps([
-            {"orcid": "0000-0000-0000-0009", "name": "Someone Else"},
-        ]))
-        assert r.status_code == 200
-        body = r.json()
-        assert body["valid"] is False
-        assert any("must be listed" in e for e in body["errors"])
-
-    @requires_db
     def test_validate_hints_unclosed_bibtex(self, authed_client):
         import io
         md = io.BytesIO(b"# Test\n\n```bibtex\n@article{x, title={X}\n")
@@ -1021,7 +1010,7 @@ class TestValidateEndpoint:
 
     @requires_db
     def test_validate_works_without_auth(self, client):
-        """Validate should work without authentication (lint mode)."""
+        """Validate works without any authentication — no cookie needed."""
         import json as _json
         import io as _io
         body = "This is a test paper with sufficient content to pass the minimum word count validation check that we have implemented for the GenRxiv submission system. " * 8
@@ -1044,19 +1033,18 @@ class TestValidateEndpoint:
         assert body["errors"] == []
 
     @requires_db
-    def test_validate_unauth_skips_submitter_check(self, client):
-        """Without auth, the submitter-in-author-list check is skipped."""
+    def test_validate_no_submitter_check(self, client):
+        """Validate never checks submitter-in-author-list — that's /api/submit only."""
         import json as _json
         import io as _io
         body = "This is a test paper with sufficient content to pass the minimum word count validation check that we have implemented for the GenRxiv submission system. " * 8
         md = _io.BytesIO(body.encode("utf-8"))
-        # The author list does NOT include the submitter (there is no submitter)
-        # This should still be valid when unauthenticated
+        # Author list doesn't include any "submitter" — validate doesn't check this
         r = client.post(
             "/api/validate",
             files={"markdown": ("test.md", md, "text/markdown")},
             data={
-                "title": "Unauth Test",
+                "title": "No Submitter Test",
                 "authors": _json.dumps([{"orcid": "0000-0000-0000-0001", "name": "Someone Else"}]),
                 "abstract": "A test abstract for validation testing.",
                 "subjects": self.KWS_3,
@@ -1067,7 +1055,6 @@ class TestValidateEndpoint:
         assert r.status_code == 200
         body = r.json()
         assert body["valid"] is True
-        # No submitter check error
         assert not any("submitting author" in e for e in body["errors"])
 
 
