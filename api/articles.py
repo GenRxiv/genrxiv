@@ -68,6 +68,63 @@ def _merge_front_matter(md_text: str, title: str, authors: list[dict], abstract:
     return front_matter + "\n\n" + body
 
 
+def _check_duplicate_content(md_text: str, title: str, abstract: str) -> list[str]:
+    """Check for title/abstract/references duplicated in both front matter and body.
+
+    Returns a list of error messages (empty if no duplicates found).
+    """
+    errors = []
+
+    # Parse front matter
+    fm_match = re.match(r'^---\s*\n(.*?)\n---\s*\n', md_text, re.DOTALL)
+    if not fm_match:
+        return errors
+
+    fm_yaml = fm_match.group(1)
+    body_text = md_text[fm_match.end():]
+
+    # Check for title in front matter + H1 in body
+    fm_title_match = re.search(r'^title:\s*["\']?(.*?)["\']?\s*$', fm_yaml, re.MULTILINE)
+    has_fm_title = bool(fm_title_match) or bool(title)
+    effective_title = (fm_title_match.group(1).strip() if fm_title_match else "") or title
+
+    if has_fm_title and effective_title:
+        body_h1_match = re.match(r'^#\s+(.+?)\s*$', body_text, re.MULTILINE)
+        if body_h1_match:
+            body_h1 = body_h1_match.group(1).strip()
+            if body_h1.lower() == effective_title.lower():
+                errors.append(
+                    f'Title "{effective_title}" appears in both YAML front matter and as '
+                    f'an H1 ("# {body_h1}") in the body. Remove the H1 from the body — '
+                    f'the front matter title is rendered as the document header.'
+                )
+
+    # Check for abstract in front matter + ## Abstract in body
+    fm_abstract_match = re.search(r'^abstract:\s*["\']?(.*?)["\']?\s*$', fm_yaml, re.MULTILINE)
+    has_fm_abstract = bool(fm_abstract_match) or bool(abstract)
+
+    if has_fm_abstract and re.search(r'^##\s*[Aa]bstract\s*$', body_text, re.MULTILINE):
+        errors.append(
+            'Abstract appears in both YAML front matter and as a "## Abstract" section '
+            'in the body. Remove the abstract section from the body — the front matter '
+            'abstract is rendered as the document header.'
+        )
+
+    # Check for BibTeX block + manual references section
+    has_bibtex = "```bibtex" in md_text
+    if has_bibtex:
+        ref_pattern = re.search(r'^##\s+(References|Bibliography|Works Cited|Literature Cited)\s*$', body_text, re.MULTILINE | re.IGNORECASE)
+        if ref_pattern:
+            errors.append(
+                f'A "{ref_pattern.group(1)}" section was found in the body alongside a '
+                f'```bibtex block. The BibTeX block is used to render numbered references '
+                f'automatically — remove the manual "{ref_pattern.group(1)}" section from '
+                f'the body to avoid duplication.'
+            )
+
+    return errors
+
+
 # ─── Helpers ───────────────────────────────────────────────────────────────
 
 AGENT_PATTERNS = [
@@ -436,41 +493,9 @@ async def validate_submission(
             if "\n---\n" not in md_text[3:]:
                 hints.append("YAML front matter appears to be unclosed — add a closing --- line")
 
-            # Parse front matter to check for duplicated title/abstract in body
-            fm_match = re.match(r'^---\s*\n(.*?)\n---\s*\n', md_text, re.DOTALL)
-            if fm_match:
-                fm_yaml = fm_match.group(1)
-                body_text = md_text[fm_match.end():]
-
-                # Extract title from front matter
-                fm_title_match = re.search(r'^title:\s*["\']?(.*?)["\']?\s*$', fm_yaml, re.MULTILINE)
-                if fm_title_match:
-                    fm_title = fm_title_match.group(1).strip()
-                    # Check if the body starts with an H1 that matches the title
-                    body_h1_match = re.match(r'^#\s+(.+?)\s*$', body_text, re.MULTILINE)
-                    if body_h1_match:
-                        body_h1 = body_h1_match.group(1).strip()
-                        # Compare case-insensitively, ignoring surrounding quotes
-                        if body_h1.lower() == fm_title.lower():
-                            hints.append(
-                                f'Title "{fm_title}" appears in both YAML front matter and as an H1 '
-                                f'in the body — it will be rendered twice. Remove the H1 from the body.'
-                            )
-                        elif body_h1.lower().startswith(fm_title.lower()[:20]):
-                            hints.append(
-                                f'The body starts with "# {body_h1}" which looks similar to the '
-                                f'front matter title "{fm_title}" — it may be rendered twice. '
-                                f'Consider removing the H1 from the body.'
-                            )
-
-                # Check for abstract section in body
-                fm_abstract_match = re.search(r'^abstract:\s*["\']?(.*?)["\']?\s*$', fm_yaml, re.MULTILINE)
-                if fm_abstract_match and re.search(r'^##\s*[Aa]bstract\s*$', body_text, re.MULTILINE):
-                    hints.append(
-                        'Abstract appears in both YAML front matter and as a "## Abstract" '
-                        'section in the body — it will be rendered twice. Remove the abstract '
-                        'section from the body.'
-                    )
+        # Check for duplicate title/abstract/references in front matter and body
+        dup_errors = _check_duplicate_content(md_text, title, abstract)
+        errors.extend(dup_errors)
 
         if "$" in md_text:
             dollar_count = md_text.count("$")
@@ -570,6 +595,11 @@ async def submit(
     )
     if len(subj_list) != 3:
         raise HTTPException(400, "Exactly 3 subject classifications are required")
+
+    # Check for duplicate title/abstract/references in front matter and body
+    dup_errors = _check_duplicate_content(md_text, title, abstract)
+    if dup_errors:
+        raise HTTPException(400, "; ".join(dup_errors))
 
     # Merge form metadata into the Markdown as YAML front matter.
     # The stored file is the complete document — front matter + body.

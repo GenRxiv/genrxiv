@@ -594,8 +594,8 @@ class TestValidateEndpoint:
         assert any("BibTeX" in h for h in body["hints"])
 
     @requires_db
-    def test_validate_hints_duplicate_title_in_body(self, authed_client):
-        """Title in front matter AND as H1 in body should be flagged."""
+    def test_validate_errors_duplicate_title_in_body(self, authed_client):
+        """Title in front matter AND as H1 in body should be a blocking error."""
         import io
         md = io.BytesIO(
             b'---\n'
@@ -622,11 +622,12 @@ class TestValidateEndpoint:
         )
         assert r.status_code == 200
         body = r.json()
-        assert any("H1" in h and "body" in h for h in body["hints"])
+        assert body["valid"] is False
+        assert any("H1" in e and "body" in e for e in body["errors"])
 
     @requires_db
-    def test_validate_hints_duplicate_abstract_in_body(self, authed_client):
-        """Abstract in front matter AND as ## Abstract in body should be flagged."""
+    def test_validate_errors_duplicate_abstract_in_body(self, authed_client):
+        """Abstract in front matter AND as ## Abstract in body should be a blocking error."""
         import io
         md = io.BytesIO(
             b'---\n'
@@ -654,11 +655,53 @@ class TestValidateEndpoint:
         )
         assert r.status_code == 200
         body = r.json()
-        assert any("Abstract" in h and "body" in h for h in body["hints"])
+        assert body["valid"] is False
+        assert any("Abstract" in e and "body" in e for e in body["errors"])
 
     @requires_db
-    def test_validate_no_duplicate_hint_when_clean(self, authed_client):
-        """No duplicate hints when title/abstract are only in front matter."""
+    def test_validate_errors_duplicate_references_with_bibtex(self, authed_client):
+        """Manual ## References section + ```bibtex block should be a blocking error."""
+        import io
+        md = io.BytesIO(
+            b'---\n'
+            b'title: "Test Paper"\n'
+            b'abstract: "Test abstract."\n'
+            b'authors:\n'
+            b'  - orcid: "0000-0000-0000-0000"\n'
+            b'    name: "Test Author"\n'
+            b'---\n\n'
+            b'As shown by Smith [@smith2023].\n\n'
+            b'```bibtex\n'
+            b'@article{smith2023,\n'
+            b'  author = {Smith, Jane},\n'
+            b'  title = {A Test Paper},\n'
+            b'  journal = {Journal of Testing},\n'
+            b'  year = {2023},\n'
+            b'}\n'
+            b'```\n\n'
+            b'## References\n\n'
+            b'[1] Smith, Jane. "A Test Paper." Journal of Testing, 2023.\n'
+        )
+        r = authed_client.post(
+            "/api/validate",
+            files={"markdown": ("test.md", md, "text/markdown")},
+            data={
+                "title": "Test Paper",
+                "authors": '[{"orcid": "0000-0000-0000-0000", "name": "Test Author"}]',
+                "abstract": "Test abstract.",
+                "subjects": self.KWS_3,
+                "license": "CC0",
+                "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+            },
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["valid"] is False
+        assert any("References" in e and "bibtex" in e.lower() for e in body["errors"])
+
+    @requires_db
+    def test_validate_no_duplicate_error_when_clean(self, authed_client):
+        """No duplicate errors when title/abstract are only in front matter."""
         import io
         md = io.BytesIO(
             b'---\n'
@@ -685,8 +728,38 @@ class TestValidateEndpoint:
         assert r.status_code == 200
         body = r.json()
         assert body["valid"] is True
-        dup_hints = [h for h in body["hints"] if "rendered twice" in h or "H1" in h]
-        assert dup_hints == []
+        dup_errors = [e for e in body["errors"] if "rendered twice" in e or "H1" in e or "bibtex" in e.lower()]
+        assert dup_errors == []
+
+    @requires_db
+    def test_submit_rejects_duplicate_title_in_body(self, authed_client):
+        """Submit should reject when title is duplicated in front matter and body."""
+        import io
+        md = io.BytesIO(
+            b'---\n'
+            b'title: "Dup Title"\n'
+            b'abstract: "Test abstract."\n'
+            b'authors:\n'
+            b'  - orcid: "0000-0000-0000-0000"\n'
+            b'    name: "Test Author"\n'
+            b'---\n\n'
+            b'# Dup Title\n\n'
+            b'Body content.\n'
+        )
+        r = authed_client.post(
+            "/api/submit",
+            files={"markdown": ("test.md", md, "text/markdown")},
+            data={
+                "title": "Dup Title",
+                "authors": '[{"orcid": "0000-0000-0000-0000", "name": "Test Author"}]',
+                "abstract": "Test abstract.",
+                "subjects": self.KWS_3,
+                "license": "CC0",
+                "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+            },
+        )
+        assert r.status_code == 400
+        assert "H1" in r.json()["detail"]
 
     @requires_db
     def test_validate_requires_auth(self, client):
