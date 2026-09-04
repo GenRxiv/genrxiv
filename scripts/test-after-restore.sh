@@ -31,14 +31,14 @@ echo "=== GenRxiv Post-Restore Tests ==="
 echo ""
 
 # --- 1. Ensure test database exists ---
-echo "[1/3] Preparing test database..."
+echo "[1/4] Preparing test database..."
 sg docker -c "docker exec -e PGPASSWORD='$DB_PASSWORD' $DB_CONTAINER psql -U genrxiv -d postgres -c 'DROP DATABASE IF EXISTS genrxiv_test WITH (FORCE);'" 2>&1 || true
 sg docker -c "docker exec -e PGPASSWORD='$DB_PASSWORD' $DB_CONTAINER psql -U genrxiv -d postgres -c 'CREATE DATABASE genrxiv_test OWNER genrxiv;'" 2>&1
 echo "Test database ready."
 
 # --- 2. Copy test files into container ---
 echo ""
-echo "[2/3] Copying test files..."
+echo "[2/4] Copying test files..."
 cd "$REPO_DIR"
 sg docker -c "docker cp api/test_api.py $API_CONTAINER:/app/test_api.py"
 sg docker -c "docker cp api/conftest.py $API_CONTAINER:/app/conftest.py"
@@ -60,21 +60,63 @@ echo "Files copied."
 
 # --- 3. Run tests ---
 echo ""
-echo "[3/3] Running API tests..."
+echo "[3/4] Running API tests..."
 sg docker -c "docker exec -w /app -e DATABASE_URL_TEST=\"postgresql://genrxiv:$DB_PASSWORD@db/genrxiv_test\" -e RATE_LIMIT_ENABLED=false $API_CONTAINER python -m pytest test_api.py -v" 2>&1
 
 TEST_EXIT=$?
 
-if [ $TEST_EXIT -eq 0 ]; then
-    echo ""
-    echo "=== ALL TESTS PASSED ==="
-    echo "The deployment is verified. You can safely:"
-    echo "  1. Disable maintenance mode: scripts/maintenance.sh off"
-    echo "  2. Verify the site at https://genrxiv.org"
-    exit 0
-else
+if [ $TEST_EXIT -ne 0 ]; then
     echo ""
     echo "=== TESTS FAILED ==="
     echo "DO NOT disable maintenance mode. Investigate the failures first."
     exit 1
 fi
+
+# --- 4. Screening connection smoke test ---
+echo ""
+echo "[4/4] Checking Cloudflare Workers AI connection..."
+SCREENING_ENABLED="${SCREENING_ENABLED:-false}"
+if [ "$SCREENING_ENABLED" = "true" ] || [ "$SCREENING_ENABLED" = "1" ] || [ "$SCREENING_ENABLED" = "yes" ]; then
+    sg docker -c "docker exec -w /app $API_CONTAINER python -c \"
+from screening import screen_submission
+result = screen_submission(
+    title='Connection Test',
+    abstract='This is a deployment smoke test to verify the Cloudflare Workers AI connection.',
+    markdown='# Connection Test\n\nThis is a deployment smoke test.',
+)
+verdict = result['verdict']
+error = result.get('error')
+if verdict == 'screening_disabled':
+    print('Screening is disabled — skipping connection test.')
+elif verdict in ('auto_approve', 'flag_for_review'):
+    print(f'Screening connection OK (verdict={verdict}).')
+elif verdict == 'screening_failed':
+    print(f'WARNING: Screening connection failed: {error}')
+    print('Submissions will fall back to manual review, but screening is not working.')
+    import sys; sys.exit(2)
+else:
+    print(f'WARNING: Unexpected screening verdict: {verdict}')
+    import sys; sys.exit(2)
+\"" 2>&1
+    SCREENING_EXIT=$?
+    if [ $SCREENING_EXIT -eq 2 ]; then
+        echo ""
+        echo "=== TESTS PASSED, BUT SCREENING CONNECTION FAILED ==="
+        echo "The site is functional, but automated screening is not working."
+        echo "Submissions will go to the manual review queue until this is fixed."
+        echo "Check: CF_API_TOKEN, CF_ACCOUNT_ID, and IP address filtering in the Cloudflare dashboard."
+        exit 0
+    elif [ $SCREENING_EXIT -ne 0 ]; then
+        echo "WARNING: Screening smoke test errored (exit $SCREENING_EXIT)."
+        echo "Submissions will fall back to manual review."
+    fi
+else
+    echo "Screening is disabled — skipping connection test."
+fi
+
+echo ""
+echo "=== ALL TESTS PASSED ==="
+echo "The deployment is verified. You can safely:"
+echo "  1. Disable maintenance mode: scripts/maintenance.sh off"
+echo "  2. Verify the site at https://genrxiv.org"
+exit 0
