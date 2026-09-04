@@ -167,14 +167,12 @@ def _check_content_issues(md_text: str, title: str, abstract: str) -> tuple[list
                     )
 
     # ── Citation consistency: @citekeys vs BibTeX entries ──
-    # Extract all @citekey references from the body
-    citekeys_used = set(re.findall(r'@(\w[\w-]*)', body_text))
-    # Remove false positives like @media, @import (CSS-like), email addresses
-    citekeys_used.discard("media")
-    citekeys_used.discard("import")
-    citekeys_used.discard("type")
-    citekeys_used.discard("param")
-    citekeys_used.discard("example")
+    # Extract all @citekey references from the body, EXCLUDING:
+    # - The BibTeX block itself (where @misc, @article etc. are entry types)
+    # - Inline code spans (where `@citekey` is a literal example, not a citation)
+    body_without_bibtex = re.sub(r'```bibtex\n.*?```', '', body_text, flags=re.DOTALL)
+    body_without_code = re.sub(r'`[^`]*`', '', body_without_bibtex)
+    citekeys_used = set(re.findall(r'@(\w[\w-]*)', body_without_code))
 
     # Extract all BibTeX entry keys from ```bibtex blocks
     bibtex_keys = set()
@@ -337,6 +335,44 @@ def validate_subjects(subjects: list[str]) -> list[str]:
             raise HTTPException(400, f"Subject too long (max {MAX_SUBJECT_LENGTH} chars): {subj[:50]}")
         cleaned.append(subj)
     return cleaned
+
+
+def _get_all_fos_strings() -> set[str]:
+    """Get all valid FOS classification strings from the taxonomy."""
+    from web import OECD_FOS
+    fos = set()
+    for domain, subdomains in OECD_FOS.items():
+        for sub in subdomains:
+            fos.add(f"{domain} > {sub}")
+    return fos
+
+
+def parse_subjects_string(subjects_str: str) -> list[str]:
+    """Parse a subjects string into a list, handling FOS names with commas.
+
+    FOS names like "Engineering and technology > Electrical, electronic, information engineering"
+    contain commas, so simple comma-splitting breaks them. This function tries
+    matching against the known FOS taxonomy first, then falls back to comma-splitting.
+    """
+    if not subjects_str:
+        return []
+    subjects_str = subjects_str.strip()
+
+    # Try matching against known FOS strings
+    all_fos = _get_all_fos_strings()
+    if all_fos:
+        found = []
+        remaining = subjects_str
+        # Sort by length descending so longer matches are found first
+        for fos in sorted(all_fos, key=len, reverse=True):
+            if fos in remaining:
+                found.append(fos)
+                remaining = remaining.replace(fos, "", 1).strip(" ,")
+        if found:
+            return found
+
+    # Fallback: split by comma
+    return [s.strip() for s in subjects_str.split(",") if s.strip()]
 
 
 def validate_license(license: str, license_url: str) -> tuple[str, str]:
@@ -587,9 +623,7 @@ async def validate_submission(
     # Validate subjects
     subj_list = []
     try:
-        subj_list = validate_subjects(
-            [s.strip() for s in subjects.split(",") if s.strip()] if subjects else []
-        )
+        subj_list = validate_subjects(parse_subjects_string(subjects))
     except HTTPException as e:
         errors.append(e.detail)
     if len(subj_list) != 3:
@@ -710,9 +744,7 @@ async def submit(
         )
 
     # Parse and validate subjects (exactly 3 OECD FOS classifications required)
-    subj_list = validate_subjects(
-        [s.strip() for s in subjects.split(",") if s.strip()] if subjects else []
-    )
+    subj_list = validate_subjects(parse_subjects_string(subjects))
     if len(subj_list) != 3:
         raise HTTPException(400, "Exactly 3 subject classifications are required")
 

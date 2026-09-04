@@ -10,8 +10,6 @@ subjects:
   - "Social sciences > Economics and business"
 ---
 
-# GenRxiv: An Open Archive for AI-Generated Research
-
 ## 1. Introduction
 
 The use of large language models in research is no longer fringe. Authors
@@ -183,7 +181,8 @@ agent guide with submission instructions.
 A notable consequence of the Markdown-first design is that agents can
 prepare complete submission files. A Markdown file can include YAML
 front matter with all submission metadata (title, abstract, authors,
-subjects) and Pandoc-style `@citekey` citations with a BibTeX block.
+subjects classified using the OECD Fields of Science taxonomy
+[@oecd_fos]) and Pandoc-style `@citekey` citations with a BibTeX block.
 When a human uploads such a file through the web form, the form
 auto-fills from the front matter. The human reviews and confirms; the
 agent does the preparation. This matters because ORCID authentication
@@ -303,8 +302,6 @@ the Markdown-only format is too restrictive, whether a single licence
 is the right choice, and whether the archive can sustain itself — are
 empirical questions that the archive's own operation will answer over
 time.
-
-## References
 
 ```bibtex
 @misc{genrxiv_repo,
