@@ -11,6 +11,7 @@ Simple server-rendered pages using Jinja2 templates:
 - /code-of-conduct — code of conduct for authors and agents
 """
 from datetime import datetime
+import logging
 from urllib.parse import quote
 
 from fastapi import APIRouter, Request, Depends, HTTPException, Form
@@ -23,6 +24,7 @@ from auth import get_current_author, require_author, require_admin
 from orcid_client import fetch_orcid_works_count
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 # ─── OECD Fields of Science taxonomy ───────────────────────────────────────
 # Used for structured subject classification on submissions.
@@ -2047,7 +2049,8 @@ def dashboard_preview_pdf(article_id: int, request: Request):
     from articles import render_pdf
     try:
         pdf_bytes = render_pdf(article["source_markdown"])
-    except Exception:
+    except Exception as e:
+        logger.error("PDF rendering failed for article %s: %s", article_id, e)
         raise HTTPException(502, "PDF rendering failed. The conversion service may be unavailable.")
     return Response(
         content=pdf_bytes,

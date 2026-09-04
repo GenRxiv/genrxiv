@@ -6,6 +6,7 @@ FROM python:3.12-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates pandoc curl \
         libgraphite2-3 libharfbuzz0b fontconfig \
+        librsvg2-bin \
     && curl --proto '=https' --tlsv1.2 -fsSL https://drop-sh.fullyjustified.net | sh \
     && mv tectonic /usr/local/bin/tectonic \
     && apt-get purge -y curl && apt-get autoremove -y \
