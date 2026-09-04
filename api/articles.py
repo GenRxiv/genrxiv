@@ -44,6 +44,37 @@ def _yaml_escape(value: str) -> str:
     return value.replace("\\", "\\\\").replace('"', '\\"')
 
 
+_FRONT_MATTER_RE = re.compile(r'^---\s*\n(.*?)\n---\s*\n?', re.DOTALL)
+
+
+def _strip_front_matter(md_text: str) -> str:
+    """Remove YAML front matter from Markdown, returning just the body."""
+    m = _FRONT_MATTER_RE.match(md_text)
+    if m:
+        return md_text[m.end():]
+    return md_text
+
+
+def _extract_front_matter(md_text: str) -> dict | None:
+    """Parse YAML front matter from a Markdown file using PyYAML.
+
+    Returns a dict with keys like title, abstract, authors, subjects,
+    or None if the file has no front matter or parsing fails.
+    """
+    m = _FRONT_MATTER_RE.match(md_text)
+    if not m:
+        return None
+    yaml_text = m.group(1)
+    try:
+        import yaml
+        data = yaml.safe_load(yaml_text)
+        if not isinstance(data, dict):
+            return None
+        return data
+    except Exception:
+        return None
+
+
 def _merge_front_matter(md_text: str, title: str, authors: list[dict], abstract: str, subjects: list[str] | None = None) -> str:
     """Merge form metadata into the Markdown file as YAML front matter.
 
@@ -52,12 +83,7 @@ def _merge_front_matter(md_text: str, title: str, authors: list[dict], abstract:
     The stored file is always a complete document with front matter
     including title, abstract, authors, and subjects.
     """
-    # Parse existing front matter — allow no trailing newline after closing ---
-    m = re.match(r'^---\s*\n(.*?)\n---\s*\n?', md_text, re.DOTALL)
-    if m:
-        body = md_text[m.end():]
-    else:
-        body = md_text
+    body = _strip_front_matter(md_text)
 
     # Build YAML front matter from form data
     lines = ["---"]
@@ -630,8 +656,12 @@ async def validate_submission(
         errors.append(f"Exactly 3 subject classifications are required (got {len(subj_list)})")
 
     # Hints: check Markdown content for common issues
+    parsed_metadata = None
     if content:
         md_text = content.decode("utf-8", errors="replace")
+        # Extract front matter for the response so the web form can
+        # auto-fill fields using the same parser as the API (PyYAML)
+        parsed_metadata = _extract_front_matter(md_text)
         if not md_text.strip():
             hints.append("Markdown content is empty")
         if "```bibtex" in md_text:
@@ -673,6 +703,7 @@ async def validate_submission(
         "errors": errors,
         "hints": hints,
         "preview": preview_html,
+        "parsed_metadata": parsed_metadata,
     }
 
 

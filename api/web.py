@@ -1245,72 +1245,10 @@ function backToForm(e) {
 }
 
 // ─── YAML front matter auto-fill ──────────────────────────────────────────
-// When a Markdown file is selected, parse YAML front matter and auto-fill
-// the form. This lets agents prepare a complete submission in the Markdown
-// file itself — a human just uploads it and reviews.
-
-function parseYamlFrontMatter(text) {
-    // Match --- at the start, followed by YAML, ending with ---
-    var m = text.match(/^---\n([\s\S]*?)\n---\n/);
-    if (!m) return null;
-    var yaml = m[1];
-    var result = {};
-
-    // Simple YAML parser for our flat key-value structure.
-    // Handles: key: value, key: "value", lists with - items, nested lists.
-    var lines = yaml.split('\n');
-    var currentKey = null;
-    var currentList = null;
-
-    for (var i = 0; i < lines.length; i++) {
-        var line = lines[i];
-        // Nested object item: "  - orcid: ..." then "    name: ..."
-        // Check this BEFORE simple list items
-        var objMatch = line.match(/^\s+-\s+(\w+):\s*["']?(.*?)["']?\s*$/);
-        if (objMatch && currentKey) {
-            if (!Array.isArray(result[currentKey])) result[currentKey] = [];
-            var obj = {};
-            obj[objMatch[1]] = objMatch[2];
-            // Look ahead for more fields in this object
-            for (var j = i + 1; j < lines.length; j++) {
-                var nextLine = lines[j];
-                var nestedMatch = nextLine.match(/^\s+(\w+):\s*["']?(.*?)["']?\s*$/);
-                if (nestedMatch) {
-                    obj[nestedMatch[1]] = nestedMatch[2];
-                    i = j;
-                } else {
-                    break;
-                }
-            }
-            result[currentKey].push(obj);
-            continue;
-        }
-
-        // Simple list item: "  - value" or '  - "value"'
-        var listMatch = line.match(/^\s+-\s+["']?(.*?)["']?\s*$/);
-        if (listMatch && currentKey) {
-            if (!result[currentKey]) result[currentKey] = [];
-            result[currentKey].push(listMatch[1]);
-            continue;
-        }
-
-        // Key-value: "key: value" or 'key: "value"'
-        var kvMatch = line.match(/^(\w+):\s*["']?(.*?)["']?\s*$/);
-        if (kvMatch) {
-            currentKey = kvMatch[1];
-            var val = kvMatch[2];
-            if (val) {
-                result[currentKey] = val;
-            }
-            // If no value, it's a list header — currentKey stays for following - items
-        }
-    }
-    return result;
-}
-
-function stripYamlFrontMatter(text) {
-    return text.replace(/^---\n[\s\S]*?\n---\n/, '');
-}
+// When a Markdown file is selected, send it to /api/validate which
+// parses front matter using PyYAML (the same parser the API uses).
+// The response includes parsed_metadata with title, abstract, authors,
+// and subjects extracted from the file's YAML front matter.
 
 function fillFormFromFrontMatter(meta) {
     if (!meta) return;
@@ -1385,15 +1323,23 @@ function fillFormFromFrontMatter(meta) {
 function handleFileSelect(input) {
     if (!input.files || !input.files.length) return;
     var file = input.files[0];
-    var reader = new FileReader();
-    reader.onload = function(e) {
-        var text = e.target.result;
-        var meta = parseYamlFrontMatter(text);
-        if (meta) {
-            fillFormFromFrontMatter(meta);
+    // Send the file to /api/validate to parse front matter using the
+    // same PyYAML parser as the API — no hand-written JS YAML parser.
+    var formData = new FormData();
+    formData.append('markdown', file);
+    fetch('/api/validate', {
+        method: 'POST',
+        body: formData,
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.parsed_metadata) {
+            fillFormFromFrontMatter(data.parsed_metadata);
         }
-    };
-    reader.readAsText(file);
+    })
+    .catch(function(err) {
+        console.error('Front matter parse failed:', err);
+    });
 }
 
 // ─── Init ─────────────────────────────────────────────────────────────────
