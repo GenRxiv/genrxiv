@@ -404,6 +404,21 @@ HTML_HEADER = """<!DOCTYPE html>
         ],
         throwOnError: false,
     });"></script>
+<script>
+// Pandoc --katex wraps math in <span class="math inline">...</span> and
+// <span class="math display">...</span>. The auto-render script above
+// only looks for $...$ delimiters in text nodes, so it misses these.
+// This script finds Pandoc's math spans and renders them with katex.render().
+window.addEventListener('DOMContentLoaded', function() {
+    if (typeof katex === 'undefined') return;
+    document.querySelectorAll('span.math.inline').forEach(function(el) {
+        katex.render(el.textContent, el, { throwOnError: false, displayMode: false });
+    });
+    document.querySelectorAll('span.math.display').forEach(function(el) {
+        katex.render(el.textContent, el, { throwOnError: false, displayMode: true });
+    });
+});
+</script>
 <style>
 :root {
     --paper: #EDEAE2;
@@ -455,6 +470,13 @@ table { border-collapse: collapse; width: 100%; margin: 1.5rem 0; }
 th, td { border: 1px solid var(--muted); padding: 0.5rem 0.75rem; text-align: left; }
 th { background: rgba(0,0,0,0.03); }
 .katex-display { overflow-x: auto; overflow-y: hidden; padding: 0.5rem 0; }
+/* References: Pandoc CSL output uses second-field-align="flush" which
+   creates separate divs for the citation number and the text. Without
+   this CSS they stack vertically (block divs). Make them inline so the
+   reference reads "[1] Author, Title..." on one line. */
+.csl-entry { margin-bottom: 0.5rem; }
+.csl-left-margin { display: inline; margin-right: 0; }
+.csl-right-inline { display: inline; }
 .paper-title { margin-bottom: 0.5rem; }
 .paper-authors { font-size: 1.1rem; color: #444; margin-bottom: 1rem; }
 .paper-author { white-space: nowrap; }
