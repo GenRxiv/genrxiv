@@ -13,7 +13,7 @@ PostgreSQL. No OJS, no Apache, no PHP.
 - **Database:** PostgreSQL 16, psycopg3 with connection pool
 - **Conversion:** Pandoc + Tectonic, `convert-service/`
 - **Reverse proxy:** nginx
-- **Auth:** ORCID OAuth (the only login mechanism — no passwords)
+- **Auth:** ORCID OAuth (primary) + GitHub OAuth (optional, for admins/reviewers without ORCID)
 - **Tunnel:** Cloudflare Tunnel
 
 ## Build and run
@@ -50,7 +50,7 @@ cd convert-service && pip install -r requirements-dev.txt
 pytest test_app.py -v
 
 # Without DATABASE_URL_TEST, DB-dependent tests are skipped automatically.
-# Total: 247 tests (206 API + 16 browser + 25 convert service).
+# Total: 253 tests (212 API + 16 browser + 25 convert service).
 ```
 
 CI runs all suites on every push/PR (`.github/workflows/tests.yml`).
@@ -91,6 +91,9 @@ See `deploy/.env.example` for the full list. Key ones:
 - `SESSION_SECRET` — Session signing secret
 - `ADMIN_ORCIDS` — Comma-separated ORCIDs with admin/moderation access
 - `REVIEWER_ORCIDS` — Comma-separated ORCIDs with review (approve/reject) access
+- `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` — GitHub OAuth app (optional)
+- `ADMIN_GITHUB_IDS` — Comma-separated GitHub usernames with admin access
+- `REVIEWER_GITHUB_IDS` — Comma-separated GitHub usernames with reviewer access
 - `ARK_NAAN` — ARK Name Assigning Authority Number (default: 99999)
 - `CF_TUNNEL_TOKEN` — Cloudflare Tunnel token
 - `SMTP_*` — Resend SMTP for email notifications
@@ -194,7 +197,7 @@ The workflow:
 4. Pull latest code
 5. Rebuild and restart the API container
 6. Run database migrations
-7. Run the full test suite (206 API tests + 16 browser tests)
+7. Run the full test suite (212 API tests + 16 browser tests)
 8. If tests pass → disable maintenance mode → site is live
 9. If tests fail → maintenance mode stays on → investigate
 
@@ -219,14 +222,15 @@ scripts/test-after-restore.sh
 ```
 
 This creates a fresh `genrxiv_test` database, copies test files into the
-API container, and runs all 206 API tests. Exits 0 if all pass.
+API container, and runs all 212 API tests. Exits 0 if all pass.
 
 ## API structure
 
 - All SQL uses parameterized queries (psycopg3 `%s` placeholders)
 - Auth dependencies: `get_current_author` (optional), `require_author`
   (401 if not logged in), `require_reviewer` (403 if not reviewer/admin),
-  `require_admin` (403 if not admin)
+  `require_admin` (403 if not admin). All three check both ORCID and GitHub
+  identity.
 - Article routes use `{ark:path}` to capture ARKs containing slashes
 - Specific routes (`/pdf`, `/markdown`, `/jsonld`, `/bibtex`) are
   registered before the catch-all `/{ark:path}` route
@@ -338,8 +342,15 @@ GenRxiv has three access levels:
 | Role | Config | Can do |
 |---|---|---|
 | Author | (default) | Submit, preview, delete own pending/rejected, retract own published |
-| Reviewer | `REVIEWER_ORCIDS` | Everything an author can, plus: view `/admin` queue, review submissions, approve/reject |
-| Admin | `ADMIN_ORCIDS` | Everything a reviewer can, plus: withdraw articles, suspend/ban authors, manage author accounts, maintenance mode |
+| Reviewer | `REVIEWER_ORCIDS` or `REVIEWER_GITHUB_IDS` | Everything an author can, plus: view `/admin` queue, review submissions, approve/reject |
+| Admin | `ADMIN_ORCIDS` or `ADMIN_GITHUB_IDS` | Everything a reviewer can, plus: withdraw articles, suspend/ban authors, manage author accounts, maintenance mode |
+
+**GitHub OAuth** (optional): Admins and reviewers who don't have an ORCID iD
+can sign in with GitHub instead. Set `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`,
+and add their GitHub usernames to `ADMIN_GITHUB_IDS` or `REVIEWER_GITHUB_IDS`.
+GitHub users can moderate but cannot submit papers (submission requires an
+ORCID to be listed in the paper's author list). The GitHub OAuth app's
+callback URL must be `https://genrxiv.org/auth/github/callback`.
 
 **Author suspension and banning** (CoC enforcement):
 
@@ -480,7 +491,9 @@ See the full agent guide at `GET /api/agent-guide` for details.
 
 ## Security notes
 
-- ORCID is the only login mechanism — no email/password registration
+- ORCID is the primary login mechanism — no email/password registration.
+  GitHub OAuth is optionally available for admins/reviewers who don't have
+  an ORCID iD.
 - Input validation: ORCID format, title/abstract/subject length limits,
   CC0-only license, file extension whitelist
 - Path traversal protection on all file-serving endpoints

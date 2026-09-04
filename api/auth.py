@@ -153,6 +153,97 @@ def _create_session(author_id: int, orcid_access_token: str) -> str:
     return token
 
 
+# ─── GitHub OAuth (alternative login for admins/reviewers) ─────────────────
+
+def _create_github_authorize_url(state: str) -> str:
+    """Build the GitHub OAuth authorize URL."""
+    params = {
+        "client_id": config.github_client_id,
+        "redirect_uri": config.github_redirect_url,
+        "scope": "read:user user:email",
+        "state": state,
+    }
+    query = "&".join(f"{k}={v}" for k, v in params.items())
+    return f"https://github.com/login/oauth/authorize?{query}"
+
+
+def _exchange_github_code(code: str) -> dict:
+    """Exchange GitHub authorization code for access token."""
+    data = {
+        "client_id": config.github_client_id,
+        "client_secret": config.github_client_secret,
+        "code": code,
+        "redirect_uri": config.github_redirect_url,
+    }
+    with httpx.Client() as client:
+        r = client.post(
+            "https://github.com/login/oauth/access_token",
+            data=data,
+            headers={"Accept": "application/json"},
+        )
+        if r.status_code != 200:
+            raise HTTPException(400, "Failed to exchange GitHub code for token")
+        return r.json()
+
+
+def _fetch_github_user(access_token: str) -> dict:
+    """Fetch the GitHub user profile."""
+    headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/json"}
+    with httpx.Client() as client:
+        r = client.get("https://api.github.com/user", headers=headers)
+        if r.status_code != 200:
+            raise HTTPException(400, "Failed to fetch GitHub user profile")
+        return r.json()
+
+
+def _fetch_github_email(access_token: str) -> str | None:
+    """Fetch the primary email from GitHub."""
+    headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/json"}
+    try:
+        with httpx.Client() as client:
+            r = client.get("https://api.github.com/user/emails", headers=headers)
+            if r.status_code != 200:
+                return None
+            emails = r.json()
+            for e in emails:
+                if e.get("primary") and e.get("verified") and e.get("email"):
+                    return e["email"]
+            for e in emails:
+                if e.get("email"):
+                    return e["email"]
+    except Exception:
+        pass
+    return None
+
+
+def _upsert_github_author(github_id: str, name: str, email: str | None, affiliation: str | None = None) -> dict:
+    """Create or update a GitHub-based author in DB, return author dict."""
+    with get_conn().connection() as conn:
+        row = conn.execute(
+            "SELECT id, orcid, github_id, name, email, affiliation, account_status, status_reason FROM authors WHERE github_id = %s",
+            (github_id,),
+        ).fetchone()
+        if row:
+            conn.execute(
+                "UPDATE authors SET name = %s, email = COALESCE(%s, email), affiliation = COALESCE(%s, affiliation) WHERE github_id = %s",
+                (name, email, affiliation, github_id),
+            )
+            conn.commit()
+            row["name"] = name
+            if email:
+                row["email"] = email
+            if affiliation:
+                row["affiliation"] = affiliation
+            return row
+        else:
+            row = conn.execute(
+                "INSERT INTO authors (github_id, name, email, affiliation) VALUES (%s, %s, %s, %s) RETURNING id, orcid, github_id, name, email, affiliation, account_status, status_reason",
+                (github_id, name, email, affiliation),
+            ).fetchone()
+            conn.commit()
+            return row
+
+
 def get_current_author(request: Request) -> dict | None:
     """Get the current logged-in author from session cookie, or None."""
     token = request.cookies.get(SESSION_COOKIE)
@@ -160,7 +251,7 @@ def get_current_author(request: Request) -> dict | None:
         return None
     with get_conn().connection() as conn:
         row = conn.execute(
-            """SELECT a.id, a.orcid, a.name, a.email, a.affiliation,
+            """SELECT a.id, a.orcid, a.github_id, a.name, a.email, a.affiliation,
                       a.account_status, s.expires_at
                FROM sessions s JOIN authors a ON s.author_id = a.id
                WHERE s.token = %s AND s.expires_at > now()""",
@@ -171,6 +262,7 @@ def get_current_author(request: Request) -> dict | None:
     return {
         "id": row["id"],
         "orcid": row["orcid"],
+        "github_id": row["github_id"],
         "name": row["name"],
         "email": row["email"],
         "affiliation": row["affiliation"],
@@ -187,19 +279,29 @@ def require_author(request: Request) -> dict:
 
 
 def require_reviewer(request: Request) -> dict:
-    """Require reviewer or admin privileges (can approve/reject submissions)."""
+    """Require reviewer or admin privileges (can approve/reject submissions).
+
+    Checks both ORCID-based and GitHub-based identity.
+    """
     author = require_author(request)
-    if author["orcid"] in config.admin_orcids or author["orcid"] in config.reviewer_orcids:
+    if author["orcid"] and (author["orcid"] in config.admin_orcids or author["orcid"] in config.reviewer_orcids):
+        return author
+    if author.get("github_id") and (author["github_id"] in config.admin_github_ids or author["github_id"] in config.reviewer_github_ids):
         return author
     raise HTTPException(403, "Reviewer access required")
 
 
 def require_admin(request: Request) -> dict:
-    """Require admin privileges (can withdraw, suspend, ban)."""
+    """Require admin privileges (can withdraw, suspend, ban).
+
+    Checks both ORCID-based and GitHub-based identity.
+    """
     author = require_author(request)
-    if author["orcid"] not in config.admin_orcids:
-        raise HTTPException(403, "Admin access required")
-    return author
+    if author["orcid"] and author["orcid"] in config.admin_orcids:
+        return author
+    if author.get("github_id") and author["github_id"] in config.admin_github_ids:
+        return author
+    raise HTTPException(403, "Admin access required")
 
 
 @router.get("/orcid", include_in_schema=False)
@@ -273,6 +375,73 @@ def orcid_callback(request: Request, code: str, state: str):
     return response
 
 
+@router.get("/github", include_in_schema=False)
+def github_login(request: Request, redirect: str = "/"):
+    """Redirect to GitHub OAuth."""
+    if not config.github_client_id:
+        raise HTTPException(404, "GitHub login is not configured")
+    state = secrets.token_urlsafe(16)
+    response = RedirectResponse(_create_github_authorize_url(state))
+    response.set_cookie("github_state", state, max_age=600, httponly=True, samesite="lax")
+    response.set_cookie("github_redirect", redirect, max_age=600, httponly=True, samesite="lax")
+    return response
+
+
+@router.get("/github/callback", include_in_schema=False)
+@limiter.limit("10 per minute")
+def github_callback(request: Request, code: str, state: str):
+    """Handle GitHub OAuth callback."""
+    expected_state = request.cookies.get("github_state")
+    if not expected_state or expected_state != state:
+        raise HTTPException(400, "Invalid OAuth state")
+
+    token_data = _exchange_github_code(code)
+    access_token = token_data.get("access_token")
+    if not access_token:
+        raise HTTPException(400, "No access token returned from GitHub")
+
+    user = _fetch_github_user(access_token)
+    github_login = user.get("login")
+    github_name = user.get("name") or github_login or "GitHub User"
+    github_company = user.get("company")
+    if not github_login:
+        raise HTTPException(400, "No GitHub username returned")
+
+    email = _fetch_github_email(access_token)
+
+    author = _upsert_github_author(github_login, github_name, email, github_company)
+
+    # Check account status — suspended/banned authors cannot log in
+    account_status = author.get("account_status", "active")
+    if account_status in ("suspended", "banned"):
+        with get_conn().connection() as conn:
+            conn.execute("DELETE FROM sessions WHERE author_id = %s", (author["id"],))
+            conn.commit()
+        reason = author.get("status_reason") or "No reason provided"
+        action = "suspended" if account_status == "suspended" else "permanently banned"
+        raise HTTPException(
+            403,
+            f"Your account has been {action}. Reason: {reason}. "
+            "Contact the GenRxiv administrators if you believe this is an error.",
+        )
+
+    session_token = _create_session(author["id"], access_token)
+
+    redirect = request.cookies.get("github_redirect", "/")
+    response = RedirectResponse(redirect)
+    response.set_cookie(
+        SESSION_COOKIE,
+        session_token,
+        max_age=int(SESSION_DURATION.total_seconds()),
+        httponly=True,
+        samesite="lax",
+        secure=True,
+    )
+    response.delete_cookie("github_state")
+    response.delete_cookie("github_redirect")
+    return response
+
+
 @router.post("/logout", include_in_schema=False)
 def logout(request: Request):
     """Destroy session and redirect to homepage."""
@@ -292,11 +461,14 @@ def me(request: Request):
     author = get_current_author(request)
     if not author:
         return {"authenticated": False}
-    is_admin = author["orcid"] in config.admin_orcids
-    is_reviewer = author["orcid"] in config.reviewer_orcids
+    orcid = author.get("orcid")
+    github_id = author.get("github_id")
+    is_admin = (orcid and orcid in config.admin_orcids) or (github_id and github_id in config.admin_github_ids)
+    is_reviewer = (orcid and orcid in config.reviewer_orcids) or (github_id and github_id in config.reviewer_github_ids)
     return {
         "authenticated": True,
-        "orcid": author["orcid"],
+        "orcid": orcid,
+        "github_id": github_id,
         "name": author["name"],
         "email": author.get("email"),
         "affiliation": author["affiliation"],

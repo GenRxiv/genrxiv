@@ -34,7 +34,8 @@ SCHEMA_SQL = """
 -- Authors (ORCID-identified)
 CREATE TABLE IF NOT EXISTS authors (
     id SERIAL PRIMARY KEY,
-    orcid TEXT UNIQUE NOT NULL,
+    orcid TEXT UNIQUE,
+    github_id TEXT UNIQUE,
     name TEXT NOT NULL,
     email TEXT,
     affiliation TEXT,

@@ -3307,3 +3307,224 @@ class TestReviewerRole:
         """A regular author cannot access the admin queue."""
         r = authed_client.get("/admin")
         assert r.status_code == 403
+
+
+# ─── 32. GitHub OAuth (admin/reviewer without ORCID) ──────────────────────
+
+class TestGitHubAuth:
+    """Tests for GitHub OAuth-based admin/reviewer access."""
+
+    @requires_db
+    def test_github_admin_can_access_admin_queue(self, db):
+        """A GitHub-based admin can access the admin queue."""
+        from db import get_conn
+        from fastapi.testclient import TestClient
+        from main import app
+        from auth import _create_session, SESSION_COOKIE
+        import config as config_module
+
+        with get_conn().connection() as conn:
+            row = conn.execute(
+                "INSERT INTO authors (github_id, name) VALUES ('test-admin-gh', 'GH Admin') RETURNING id"
+            ).fetchone()
+            conn.commit()
+            gh_admin_id = row["id"]
+
+        original = config_module.config.admin_github_ids
+        object.__setattr__(config_module.config, "admin_github_ids", ("test-admin-gh",))
+
+        token = _create_session(gh_admin_id, "fake-gh-token")
+        client = TestClient(app)
+        client.cookies.set(SESSION_COOKIE, token)
+
+        r = client.get("/admin")
+        assert r.status_code == 200
+        assert "Admin Dashboard" in r.text
+
+        # Can access author management
+        r = client.get("/admin/authors")
+        assert r.status_code == 200
+        assert "Author Management" in r.text
+
+        object.__setattr__(config_module.config, "admin_github_ids", original)
+        with get_conn().connection() as conn:
+            conn.execute("DELETE FROM sessions WHERE author_id = %s", (gh_admin_id,))
+            conn.execute("DELETE FROM authors WHERE id = %s", (gh_admin_id,))
+            conn.commit()
+
+    @requires_db
+    def test_github_reviewer_can_access_queue_but_not_authors(self, db):
+        """A GitHub-based reviewer can access the queue but not author management."""
+        from db import get_conn
+        from fastapi.testclient import TestClient
+        from main import app
+        from auth import _create_session, SESSION_COOKIE
+        import config as config_module
+
+        with get_conn().connection() as conn:
+            row = conn.execute(
+                "INSERT INTO authors (github_id, name) VALUES ('test-reviewer-gh', 'GH Reviewer') RETURNING id"
+            ).fetchone()
+            conn.commit()
+            gh_reviewer_id = row["id"]
+
+        original = config_module.config.reviewer_github_ids
+        object.__setattr__(config_module.config, "reviewer_github_ids", ("test-reviewer-gh",))
+
+        token = _create_session(gh_reviewer_id, "fake-gh-token")
+        client = TestClient(app)
+        client.cookies.set(SESSION_COOKIE, token)
+
+        r = client.get("/admin")
+        assert r.status_code == 200
+        assert "Reviewer Dashboard" in r.text
+
+        # Cannot access author management (admin only)
+        r = client.get("/admin/authors")
+        assert r.status_code == 403
+
+        object.__setattr__(config_module.config, "reviewer_github_ids", original)
+        with get_conn().connection() as conn:
+            conn.execute("DELETE FROM sessions WHERE author_id = %s", (gh_reviewer_id,))
+            conn.execute("DELETE FROM authors WHERE id = %s", (gh_reviewer_id,))
+            conn.commit()
+
+    @requires_db
+    def test_github_user_cannot_submit(self, db):
+        """A GitHub-only user (no ORCID) cannot submit papers."""
+        from db import get_conn
+        from fastapi.testclient import TestClient
+        from main import app
+        from auth import _create_session, SESSION_COOKIE
+        import config as config_module
+        import io, json
+
+        with get_conn().connection() as conn:
+            row = conn.execute(
+                "INSERT INTO authors (github_id, name) VALUES ('test-submitter-gh', 'GH Submitter') RETURNING id"
+            ).fetchone()
+            conn.commit()
+            gh_user_id = row["id"]
+
+        object.__setattr__(config_module.config, "admin_github_ids", ("test-submitter-gh",))
+
+        token = _create_session(gh_user_id, "fake-gh-token")
+        client = TestClient(app)
+        client.cookies.set(SESSION_COOKIE, token)
+
+        md = io.BytesIO(b"# Test\n\nContent.")
+        r = client.post(
+            "/api/submit",
+            files={"markdown": ("test.md", md, "text/markdown")},
+            data={
+                "title": "GH Submit Test",
+                "authors": json.dumps([{"orcid": "0000-0000-0000-0000", "name": "Test"}]),
+                "abstract": "Test.",
+                "subjects": "Natural sciences > Mathematics, Natural sciences > Computer and information sciences, Social sciences > Economics and business",
+                "license": "CC0",
+                "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+                "reviewed_agree": "1",
+                "cc0_agree": "1",
+                "coc_agree": "1",
+            },
+        )
+        assert r.status_code == 403
+        assert "ORCID" in r.json()["detail"]
+
+        object.__setattr__(config_module.config, "admin_github_ids", ())
+        with get_conn().connection() as conn:
+            conn.execute("DELETE FROM sessions WHERE author_id = %s", (gh_user_id,))
+            conn.execute("DELETE FROM authors WHERE id = %s", (gh_user_id,))
+            conn.commit()
+
+    @requires_db
+    def test_github_admin_cannot_be_suspended(self, db):
+        """A GitHub-based admin cannot be suspended via the API."""
+        from db import get_conn
+        from fastapi.testclient import TestClient
+        from main import app
+        from auth import _create_session, SESSION_COOKIE
+        import config as config_module
+
+        with get_conn().connection() as conn:
+            row = conn.execute(
+                "INSERT INTO authors (github_id, name) VALUES ('test-protect-gh', 'GH Admin Protected') RETURNING id"
+            ).fetchone()
+            conn.commit()
+            gh_admin_id = row["id"]
+            # Use the existing ORCID admin to do the suspending
+            orcid_admin_id = db["admin_id"]
+
+        object.__setattr__(config_module.config, "admin_github_ids", ("test-protect-gh",))
+
+        token = _create_session(orcid_admin_id, "fake-token")
+        client = TestClient(app)
+        client.cookies.set(SESSION_COOKIE, token)
+
+        r = client.patch(f"/admin/authors/{gh_admin_id}", json={"status": "suspended", "reason": "Test"})
+        assert r.status_code == 400
+        assert "admin" in r.json()["detail"].lower()
+
+        object.__setattr__(config_module.config, "admin_github_ids", ())
+        with get_conn().connection() as conn:
+            conn.execute("DELETE FROM sessions WHERE author_id = %s", (gh_admin_id,))
+            conn.execute("DELETE FROM authors WHERE id = %s", (gh_admin_id,))
+            conn.commit()
+
+    @requires_db
+    def test_github_admin_can_approve_submission(self, db):
+        """A GitHub-based admin can approve a pending submission."""
+        from db import get_conn
+        from fastapi.testclient import TestClient
+        from main import app
+        from auth import _create_session, SESSION_COOKIE
+        import config as config_module
+
+        with get_conn().connection() as conn:
+            gh_row = conn.execute(
+                "INSERT INTO authors (github_id, name) VALUES ('test-approve-gh', 'GH Approver') RETURNING id"
+            ).fetchone()
+            conn.commit()
+            gh_admin_id = gh_row["id"]
+
+            # Create a pending submission
+            art_row = conn.execute(
+                """INSERT INTO articles (title, abstract, source_markdown, status, submitted_by)
+                   VALUES ('GH Approve Test', 'Test abstract', '# Test\n\nBody.', 'pending', %s)
+                   RETURNING id""",
+                (db["author_id"],),
+            ).fetchone()
+            conn.commit()
+            pending_id = art_row["id"]
+
+        object.__setattr__(config_module.config, "admin_github_ids", ("test-approve-gh",))
+
+        token = _create_session(gh_admin_id, "fake-gh-token")
+        client = TestClient(app)
+        client.cookies.set(SESSION_COOKIE, token)
+
+        r = client.patch(
+            f"/admin/articles/{pending_id}",
+            json={"action": "approve", "note": "Approved by GitHub admin"},
+        )
+        assert r.status_code == 200
+        assert r.json()["status"] == "published"
+
+        object.__setattr__(config_module.config, "admin_github_ids", ())
+        with get_conn().connection() as conn:
+            conn.execute("DELETE FROM articles WHERE id = %s", (pending_id,))
+            conn.execute("DELETE FROM sessions WHERE author_id = %s", (gh_admin_id,))
+            conn.execute("DELETE FROM authors WHERE id = %s", (gh_admin_id,))
+            conn.commit()
+
+    @requires_db
+    def test_github_login_redirects_when_not_configured(self, db):
+        """GitHub login returns 404 when GitHub OAuth is not configured."""
+        from fastapi.testclient import TestClient
+        from main import app
+        import config as config_module
+
+        object.__setattr__(config_module.config, "github_client_id", "")
+        client = TestClient(app)
+        r = client.get("/auth/github", follow_redirects=False)
+        assert r.status_code == 404

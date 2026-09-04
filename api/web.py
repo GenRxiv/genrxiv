@@ -224,8 +224,11 @@ def _header_html(author: dict | None, current_path: str = "") -> str:
             "/submit", "Submit",
             "display:inline-block;padding:0.3rem 0.9rem;background:var(--accent);color:#fff;border-radius:4px;text-decoration:none;font-size:0.85rem",
         )
-        # Show moderation link for reviewers and admins
-        is_reviewer = author["orcid"] in config.reviewer_orcids or author["orcid"] in config.admin_orcids
+        # Show moderation link for reviewers and admins (ORCID or GitHub)
+        is_reviewer = (
+            (author.get("orcid") and (author["orcid"] in config.reviewer_orcids or author["orcid"] in config.admin_orcids))
+            or (author.get("github_id") and (author["github_id"] in config.reviewer_github_ids or author["github_id"] in config.admin_github_ids))
+        )
         mod_link = nav_link("/admin", "Moderation") if is_reviewer else ""
         auth_area = (
             f'{mod_link}'
@@ -243,7 +246,8 @@ def _header_html(author: dict | None, current_path: str = "") -> str:
         )
         auth_area = (
             f'<a href="/auth/orcid?redirect=/dashboard" style="color:var(--ink);text-decoration:none">Sign in with ORCID</a>'
-            f'{submit_link}'
+            + (f'<span style="color:var(--rule);margin:0 0.3rem">|</span><a href="/auth/github?redirect=/dashboard" style="color:var(--ink);text-decoration:none">GitHub</a>' if config.github_client_id else '')
+            + f'{submit_link}'
         )
     return f"""<nav style="display:flex;justify-content:space-between;align-items:center;padding:0.6rem 1.5rem;border-bottom:1px solid var(--rule);font-size:0.9rem">
 <div style="display:flex;gap:1.2rem;align-items:center">
@@ -1508,6 +1512,7 @@ def submit_page(request: Request):
             <h3>Sign in to submit</h3>
             <p>You need an ORCID to submit to {config.site_name}.</p>
             <p style="margin-top:1rem"><a href="/auth/orcid?redirect=/submit" class="btn btn-primary">Sign in with ORCID</a></p>
+            {"<p style='margin-top:0.5rem;font-size:0.85rem;color:var(--ink-soft)'>Admins and reviewers can also <a href='/auth/github?redirect=/admin'>sign in with GitHub</a>.</p>" if config.github_client_id else ""}
         </div>
         """
         return _page("Submit", body, None, current_path="/submit")
@@ -2339,7 +2344,7 @@ def update_profile_affiliation(request: Request, affiliation: str = Form(default
 def admin_page(request: Request, withdrawn: str = ""):
     """Admin moderation queue and stats."""
     reviewer = require_reviewer(request)
-    is_admin = reviewer["orcid"] in config.admin_orcids
+    is_admin = (reviewer.get("orcid") and reviewer["orcid"] in config.admin_orcids) or (reviewer.get("github_id") and reviewer["github_id"] in config.admin_github_ids)
     withdrawn_banner = ""
     if withdrawn:
         withdrawn_banner = (
@@ -2450,7 +2455,7 @@ def admin_page(request: Request, withdrawn: str = ""):
 def admin_submission_detail(article_id: int, request: Request):
     """View submission details (reviewer or admin)."""
     reviewer = require_reviewer(request)
-    is_admin = reviewer["orcid"] in config.admin_orcids
+    is_admin = (reviewer.get("orcid") and reviewer["orcid"] in config.admin_orcids) or (reviewer.get("github_id") and reviewer["github_id"] in config.admin_github_ids)
     with get_conn().connection() as conn:
         article = conn.execute(
             "SELECT * FROM articles WHERE id = %s", (article_id,)

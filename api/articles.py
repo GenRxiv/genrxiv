@@ -1118,6 +1118,15 @@ async def submit(
             "Contact the GenRxiv administrators if you believe this is an error.",
         )
 
+    # GitHub-only users (no ORCID) cannot submit — submission requires an ORCID
+    # to be listed in the paper's author list
+    if not _author.get("orcid"):
+        raise HTTPException(
+            403,
+            "Submission requires an ORCID iD. Please sign in with ORCID to submit a paper. "
+            "GitHub login is for moderation only.",
+        )
+
     # Validate agreements
     if not reviewed_agree:
         raise HTTPException(400, "You must confirm that you have reviewed the work for accuracy and integrity.")
@@ -1910,14 +1919,14 @@ def update_author_status(
 
     with get_conn().connection() as conn:
         row = conn.execute(
-            "SELECT id, orcid, name, account_status FROM authors WHERE id = %s",
+            "SELECT id, orcid, github_id, name, account_status FROM authors WHERE id = %s",
             (author_id,),
         ).fetchone()
         if not row:
             raise HTTPException(404, "Author not found")
 
-        # Prevent admins from suspending themselves or other admins
-        if row["orcid"] in config.admin_orcids:
+        # Prevent admins from suspending themselves or other admins (ORCID or GitHub)
+        if (row["orcid"] and row["orcid"] in config.admin_orcids) or (row["github_id"] and row["github_id"] in config.admin_github_ids):
             raise HTTPException(400, "Cannot modify an admin account")
 
         conn.execute(
