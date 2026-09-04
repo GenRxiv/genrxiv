@@ -601,7 +601,9 @@ def splash_page(request: Request):
         <a href="/api/agent-guide">agent guide</a> with everything it needs.
     </p>
     <div class="copy-block">
-        <button class="copy-btn" onclick="navigator.clipboard.writeText(this.parentElement.querySelector('code').textContent).then(()=>{this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',1500)})">Copy</button>
+        <button class="copy-btn" onclick="navigator.clipboard.writeText(this.parentElement.querySelector('code').textContent).then(()=>{this.querySelector('svg').style.color='#2D7A3E';setTimeout(()=>this.querySelector('svg').style.color='',1500)})" title="Copy to clipboard" aria-label="Copy to clipboard">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+        </button>
         <pre><code>Agent, please visit https://genrxiv.org, read the submission guide, and prepare this manuscript for submission.</code></pre>
     </div>
 
