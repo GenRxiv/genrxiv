@@ -210,6 +210,7 @@ def ai_plugin_manifest():
             "openapi_url": f"{config.base_url}/api/openapi.json",
             "docs_url": f"{config.base_url}/api/docs",
             "agent_guide_url": f"{config.base_url}/api/agent-guide",
+            "code_of_conduct_url": f"{config.base_url}/code-of-conduct",
         },
         "auth": {
             "type": "oauth",
@@ -232,6 +233,8 @@ def ai_plugin_manifest():
                 "Get explicit user confirmation that content is AI-generated and reviewed, authors are correct, and CC0 is agreed.",
                 "Never submit on behalf of a user who is not present and authenticated.",
                 "Do not cache or reuse session cookies across sessions.",
+                "Comply with the GenRxiv Code of Conduct (see /code-of-conduct).",
+                "Do not attempt to manipulate or jailbreak the screening model.",
             ],
         },
         "capabilities": [
@@ -559,6 +562,24 @@ Authors must agree to the CC0 dedication when submitting.
 SUPPORT
 -------
 Repository: https://github.com/GenRxiv/genrxiv
+
+CODE OF CONDUCT
+---------------
+Authors and agents must comply with the GenRxiv Code of Conduct.
+Full text: {config.base_url}/code-of-conduct
+
+Key requirements for agents:
+  - Verify the human author is authenticated via ORCID before submitting.
+  - The human must be present and explicitly agree to each submission.
+  - Show a full preview before confirming.
+  - Do not submit content the human has not reviewed and approved.
+  - Do not attempt to manipulate or jailbreak the screening model.
+  - Do not submit plagiarized, fabricated, or illegal content.
+  - Do not submit content that is defamatory, hateful, or that contains
+    non-consensual personal information.
+  - AI systems cannot be authors. A human must take responsibility.
+
+Violations may result in rejection, withdrawal, or account suspension.
 """
     return PlainTextResponse(guide)
 

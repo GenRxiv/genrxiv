@@ -1099,10 +1099,21 @@ async def submit(
     license: str = Form("CC0"),
     license_url: str = Form("https://creativecommons.org/publicdomain/zero/1.0/"),
     subjects: str = Form(""),
+    reviewed_agree: str = Form(""),
+    cc0_agree: str = Form(""),
+    coc_agree: str = Form(""),
     supersedes_id: int | None = Form(None),
     _author: dict = Depends(require_author),
 ):
     """Submit a Markdown paper."""
+    # Validate agreements
+    if not reviewed_agree:
+        raise HTTPException(400, "You must confirm that you have reviewed the work for accuracy and integrity.")
+    if not cc0_agree:
+        raise HTTPException(400, "You must agree to the CC0 public domain dedication.")
+    if not coc_agree:
+        raise HTTPException(400, "You must agree to the Code of Conduct.")
+
     # Validate file
     content = await markdown.read()
     if len(content) > MAX_MARKDOWN_SIZE:

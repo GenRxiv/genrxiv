@@ -8,6 +8,7 @@ Simple server-rendered pages using Jinja2 templates:
 - /browse — article listing
 - /author/{orcid} — author profile page
 - /subjects — subject cloud
+- /code-of-conduct — code of conduct for authors and agents
 """
 from datetime import datetime
 from urllib.parse import quote
@@ -1160,6 +1161,7 @@ function getMissingItems() {
     var classCount = getClassificationCount();
     var reviewed = document.querySelector('[name="reviewed"]').checked;
     var cc0 = document.querySelector('[name="cc0_agree"]').checked;
+    var coc = document.querySelector('[name="coc_agree"]').checked;
 
     if (!title) missing.push('title');
     if (!abstract) missing.push('abstract');
@@ -1167,6 +1169,7 @@ function getMissingItems() {
     if (classCount < 3) missing.push((3 - classCount) + ' more classification' + ((3 - classCount) > 1 ? 's' : ''));
     if (!reviewed) missing.push('review confirmation');
     if (!cc0) missing.push('CC0 agreement');
+    if (!coc) missing.push('Code of Conduct agreement');
     return missing;
 }
 
@@ -1231,6 +1234,10 @@ function showPreview(e) {
     document.getElementById('confirm-abstract').value = abstract;
     document.getElementById('confirm-authors').value = JSON.stringify(authors);
     document.getElementById('confirm-subjects').value = subjects.join(', ');
+    // Copy agreement checkbox states
+    document.getElementById('confirm-reviewed').value = document.querySelector('[name="reviewed"]').checked ? '1' : '';
+    document.getElementById('confirm-cc0').value = document.querySelector('[name="cc0_agree"]').checked ? '1' : '';
+    document.getElementById('confirm-coc').value = document.querySelector('[name="coc_agree"]').checked ? '1' : '';
     // Copy the file to the confirm form's file input
     // DataTransfer is needed because .files is read-only
     var confirmFile = document.getElementById('confirm-markdown');
@@ -1477,6 +1484,14 @@ document.addEventListener('DOMContentLoaded', function() {
 """
 
 
+@router.get("/code-of-conduct", include_in_schema=False, response_class=HTMLResponse)
+def code_of_conduct_page(request: Request):
+    """Public code of conduct for authors and agents."""
+    author = get_current_author(request)
+    from code_of_conduct import COC_HTML, COC_CSS
+    return _page("Code of Conduct", COC_HTML, author, extra_css=COC_CSS, current_path="/code-of-conduct")
+
+
 @router.get("/submit", include_in_schema=False, response_class=HTMLResponse)
 def submit_page(request: Request):
     """Submission form with ORCID-based author entry and preview/confirm flow."""
@@ -1561,6 +1576,10 @@ def submit_page(request: Request):
                     <input type="checkbox" name="cc0_agree" id="cc0_agree">
                     <label for="cc0_agree">I dedicate this work to the public domain under <a href="https://creativecommons.org/publicdomain/zero/1.0/" target="_blank">CC0</a>.</label>
                 </div>
+                <div class="confirm-checkbox">
+                    <input type="checkbox" name="coc_agree" id="coc_agree">
+                    <label for="coc_agree">I have read and agree to the <a href="/code-of-conduct">Code of Conduct</a>.</label>
+                </div>
             </div>
 
             <button type="button" class="btn-preview disabled" id="preview-btn" disabled onclick="showPreview(event)">Preview submission</button>
@@ -1591,6 +1610,9 @@ def submit_page(request: Request):
             <input type="hidden" name="license" value="CC0">
             <input type="hidden" name="license_url" value="https://creativecommons.org/publicdomain/zero/1.0/">
             <input type="hidden" name="subjects" id="confirm-subjects">
+            <input type="hidden" name="reviewed_agree" id="confirm-reviewed" value="">
+            <input type="hidden" name="cc0_agree" id="confirm-cc0" value="">
+            <input type="hidden" name="coc_agree" id="confirm-coc" value="">
             <!-- File needs to be re-attached — we'll use JS to copy it -->
             <input type="file" name="markdown" id="confirm-markdown" style="display:none">
             <button type="submit" class="btn btn-primary">Confirm and submit</button>
