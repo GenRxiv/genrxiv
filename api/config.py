@@ -42,8 +42,11 @@ class Config:
     base_url: str = "https://genrxiv.org"
     site_name: str = "GenRxiv"
 
-    # Admin ORCIDs (can moderate)
+    # Admin ORCIDs (can moderate, withdraw, suspend/ban authors)
     admin_orcids: tuple = ()
+
+    # Reviewer ORCIDs (can approve/reject submissions but not withdraw or suspend)
+    reviewer_orcids: tuple = ()
 
     # Automated screening (Cloudflare Workers AI)
     screening_enabled: bool = False
@@ -58,6 +61,11 @@ class Config:
             for x in os.environ.get("ADMIN_ORCIDS", "").split(",")
             if x.strip()
         )
+        reviewer_orcids = tuple(
+            x.strip()
+            for x in os.environ.get("REVIEWER_ORCIDS", "").split(",")
+            if x.strip()
+        )
         return cls(
             database_url=os.environ["DATABASE_URL"],
             orcid_client_id=os.environ.get("ORCID_CLIENT_ID", ""),
@@ -69,6 +77,7 @@ class Config:
             smtp_username=os.environ.get("SMTP_USERNAME", ""),
             smtp_password=os.environ.get("SMTP_PASSWORD", ""),
             admin_orcids=admin_orcids,
+            reviewer_orcids=reviewer_orcids,
             screening_enabled=os.environ.get("SCREENING_ENABLED", "").lower() in ("1", "true", "yes"),
             screening_cf_api_token=os.environ.get("CF_API_TOKEN", ""),
             screening_cf_account_id=os.environ.get("CF_ACCOUNT_ID", ""),

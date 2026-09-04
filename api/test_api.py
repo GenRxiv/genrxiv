@@ -3100,3 +3100,210 @@ class TestReconciliation:
                 "SELECT status FROM articles WHERE id = %s", (article_id,)
             ).fetchone()
             assert row["status"] == "pending"
+
+
+# ─── 30. Author suspension and ban (CoC enforcement) ──────────────────────
+
+class TestAuthorSuspension:
+    """Tests for author suspension and banning for CoC enforcement."""
+
+    @requires_db
+    def test_suspend_author_blocks_submission(self, authed_client, db):
+        """A suspended author cannot submit new papers."""
+        from db import get_conn
+        author_id = db["author_id"]
+        with get_conn().connection() as conn:
+            conn.execute("UPDATE authors SET account_status = 'suspended', status_reason = 'CoC violation' WHERE id = %s", (author_id,))
+            conn.commit()
+
+        import io, json
+        md = io.BytesIO(b"# Test\n\nContent.")
+        r = authed_client.post(
+            "/api/submit",
+            files={"markdown": ("test.md", md, "text/markdown")},
+            data={
+                "title": "Should Fail",
+                "authors": json.dumps([{"orcid": db["orcid"], "name": "Test"}]),
+                "abstract": "Test.",
+                "subjects": "Natural sciences > Mathematics, Natural sciences > Computer and information sciences, Social sciences > Economics and business",
+                "license": "CC0",
+                "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+                "reviewed_agree": "1",
+                "cc0_agree": "1",
+                "coc_agree": "1",
+            },
+        )
+        assert r.status_code == 403
+        assert "suspended" in r.json()["detail"].lower()
+
+        # Cleanup
+        with get_conn().connection() as conn:
+            conn.execute("UPDATE authors SET account_status = 'active', status_reason = NULL WHERE id = %s", (author_id,))
+            conn.commit()
+
+    @requires_db
+    def test_ban_author_blocks_submission(self, authed_client, db):
+        """A banned author cannot submit new papers."""
+        from db import get_conn
+        author_id = db["author_id"]
+        with get_conn().connection() as conn:
+            conn.execute("UPDATE authors SET account_status = 'banned', status_reason = 'Severe violation' WHERE id = %s", (author_id,))
+            conn.commit()
+
+        import io, json
+        md = io.BytesIO(b"# Test\n\nContent.")
+        r = authed_client.post(
+            "/api/submit",
+            files={"markdown": ("test.md", md, "text/markdown")},
+            data={
+                "title": "Should Fail",
+                "authors": json.dumps([{"orcid": db["orcid"], "name": "Test"}]),
+                "abstract": "Test.",
+                "subjects": "Natural sciences > Mathematics, Natural sciences > Computer and information sciences, Social sciences > Economics and business",
+                "license": "CC0",
+                "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+                "reviewed_agree": "1",
+                "cc0_agree": "1",
+                "coc_agree": "1",
+            },
+        )
+        assert r.status_code == 403
+        assert "banned" in r.json()["detail"].lower()
+
+        # Cleanup
+        with get_conn().connection() as conn:
+            conn.execute("UPDATE authors SET account_status = 'active', status_reason = NULL WHERE id = %s", (author_id,))
+            conn.commit()
+
+    @requires_db
+    def test_admin_can_suspend_author_via_api(self, admin_client, db):
+        """Admin can suspend an author via the PATCH /admin/authors/{id} endpoint."""
+        from db import get_conn
+        author_id = db["author_id"]
+
+        r = admin_client.patch(
+            f"/admin/authors/{author_id}",
+            json={"status": "suspended", "reason": "Spam submissions"},
+        )
+        assert r.status_code == 200
+        assert r.json()["account_status"] == "suspended"
+
+        with get_conn().connection() as conn:
+            row = conn.execute("SELECT account_status, status_reason FROM authors WHERE id = %s", (author_id,)).fetchone()
+            assert row["account_status"] == "suspended"
+            assert row["status_reason"] == "Spam submissions"
+            # Cleanup
+            conn.execute("UPDATE authors SET account_status = 'active', status_reason = NULL WHERE id = %s", (author_id,))
+            conn.commit()
+
+    @requires_db
+    def test_admin_can_ban_and_reactivate_author(self, admin_client, db):
+        """Admin can ban and then reactivate an author."""
+        from db import get_conn
+        author_id = db["author_id"]
+
+        # Ban
+        r = admin_client.patch(f"/admin/authors/{author_id}", json={"status": "banned", "reason": "Repeated CoC violations"})
+        assert r.status_code == 200
+        assert r.json()["account_status"] == "banned"
+
+        # Reactivate
+        r = admin_client.patch(f"/admin/authors/{author_id}", json={"status": "active"})
+        assert r.status_code == 200
+        assert r.json()["account_status"] == "active"
+
+        with get_conn().connection() as conn:
+            row = conn.execute("SELECT account_status FROM authors WHERE id = %s", (author_id,)).fetchone()
+            assert row["account_status"] == "active"
+
+    @requires_db
+    def test_cannot_suspend_admin_account(self, admin_client, db):
+        """Admin cannot suspend another admin account."""
+        admin_id = db["admin_id"]
+        r = admin_client.patch(f"/admin/authors/{admin_id}", json={"status": "suspended", "reason": "Test"})
+        assert r.status_code == 400
+        assert "admin" in r.json()["detail"].lower()
+
+    @requires_db
+    def test_admin_authors_page_loads(self, admin_client, db):
+        """The /admin/authors page loads for admins."""
+        r = admin_client.get("/admin/authors")
+        assert r.status_code == 200
+        assert "Author Management" in r.text
+
+
+# ─── 31. Reviewer role ─────────────────────────────────────────────────────
+
+class TestReviewerRole:
+    """Tests for the reviewer role (can approve/reject but not withdraw/suspend)."""
+
+    @requires_db
+    def test_reviewer_can_access_admin_queue(self, db):
+        """A reviewer can access the admin queue."""
+        from db import get_conn
+        from fastapi.testclient import TestClient
+        from main import app
+        from auth import _create_session, SESSION_COOKIE
+        import config as config_module
+
+        with get_conn().connection() as conn:
+            reviewer = conn.execute(
+                "INSERT INTO authors (orcid, name) VALUES ('0000-0000-0000-7777', 'Test Reviewer') RETURNING id"
+            ).fetchone()
+            conn.commit()
+            reviewer_id = reviewer["id"]
+
+        original_reviewers = config_module.config.reviewer_orcids
+        object.__setattr__(config_module.config, "reviewer_orcids", ("0000-0000-0000-7777",))
+
+        token = _create_session(reviewer_id, "fake-token")
+        client = TestClient(app)
+        client.cookies.set(SESSION_COOKIE, token)
+
+        r = client.get("/admin")
+        assert r.status_code == 200
+        assert "Reviewer Dashboard" in r.text
+
+        object.__setattr__(config_module.config, "reviewer_orcids", original_reviewers)
+        with get_conn().connection() as conn:
+            conn.execute("DELETE FROM sessions WHERE author_id = %s", (reviewer_id,))
+            conn.execute("DELETE FROM authors WHERE id = %s", (reviewer_id,))
+            conn.commit()
+
+    @requires_db
+    def test_reviewer_cannot_access_author_management(self, db):
+        """A reviewer cannot access /admin/authors (admin only)."""
+        from db import get_conn
+        from fastapi.testclient import TestClient
+        from main import app
+        from auth import _create_session, SESSION_COOKIE
+        import config as config_module
+
+        with get_conn().connection() as conn:
+            reviewer = conn.execute(
+                "INSERT INTO authors (orcid, name) VALUES ('0000-0000-0000-6666', 'Test Reviewer 2') RETURNING id"
+            ).fetchone()
+            conn.commit()
+            reviewer_id = reviewer["id"]
+
+        original_reviewers = config_module.config.reviewer_orcids
+        object.__setattr__(config_module.config, "reviewer_orcids", ("0000-0000-0000-6666",))
+
+        token = _create_session(reviewer_id, "fake-token")
+        client = TestClient(app)
+        client.cookies.set(SESSION_COOKIE, token)
+
+        r = client.get("/admin/authors")
+        assert r.status_code == 403
+
+        object.__setattr__(config_module.config, "reviewer_orcids", original_reviewers)
+        with get_conn().connection() as conn:
+            conn.execute("DELETE FROM sessions WHERE author_id = %s", (reviewer_id,))
+            conn.execute("DELETE FROM authors WHERE id = %s", (reviewer_id,))
+            conn.commit()
+
+    @requires_db
+    def test_non_reviewer_cannot_access_admin(self, authed_client, db):
+        """A regular author cannot access the admin queue."""
+        r = authed_client.get("/admin")
+        assert r.status_code == 403

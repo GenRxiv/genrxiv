@@ -20,7 +20,7 @@ from pydantic import BaseModel
 
 from config import config
 from db import get_conn
-from auth import get_current_author, require_author, require_admin
+from auth import get_current_author, require_author, require_admin, require_reviewer
 from orcid_client import fetch_orcid_works_count
 
 router = APIRouter()
@@ -224,7 +224,11 @@ def _header_html(author: dict | None, current_path: str = "") -> str:
             "/submit", "Submit",
             "display:inline-block;padding:0.3rem 0.9rem;background:var(--accent);color:#fff;border-radius:4px;text-decoration:none;font-size:0.85rem",
         )
+        # Show moderation link for reviewers and admins
+        is_reviewer = author["orcid"] in config.reviewer_orcids or author["orcid"] in config.admin_orcids
+        mod_link = nav_link("/admin", "Moderation") if is_reviewer else ""
         auth_area = (
+            f'{mod_link}'
             f'{nav_link("/dashboard", "My Submissions")}'
             f'{nav_link("/profile", author["name"])}'
             f'{submit_link}'
@@ -2334,7 +2338,8 @@ def update_profile_affiliation(request: Request, affiliation: str = Form(default
 @router.get("/admin", include_in_schema=False, response_class=HTMLResponse)
 def admin_page(request: Request, withdrawn: str = ""):
     """Admin moderation queue and stats."""
-    admin = require_admin(request)
+    reviewer = require_reviewer(request)
+    is_admin = reviewer["orcid"] in config.admin_orcids
     withdrawn_banner = ""
     if withdrawn:
         withdrawn_banner = (
@@ -2396,15 +2401,15 @@ def admin_page(request: Request, withdrawn: str = ""):
 <div class="meta">Submitted by <a href="/author/{p['submitter_orcid']}">{p['submitter_name']}</a> on {submitted}</div>
 {screening_html}
 <div style="margin-top:1rem;display:flex;gap:0.5rem">
+    <a href="/admin/submission/{p['id']}" class="btn btn-primary">Review</a>
     <form method="post" action="/admin/articles/{p['id']}" style="display:inline">
         <input type="hidden" name="action" value="approve">
-        <button type="submit" class="btn btn-primary">Approve</button>
+        <button type="submit" class="btn">Approve</button>
     </form>
     <form method="post" action="/admin/articles/{p['id']}" style="display:inline">
         <input type="hidden" name="action" value="reject">
         <button type="submit" class="btn btn-danger">Reject</button>
     </form>
-    <a href="/admin/submission/{p['id']}" class="btn">View details</a>
 </div>
 </div>""")
         queue_html = f"<h2>Moderation Queue</h2>{''.join(pending_cards)}"
@@ -2424,22 +2429,28 @@ def admin_page(request: Request, withdrawn: str = ""):
     else:
         recent_html = ""
 
+    admin_links = ""
+    if is_admin:
+        admin_links = '<div style="margin-top:1rem"><a href="/admin/authors" class="btn">Author Management</a></div>'
+
     body = f"""
-    <h1>Admin Dashboard</h1>
+    <h1>{'Admin' if is_admin else 'Reviewer'} Dashboard</h1>
     {withdrawn_banner}
     {stats_html}
     {queue_html}
     {recent_html}
+    {admin_links}
     """
-    return _page("Admin", body, admin, current_path="/admin")
+    return _page("Moderation", body, reviewer, current_path="/admin")
 
 
 # ─── Admin submission detail page ──────────────────────────────────────────
 
 @router.get("/admin/submission/{article_id}", include_in_schema=False, response_class=HTMLResponse)
 def admin_submission_detail(article_id: int, request: Request):
-    """View submission details (admin only)."""
-    admin = require_admin(request)
+    """View submission details (reviewer or admin)."""
+    reviewer = require_reviewer(request)
+    is_admin = reviewer["orcid"] in config.admin_orcids
     with get_conn().connection() as conn:
         article = conn.execute(
             "SELECT * FROM articles WHERE id = %s", (article_id,)
@@ -2486,6 +2497,8 @@ def admin_submission_detail(article_id: int, request: Request):
             <p><strong>spam_likelihood:</strong> {r.get('spam_likelihood')}</p>
             <p><strong>has_abstract:</strong> {r.get('has_abstract')}</p>
             <p><strong>has_references:</strong> {r.get('has_references')}</p>
+            <p><strong>has_jailbreak:</strong> {r.get('has_jailbreak')}</p>
+            <p><strong>has_prohibited_content:</strong> {r.get('has_prohibited_content')}</p>
             <p><strong>flags:</strong> {flags_html}</p>
             <p><strong>summary:</strong> {r.get('summary', '')}</p>
             """
@@ -2559,11 +2572,32 @@ def admin_submission_detail(article_id: int, request: Request):
             <button type="submit" class="btn btn-danger">Withdraw article</button>
         </form>
     </div>
-    ''' if article['status'] == 'published' else ''}
+    ''' if is_admin and article['status'] == 'published' else ''}
+
+    {f'''
+    <div class="card" style="margin-top:1.5rem;border-left:4px solid #b48a00">
+        <h3 style="color:#b48a00">Author management (CoC enforcement)</h3>
+        <p style="font-size:0.9rem;color:#555">
+            Suspend or ban this submission's author for Code of Conduct violations.
+            Suspended authors cannot submit new papers. Banned authors cannot log in.
+            Existing published work is preserved in both cases.
+        </p>
+        <form method="post" action="/admin/authors/{article["submitted_by"]}/suspend" style="margin-top:0.5rem;display:inline">
+            <input type="text" name="reason" required placeholder="CoC violation reason"
+                style="width:300px;display:inline-block;margin-right:0.5rem">
+            <button type="submit" class="btn btn-danger">Suspend author</button>
+        </form>
+        <form method="post" action="/admin/authors/{article["submitted_by"]}/ban" style="margin-top:0.5rem;display:inline">
+            <input type="text" name="reason" required placeholder="CoC violation reason"
+                style="width:300px;display:inline-block;margin-right:0.5rem">
+            <button type="submit" class="btn btn-danger">Ban author</button>
+        </form>
+    </div>
+    ''' if is_admin and article.get('submitted_by') else ''}
 
     <div style="margin-top:1.5rem"><a href="/admin">&larr; Back to queue</a></div>
     """
-    return _page(f"Submission: {article['title']}", body, admin)
+    return _page(f"Submission: {article['title']}", body, reviewer)
 
 
 @router.post("/admin/articles/{article_id}/withdraw", include_in_schema=False)
@@ -2590,10 +2624,122 @@ def moderate_article_form(
     note: str = "",
 ):
     """Handle form-based moderation (redirects back to admin)."""
-    admin = require_admin(request)
+    reviewer = require_reviewer(request)
     from articles import moderate_article as _mod
     # Call the API handler
-    result = _mod(article_id, ModerationForm(action=action, note=note), admin)
+    result = _mod(article_id, ModerationForm(action=action, note=note), reviewer)
     # Redirect back to admin
     from fastapi.responses import RedirectResponse
     return RedirectResponse(url="/admin", status_code=303)
+
+
+@router.post("/admin/authors/{author_id}/suspend", include_in_schema=False)
+def admin_suspend_author(author_id: int, request: Request, reason: str = Form(...)):
+    """Suspend an author via HTML form (admin only)."""
+    admin = require_admin(request)
+    from articles import AuthorStatusAction, update_author_status
+    update_author_status(author_id, AuthorStatusAction(status="suspended", reason=reason), admin)
+    return RedirectResponse(url="/admin", status_code=303)
+
+
+@router.post("/admin/authors/{author_id}/ban", include_in_schema=False)
+def admin_ban_author(author_id: int, request: Request, reason: str = Form(...)):
+    """Ban an author via HTML form (admin only)."""
+    admin = require_admin(request)
+    from articles import AuthorStatusAction, update_author_status
+    update_author_status(author_id, AuthorStatusAction(status="banned", reason=reason), admin)
+    return RedirectResponse(url="/admin", status_code=303)
+
+
+@router.post("/admin/authors/{author_id}/reactivate", include_in_schema=False)
+def admin_reactivate_author(author_id: int, request: Request):
+    """Reactivate a suspended/banned author (admin only)."""
+    admin = require_admin(request)
+    from articles import AuthorStatusAction, update_author_status
+    update_author_status(author_id, AuthorStatusAction(status="active"), admin)
+    return RedirectResponse(url="/admin/authors", status_code=303)
+
+
+@router.get("/admin/authors", include_in_schema=False, response_class=HTMLResponse)
+def admin_authors_page(request: Request, status: str = ""):
+    """Author management page (admin only)."""
+    admin = require_admin(request)
+    with get_conn().connection() as conn:
+        if status:
+            rows = conn.execute(
+                """SELECT id, orcid, name, email, affiliation,
+                          account_status, status_reason, status_changed_at,
+                          created_at
+                   FROM authors WHERE account_status = %s
+                   ORDER BY status_changed_at DESC NULLS LAST, created_at DESC""",
+                (status,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """SELECT id, orcid, name, email, affiliation,
+                          account_status, status_reason, status_changed_at,
+                          created_at
+                   FROM authors ORDER BY
+                   CASE account_status
+                       WHEN 'banned' THEN 0
+                       WHEN 'suspended' THEN 1
+                       ELSE 2
+                   END, created_at DESC""",
+            ).fetchall()
+
+    filter_links = '<div style="margin-bottom:1rem;display:flex;gap:0.5rem">'
+    for label, val in [("All", ""), ("Active", "active"), ("Suspended", "suspended"), ("Banned", "banned")]:
+        cls = 'btn btn-primary' if (val == status) else 'btn'
+        filter_links += f'<a href="/admin/authors{f"?status={val}" if val else ""}" class="{cls}">{label}</a>'
+    filter_links += '</div>'
+
+    cards = []
+    for a in rows:
+        status_badge = {
+            "active": '<span class="status-badge status-published">active</span>',
+            "suspended": '<span class="status-badge status-pending" style="background:#fffdf0;color:#b48a00;border:1px solid #b48a00">suspended</span>',
+            "banned": '<span class="status-badge status-rejected">banned</span>',
+        }.get(a["account_status"], a["account_status"])
+
+        reason_html = f'<div class="meta" style="margin-top:0.25rem"><strong>Reason:</strong> {a["status_reason"]}</div>' if a.get("status_reason") else ''
+        changed_html = f'<div class="meta" style="margin-top:0.25rem">Changed: {_format_date(a.get("status_changed_at"))}</div>' if a.get("status_changed_at") else ''
+
+        actions = ''
+        if a["account_status"] != "active" and a["orcid"] not in config.admin_orcids:
+            actions = f'''<form method="post" action="/admin/authors/{a["id"]}/reactivate" style="margin-top:0.5rem;display:inline">
+                <button type="submit" class="btn btn-primary">Reactivate</button>
+            </form>'''
+        elif a["account_status"] == "active" and a["orcid"] not in config.admin_orcids:
+            actions = f'''<div style="margin-top:0.5rem;display:flex;gap:0.5rem;flex-wrap:wrap">
+                <form method="post" action="/admin/authors/{a["id"]}/suspend" style="display:inline">
+                    <input type="text" name="reason" required placeholder="Reason" style="width:200px;display:inline-block">
+                    <button type="submit" class="btn btn-danger">Suspend</button>
+                </form>
+                <form method="post" action="/admin/authors/{a["id"]}/ban" style="display:inline">
+                    <input type="text" name="reason" required placeholder="Reason" style="width:200px;display:inline-block">
+                    <button type="submit" class="btn btn-danger">Ban</button>
+                </form>
+            </div>'''
+        elif a["orcid"] in config.admin_orcids:
+            actions = '<div class="meta" style="margin-top:0.5rem;color:var(--muted)"><em>Admin account — cannot be modified</em></div>'
+
+        cards.append(f"""<div class="card">
+<h2><a href="/author/{a['orcid']}">{a['name']}</a></h2>
+<div class="meta">{status_badge} &middot; {a['orcid']} &middot; Joined {_format_date(a.get('created_at'))}</div>
+{reason_html}
+{changed_html}
+{actions}
+</div>""")
+
+    body = f"""
+    <h1>Author Management</h1>
+    <p style="color:var(--ink-soft);margin-bottom:1rem">
+        Suspend or ban authors for Code of Conduct violations. Suspended authors
+        cannot submit new papers. Banned authors cannot log in. Existing
+        published work is preserved in both cases.
+    </p>
+    {filter_links}
+    {''.join(cards) if cards else '<div class="empty"><h3>No authors found</h3></div>'}
+    <div style="margin-top:1.5rem"><a href="/admin">&larr; Back to dashboard</a></div>
+    """
+    return _page("Author Management", body, admin, current_path="/admin/authors")

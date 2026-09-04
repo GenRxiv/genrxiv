@@ -116,7 +116,7 @@ def _upsert_author(orcid: str, name: str, affiliation: str | None, email: str | 
     """Create or update author in DB, return author dict."""
     with get_conn().connection() as conn:
         row = conn.execute(
-            "SELECT id, orcid, name, email, affiliation FROM authors WHERE orcid = %s",
+            "SELECT id, orcid, name, email, affiliation, account_status, status_reason FROM authors WHERE orcid = %s",
             (orcid,),
         ).fetchone()
         if row:
@@ -133,7 +133,7 @@ def _upsert_author(orcid: str, name: str, affiliation: str | None, email: str | 
             return row
         else:
             row = conn.execute(
-                "INSERT INTO authors (orcid, name, email, affiliation) VALUES (%s, %s, %s, %s) RETURNING id, orcid, name, email, affiliation",
+                "INSERT INTO authors (orcid, name, email, affiliation) VALUES (%s, %s, %s, %s) RETURNING id, orcid, name, email, affiliation, account_status, status_reason",
                 (orcid, name, email, affiliation),
             ).fetchone()
             conn.commit()
@@ -160,14 +160,22 @@ def get_current_author(request: Request) -> dict | None:
         return None
     with get_conn().connection() as conn:
         row = conn.execute(
-            """SELECT a.id, a.orcid, a.name, a.email, a.affiliation, s.expires_at
+            """SELECT a.id, a.orcid, a.name, a.email, a.affiliation,
+                      a.account_status, s.expires_at
                FROM sessions s JOIN authors a ON s.author_id = a.id
                WHERE s.token = %s AND s.expires_at > now()""",
             (token,),
         ).fetchone()
     if not row:
         return None
-    return {"id": row["id"], "orcid": row["orcid"], "name": row["name"], "email": row["email"], "affiliation": row["affiliation"]}
+    return {
+        "id": row["id"],
+        "orcid": row["orcid"],
+        "name": row["name"],
+        "email": row["email"],
+        "affiliation": row["affiliation"],
+        "account_status": row["account_status"],
+    }
 
 
 def require_author(request: Request) -> dict:
@@ -178,8 +186,16 @@ def require_author(request: Request) -> dict:
     return author
 
 
+def require_reviewer(request: Request) -> dict:
+    """Require reviewer or admin privileges (can approve/reject submissions)."""
+    author = require_author(request)
+    if author["orcid"] in config.admin_orcids or author["orcid"] in config.reviewer_orcids:
+        return author
+    raise HTTPException(403, "Reviewer access required")
+
+
 def require_admin(request: Request) -> dict:
-    """Require admin privileges."""
+    """Require admin privileges (can withdraw, suspend, ban)."""
     author = require_author(request)
     if author["orcid"] not in config.admin_orcids:
         raise HTTPException(403, "Admin access required")
@@ -217,6 +233,22 @@ def orcid_callback(request: Request, code: str, state: str):
     email = _extract_email(record)
 
     author = _upsert_author(orcid, name, affiliation, email)
+
+    # Check account status — suspended/banned authors cannot log in
+    account_status = author.get("account_status", "active")
+    if account_status in ("suspended", "banned"):
+        # Destroy any existing sessions for this author
+        with get_conn().connection() as conn:
+            conn.execute("DELETE FROM sessions WHERE author_id = %s", (author["id"],))
+            conn.commit()
+        reason = author.get("status_reason") or "No reason provided"
+        action = "suspended" if account_status == "suspended" else "permanently banned"
+        raise HTTPException(
+            403,
+            f"Your account has been {action}. Reason: {reason}. "
+            "Contact the GenRxiv administrators if you believe this is an error.",
+        )
+
     session_token = _create_session(author["id"], access_token)
 
     # Fetch and cache the author's ORCID works count (non-blocking on failure)
@@ -261,6 +293,7 @@ def me(request: Request):
     if not author:
         return {"authenticated": False}
     is_admin = author["orcid"] in config.admin_orcids
+    is_reviewer = author["orcid"] in config.reviewer_orcids
     return {
         "authenticated": True,
         "orcid": author["orcid"],
@@ -268,6 +301,8 @@ def me(request: Request):
         "email": author.get("email"),
         "affiliation": author["affiliation"],
         "is_admin": is_admin,
+        "is_reviewer": is_reviewer or is_admin,
+        "account_status": author.get("account_status", "active"),
     }
 
 

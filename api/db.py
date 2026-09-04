@@ -38,6 +38,10 @@ CREATE TABLE IF NOT EXISTS authors (
     name TEXT NOT NULL,
     email TEXT,
     affiliation TEXT,
+    account_status TEXT NOT NULL DEFAULT 'active',
+    status_reason TEXT,
+    status_changed_at TIMESTAMPTZ,
+    status_changed_by INTEGER REFERENCES authors(id),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

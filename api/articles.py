@@ -17,7 +17,7 @@ from pydantic import BaseModel, field_validator
 
 from config import config
 from db import get_conn
-from auth import get_current_author, require_author, require_admin
+from auth import get_current_author, require_author, require_admin, require_reviewer
 from notifications import notify_approved, notify_rejected
 from ratelimit import limiter
 
@@ -1108,6 +1108,16 @@ async def submit(
     _author: dict = Depends(require_author),
 ):
     """Submit a Markdown paper."""
+    # Check account status — suspended/banned authors cannot submit
+    status = _author.get("account_status", "active")
+    if status in ("suspended", "banned"):
+        action = "suspended" if status == "suspended" else "banned"
+        raise HTTPException(
+            403,
+            f"Your account has been {action}. You cannot submit new papers. "
+            "Contact the GenRxiv administrators if you believe this is an error.",
+        )
+
     # Validate agreements
     if not reviewed_agree:
         raise HTTPException(400, "You must confirm that you have reviewed the work for accuracy and integrity.")
@@ -1718,7 +1728,7 @@ class ModerationAction(BaseModel):
 
 
 @router.get("/admin/queue", include_in_schema=False)
-def moderation_queue(_admin: dict = Depends(require_admin)):
+def moderation_queue(_reviewer: dict = Depends(require_reviewer)):
     """List pending submissions."""
     with get_conn().connection() as conn:
         rows = conn.execute(
@@ -1736,7 +1746,7 @@ def moderation_queue(_admin: dict = Depends(require_admin)):
 def moderate_article(
     article_id: int,
     action: ModerationAction,
-    admin: dict = Depends(require_admin),
+    reviewer: dict = Depends(require_reviewer),
 ):
     """Approve or reject a submission."""
     with get_conn().connection() as conn:
@@ -1749,7 +1759,7 @@ def moderate_article(
             raise HTTPException(400, f"Article is already {row['status']}")
 
         if action.action == "approve":
-            ark, version = _approve_article(conn, article_id, row, admin["id"], action.note)
+            ark, version = _approve_article(conn, article_id, row, reviewer["id"], action.note)
             notify_approved(article_id, ark, row["title"], action.note)
             return {"id": article_id, "ark": ark, "status": "published", "version": version}
 
@@ -1759,7 +1769,7 @@ def moderate_article(
                    SET status = 'rejected', moderated_by = %s, moderated_at = now(),
                        moderation_note = %s
                    WHERE id = %s""",
-                (admin["id"], action.note or None, article_id),
+                (reviewer["id"], action.note or None, article_id),
             )
             conn.commit()
             notify_rejected(article_id, row["title"], action.note)
@@ -1847,6 +1857,87 @@ def admin_stats(_admin: dict = Depends(require_admin)):
         "agent_downloads": agent_downloads,
         "human_downloads": human_downloads,
         "pending_submissions": pending,
+    }
+
+
+# ─── Author management (admin) ─────────────────────────────────────────────
+
+class AuthorStatusAction(BaseModel):
+    status: str  # "active", "suspended", or "banned"
+    reason: str = ""
+
+
+@router.get("/admin/authors/list", include_in_schema=False)
+def list_authors(
+    _admin: dict = Depends(require_admin),
+    status: str = Query("", description="Filter by account_status"),
+):
+    """List all authors, optionally filtered by account status."""
+    with get_conn().connection() as conn:
+        if status:
+            rows = conn.execute(
+                """SELECT id, orcid, name, email, affiliation,
+                          account_status, status_reason, status_changed_at,
+                          created_at
+                   FROM authors WHERE account_status = %s
+                   ORDER BY status_changed_at DESC NULLS LAST, created_at DESC""",
+                (status,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """SELECT id, orcid, name, email, affiliation,
+                          account_status, status_reason, status_changed_at,
+                          created_at
+                   FROM authors ORDER BY created_at DESC""",
+            ).fetchall()
+    return {"items": rows}
+
+
+@router.patch("/admin/authors/{author_id}", include_in_schema=False)
+def update_author_status(
+    author_id: int,
+    action: AuthorStatusAction,
+    admin: dict = Depends(require_admin),
+):
+    """Suspend, ban, or reactivate an author account.
+
+    - 'suspended': cannot submit new papers, existing papers stay published
+    - 'banned': cannot log in, existing papers stay published
+    - 'active': restores normal access
+    """
+    if action.status not in ("active", "suspended", "banned"):
+        raise HTTPException(400, "status must be 'active', 'suspended', or 'banned'")
+
+    with get_conn().connection() as conn:
+        row = conn.execute(
+            "SELECT id, orcid, name, account_status FROM authors WHERE id = %s",
+            (author_id,),
+        ).fetchone()
+        if not row:
+            raise HTTPException(404, "Author not found")
+
+        # Prevent admins from suspending themselves or other admins
+        if row["orcid"] in config.admin_orcids:
+            raise HTTPException(400, "Cannot modify an admin account")
+
+        conn.execute(
+            """UPDATE authors
+               SET account_status = %s, status_reason = %s,
+                   status_changed_at = now(), status_changed_by = %s
+               WHERE id = %s""",
+            (action.status, action.reason or None, admin["id"], author_id),
+        )
+
+        # If banning or suspending, destroy all active sessions
+        if action.status in ("suspended", "banned"):
+            conn.execute("DELETE FROM sessions WHERE author_id = %s", (author_id,))
+
+        conn.commit()
+
+    return {
+        "id": author_id,
+        "account_status": action.status,
+        "reason": action.reason or None,
     }
 
 

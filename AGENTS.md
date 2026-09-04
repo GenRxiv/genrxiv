@@ -50,7 +50,7 @@ cd convert-service && pip install -r requirements-dev.txt
 pytest test_app.py -v
 
 # Without DATABASE_URL_TEST, DB-dependent tests are skipped automatically.
-# Total: 238 tests (197 API + 16 browser + 25 convert service).
+# Total: 247 tests (206 API + 16 browser + 25 convert service).
 ```
 
 CI runs all suites on every push/PR (`.github/workflows/tests.yml`).
@@ -90,6 +90,7 @@ See `deploy/.env.example` for the full list. Key ones:
 - `ORCID_CLIENT_ID` / `ORCID_CLIENT_SECRET` — ORCID OAuth app
 - `SESSION_SECRET` — Session signing secret
 - `ADMIN_ORCIDS` — Comma-separated ORCIDs with admin/moderation access
+- `REVIEWER_ORCIDS` — Comma-separated ORCIDs with review (approve/reject) access
 - `ARK_NAAN` — ARK Name Assigning Authority Number (default: 99999)
 - `CF_TUNNEL_TOKEN` — Cloudflare Tunnel token
 - `SMTP_*` — Resend SMTP for email notifications
@@ -102,7 +103,7 @@ See `deploy/.env.example` for the full list. Key ones:
 
 ## Database schema
 
-Eight tables: `authors`, `articles`, `article_authors`, `downloads`,
+Nine tables: `authors`, `articles`, `article_authors`, `downloads`,
 `sessions`, `settings`, `schema_migrations`, `screening_reports`.
 Schema is in `api/db.py` (`SCHEMA_SQL`). Tables are created automatically
 on API startup via `init_schema()`.
@@ -193,7 +194,7 @@ The workflow:
 4. Pull latest code
 5. Rebuild and restart the API container
 6. Run database migrations
-7. Run the full test suite (197 API tests + 16 browser tests)
+7. Run the full test suite (206 API tests + 16 browser tests)
 8. If tests pass → disable maintenance mode → site is live
 9. If tests fail → maintenance mode stays on → investigate
 
@@ -218,13 +219,14 @@ scripts/test-after-restore.sh
 ```
 
 This creates a fresh `genrxiv_test` database, copies test files into the
-API container, and runs all 197 API tests. Exits 0 if all pass.
+API container, and runs all 206 API tests. Exits 0 if all pass.
 
 ## API structure
 
 - All SQL uses parameterized queries (psycopg3 `%s` placeholders)
 - Auth dependencies: `get_current_author` (optional), `require_author`
-  (401 if not logged in), `require_admin` (403 if not admin)
+  (401 if not logged in), `require_reviewer` (403 if not reviewer/admin),
+  `require_admin` (403 if not admin)
 - Article routes use `{ark:path}` to capture ARKs containing slashes
 - Specific routes (`/pdf`, `/markdown`, `/jsonld`, `/bibtex`) are
   registered before the catch-all `/{ark:path}` route
@@ -328,6 +330,41 @@ scope and legal/scholarly purpose:
 
 Schema columns (migration `007_retraction_and_withdrawal.sql`):
 `articles.is_retraction`, `articles.withdrawn_at`, `articles.withdrawal_reason`.
+
+### Roles and Code of Conduct enforcement
+
+GenRxiv has three access levels:
+
+| Role | Config | Can do |
+|---|---|---|
+| Author | (default) | Submit, preview, delete own pending/rejected, retract own published |
+| Reviewer | `REVIEWER_ORCIDS` | Everything an author can, plus: view `/admin` queue, review submissions, approve/reject |
+| Admin | `ADMIN_ORCIDS` | Everything a reviewer can, plus: withdraw articles, suspend/ban authors, manage author accounts, maintenance mode |
+
+**Author suspension and banning** (CoC enforcement):
+
+- **Suspended** (`account_status = 'suspended'`): Cannot submit new papers.
+  Existing sessions are destroyed. Can still log in but sees an error on
+  submission attempt. Can be reactivated by an admin.
+- **Banned** (`account_status = 'banned'`): Cannot log in at all. ORCID
+  callback returns 403 with the ban reason. Existing published work is
+  preserved (ARKs remain valid). Can be reactivated by an admin.
+- Admins cannot suspend or ban other admin accounts.
+- Both actions require a reason, which is recorded for audit.
+
+**Admin UI for CoC enforcement:**
+- `/admin/authors` — Author management page (admin only). Lists all authors
+  with their status, allows filtering by status, and provides suspend/ban/
+  reactivate controls.
+- `/admin/submission/{id}` — Submission detail page shows suspend/ban
+  controls for the submitter (admin only).
+- The "Review" button on the moderation queue links to the submission
+  detail page where the reviewer can see the full submission, screening
+  report, and approve/reject.
+
+Schema columns (migration `009_author_status.sql`):
+`authors.account_status`, `authors.status_reason`, `authors.status_changed_at`,
+`authors.status_changed_by`.
 
 ### Automated submission screening
 
