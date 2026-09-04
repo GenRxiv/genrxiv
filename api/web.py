@@ -2662,13 +2662,42 @@ def admin_reactivate_author(author_id: int, request: Request):
 
 
 @router.get("/admin/authors", include_in_schema=False, response_class=HTMLResponse)
-def admin_authors_page(request: Request, status: str = ""):
+def admin_authors_page(request: Request, status: str = "", q: str = ""):
     """Author management page (admin only)."""
     admin = require_admin(request)
+    search_term = q.strip()
     with get_conn().connection() as conn:
-        if status:
+        if search_term:
+            like = f"%{search_term}%"
+            if status:
+                rows = conn.execute(
+                    """SELECT id, orcid, github_id, name, email, affiliation,
+                              account_status, status_reason, status_changed_at,
+                              created_at
+                       FROM authors
+                       WHERE account_status = %s
+                         AND (name ILIKE %s OR orcid ILIKE %s OR github_id ILIKE %s OR email ILIKE %s)
+                       ORDER BY status_changed_at DESC NULLS LAST, created_at DESC""",
+                    (status, like, like, like, like),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """SELECT id, orcid, github_id, name, email, affiliation,
+                              account_status, status_reason, status_changed_at,
+                              created_at
+                       FROM authors
+                       WHERE name ILIKE %s OR orcid ILIKE %s OR github_id ILIKE %s OR email ILIKE %s
+                       ORDER BY
+                         CASE account_status
+                             WHEN 'banned' THEN 0
+                             WHEN 'suspended' THEN 1
+                             ELSE 2
+                         END, created_at DESC""",
+                    (like, like, like, like),
+                ).fetchall()
+        elif status:
             rows = conn.execute(
-                """SELECT id, orcid, name, email, affiliation,
+                """SELECT id, orcid, github_id, name, email, affiliation,
                           account_status, status_reason, status_changed_at,
                           created_at
                    FROM authors WHERE account_status = %s
@@ -2677,7 +2706,7 @@ def admin_authors_page(request: Request, status: str = ""):
             ).fetchall()
         else:
             rows = conn.execute(
-                """SELECT id, orcid, name, email, affiliation,
+                """SELECT id, orcid, github_id, name, email, affiliation,
                           account_status, status_reason, status_changed_at,
                           created_at
                    FROM authors ORDER BY
@@ -2688,10 +2717,21 @@ def admin_authors_page(request: Request, status: str = ""):
                    END, created_at DESC""",
             ).fetchall()
 
+    # Search box
+    search_box = f'''<form method="get" action="/admin/authors" style="margin-bottom:1rem;display:flex;gap:0.5rem;align-items:center">
+        <input type="text" name="q" value="{q}" placeholder="Search name, ORCID, GitHub, or email" style="flex:1;max-width:400px;padding:0.4rem 0.6rem;border:1px solid var(--rule);border-radius:4px;font-size:0.9rem">
+        <button type="submit" class="btn">Search</button>
+        {f'<a href="/admin/authors" class="btn">Clear</a>' if q else ''}
+    </form>'''
+
     filter_links = '<div style="margin-bottom:1rem;display:flex;gap:0.5rem">'
     for label, val in [("All", ""), ("Active", "active"), ("Suspended", "suspended"), ("Banned", "banned")]:
+        qs = f"?status={val}" if val else ""
+        if q:
+            qs += f"&q={q}" if not qs else f"&q={q}"
+            qs = f"?q={q}&status={val}" if val else f"?q={q}"
         cls = 'btn btn-primary' if (val == status) else 'btn'
-        filter_links += f'<a href="/admin/authors{f"?status={val}" if val else ""}" class="{cls}">{label}</a>'
+        filter_links += f'<a href="/admin/authors{qs}" class="{cls}">{label}</a>'
     filter_links += '</div>'
 
     cards = []
@@ -2742,6 +2782,7 @@ def admin_authors_page(request: Request, status: str = ""):
         cannot submit new papers. Banned authors cannot log in. Existing
         published work is preserved in both cases.
     </p>
+    {search_box}
     {filter_links}
     {''.join(cards) if cards else '<div class="empty"><h3>No authors found</h3></div>'}
     <div style="margin-top:1.5rem"><a href="/admin">&larr; Back to dashboard</a></div>
@@ -2750,19 +2791,41 @@ def admin_authors_page(request: Request, status: str = ""):
 
 
 @router.get("/admin/roles", include_in_schema=False, response_class=HTMLResponse)
-def admin_roles_page(request: Request):
+def admin_roles_page(request: Request, q: str = ""):
     """Role management page (admin only) — promote/demote authors to reviewer or admin."""
     admin = require_admin(request)
+    search_term = q.strip()
     with get_conn().connection() as conn:
-        rows = conn.execute(
-            """SELECT id, orcid, github_id, name, email, role,
-                      account_status, created_at
-               FROM authors ORDER BY
-                 CASE WHEN role = 'admin' THEN 0
-                      WHEN role = 'reviewer' THEN 1
-                      ELSE 2 END,
-                 created_at DESC""",
-        ).fetchall()
+        if search_term:
+            like = f"%{search_term}%"
+            rows = conn.execute(
+                """SELECT id, orcid, github_id, name, email, role,
+                          account_status, created_at
+                   FROM authors
+                   WHERE name ILIKE %s OR orcid ILIKE %s OR github_id ILIKE %s OR email ILIKE %s
+                   ORDER BY
+                     CASE WHEN role = 'admin' THEN 0
+                          WHEN role = 'reviewer' THEN 1
+                          ELSE 2 END,
+                     created_at DESC""",
+                (like, like, like, like),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """SELECT id, orcid, github_id, name, email, role,
+                          account_status, created_at
+                   FROM authors ORDER BY
+                     CASE WHEN role = 'admin' THEN 0
+                          WHEN role = 'reviewer' THEN 1
+                          ELSE 2 END,
+                     created_at DESC""",
+            ).fetchall()
+
+    search_box = f'''<form method="get" action="/admin/roles" style="margin-bottom:1rem;display:flex;gap:0.5rem;align-items:center">
+        <input type="text" name="q" value="{q}" placeholder="Search name, ORCID, GitHub, or email" style="flex:1;max-width:400px;padding:0.4rem 0.6rem;border:1px solid var(--rule);border-radius:4px;font-size:0.9rem">
+        <button type="submit" class="btn">Search</button>
+        {f'<a href="/admin/roles" class="btn">Clear</a>' if q else ''}
+    </form>'''
 
     cards = []
     for a in rows:
@@ -2824,6 +2887,7 @@ def admin_roles_page(request: Request):
         environment variables (ADMIN_ORCIDS, REVIEWER_ORCIDS, etc.) are shown
         with an <em>(env)</em> note and cannot be changed here.
     </p>
+    {search_box}
     {''.join(cards) if cards else '<div class="empty"><h3>No authors found</h3></div>'}
     <div style="margin-top:1.5rem"><a href="/admin">&larr; Back to dashboard</a></div>
     """
