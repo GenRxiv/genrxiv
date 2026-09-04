@@ -21,9 +21,15 @@ from ratelimit import limiter, _rate_limit_enabled
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Initialize DB pool and schema on startup."""
+    """Initialize DB pool, schema, and migrations on startup."""
     init_pool()
     init_schema()
+    # Run pending migrations automatically on startup
+    try:
+        import migrate
+        migrate.run_migrations()
+    except Exception as e:
+        print(f"WARNING: Migration failed on startup: {e}")
     os.makedirs(config.files_dir, exist_ok=True)
     yield
 
