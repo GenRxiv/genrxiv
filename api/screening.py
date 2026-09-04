@@ -91,7 +91,7 @@ def _call_cloudflare(model: str, system: str, user: str) -> dict[str, Any] | Non
 
     url = CF_AI_BASE.format(
         account_id=config.screening_cf_account_id,
-        model=model.lstrip("@"),
+        model=model,  # Keep the @ prefix — the CF API expects it
     )
 
     headers = {
@@ -121,6 +121,8 @@ def _call_cloudflare(model: str, system: str, user: str) -> dict[str, Any] | Non
         return None
 
     # CF response: {"result": {"response": "..."}, "success": true, ...}
+    # For text-generation models, result["response"] is a string.
+    # For some models/configs, the response may already be parsed JSON.
     if not data.get("success"):
         logger.error("Screening CF returned success=false: %s", json.dumps(data)[:500])
         return None
@@ -132,16 +134,26 @@ def _call_cloudflare(model: str, system: str, user: str) -> dict[str, Any] | Non
         logger.error("Screening CF returned empty response")
         return None
 
+    # If the model returned a dict (some models return structured JSON
+    # directly), pass it through as-is.
+    if isinstance(text, dict):
+        return {"text": text}
+
     return {"text": text}
 
 
-def _extract_json(text: str) -> dict[str, Any] | None:
+def _extract_json(text: str | dict) -> dict[str, Any] | None:
     """Extract a JSON object from the model's text response.
 
     The model is instructed to return only JSON, but small models sometimes
     wrap it in markdown fences or add stray text. We try to find the first
-    valid JSON object.
+    valid JSON object. If the input is already a dict (some CF models
+    return structured JSON directly), pass it through.
     """
+    # If already a dict, return as-is
+    if isinstance(text, dict):
+        return text
+
     # Strip markdown code fences if present
     text = text.strip()
     if text.startswith("```"):

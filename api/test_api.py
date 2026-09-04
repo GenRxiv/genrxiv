@@ -2321,10 +2321,11 @@ class TestScreeningLogic:
         }
         assert is_auto_approvable(report) is True
 
-    def test_screen_submission_disabled_when_not_configured(self):
+    def test_screen_submission_disabled_when_not_configured(self, monkeypatch):
         """When screening is disabled, returns screening_disabled verdict."""
+        import config as config_module
+        object.__setattr__(config_module.config, "screening_enabled", False)
         from screening import screen_submission
-        # Screening is disabled by default in tests (no CF_API_TOKEN)
         result = screen_submission("Title", "Abstract", "# Body")
         assert result["verdict"] == "screening_disabled"
         assert result["report"] is None
@@ -2336,7 +2337,9 @@ class TestScreeningIntegration:
     @requires_db
     def test_submit_with_screening_disabled_stays_pending(self, authed_client, monkeypatch):
         """When screening is disabled, submission stays pending (existing behavior)."""
-        # Screening is disabled by default in test config
+        # Explicitly disable screening for this test
+        import config as config_module
+        object.__setattr__(config_module.config, "screening_enabled", False)
         import io
         md = io.BytesIO(b"# Test Paper\n\nThis is a test paper with some content.\n\n## Introduction\n\nWe study things.")
         r = authed_client.post(
