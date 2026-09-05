@@ -15,7 +15,7 @@ from datetime import datetime, timezone, timedelta
 
 import httpx2 as httpx
 from fastapi import APIRouter, Request, HTTPException, Depends
-from fastapi.responses import RedirectResponse, JSONResponse
+from fastapi.responses import RedirectResponse, JSONResponse, Response
 from pydantic import BaseModel
 from config import config
 from db import get_conn
@@ -392,6 +392,7 @@ def orcid_callback(request: Request, code: str, state: str):
         httponly=True,
         samesite="lax",
         secure=True,
+        domain=".genrxiv.org",
     )
     response.delete_cookie("orcid_state")
     response.delete_cookie("orcid_redirect")
@@ -459,6 +460,7 @@ def github_callback(request: Request, code: str, state: str):
         httponly=True,
         samesite="lax",
         secure=True,
+        domain=".genrxiv.org",
     )
     response.delete_cookie("github_state")
     response.delete_cookie("github_redirect")
@@ -474,7 +476,7 @@ def logout(request: Request):
             conn.execute("DELETE FROM sessions WHERE token = %s", (token,))
             conn.commit()
     response = RedirectResponse(url="/", status_code=303)
-    response.delete_cookie(SESSION_COOKIE)
+    response.delete_cookie(SESSION_COOKIE, domain=".genrxiv.org")
     return response
 
 
@@ -498,6 +500,20 @@ def me(request: Request):
         "is_reviewer": is_reviewer,
         "account_status": author.get("account_status", "active"),
     }
+
+
+@router.get("/admin-check", include_in_schema=False)
+def admin_check(request: Request):
+    """Return 200 if the current user is an admin, 401 otherwise.
+
+    Used by nginx auth_request to gate access to stats.genrxiv.org.
+    """
+    author = get_current_author(request)
+    if not author:
+        raise HTTPException(401, "Not authenticated")
+    if not _is_admin(author):
+        raise HTTPException(403, "Admin access required")
+    return Response(status_code=200)
 
 
 class EmailUpdate(BaseModel):
