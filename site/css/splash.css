@@ -48,7 +48,7 @@
 }
 .splash p { font-size: 1.02rem; color: var(--ink); max-width: 34em; }
 .splash .paper-card p { max-width: none; }
-.splash .paper-card h2 { margin: 0 0 0.4rem; }
+.splash .paper-card h2 { font-size: 1.15rem; margin: 0 0 0.4rem; line-height: 1.3; }
 .copy-block { position: relative; margin: 1.2rem 0; max-width: 34em; }
 .copy-block pre { background: var(--card); border: 1px solid var(--rule); border-radius: 6px; padding: 1rem 1.2rem; margin: 0; overflow-x: auto; }
 .copy-block code { font-family: 'IBM Plex Mono', monospace; font-size: 0.88rem; color: var(--ink); white-space: pre-wrap; word-break: break-word; }
