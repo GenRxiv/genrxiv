@@ -569,26 +569,12 @@ def splash_page(request: Request):
 
     <h3>What a GenRxiv preprint looks like</h3>
     <div class="paper-card">
-        <div class="paper-meta">ark:99999/genrxiv-1904-00001 &middot; posted 1904-01-01</div>
-        <h4>Fifth Supplement to Analysis Situs</h4>
-        <p class="paper-authors">Henri Poincaré</p>
-        <p class="paper-abstract">
-            In this fifth and final supplement to my Analysis Situs (1895), I
-            construct a closed three-dimensional manifold possessing the
-            homology of the 3-sphere yet whose fundamental group is non-trivial,
-            containing 120 elements. This counterexample disproves my earlier
-            claim that homology alone suffices to characterise the sphere. I am
-            thus compelled to ask the question that remains: is it possible for
-            the fundamental group of V to reduce to the identity, and yet V not
-            be simply connected? I confess this question would carry us too
-            far, and I shall not pursue it here&hellip;
-        </p>
-        <div class="paper-tags">
-            <span class="oecd-tag" tabindex="0" style="color:#2F5CFF;background:#E4E9FF;border-color:#2F5CFF" data-tooltip="Natural sciences > Mathematics">N&middot;MATH</span>
-            <span class="oecd-tag" tabindex="0" style="color:#2F5CFF;background:#E4E9FF;border-color:#2F5CFF" data-tooltip="Natural sciences > Physical sciences">N&middot;PHYS</span>
-            <span class="oecd-tag" tabindex="0" style="color:#16A085;background:#E0F5F1;border-color:#16A085" data-tooltip="Humanities & arts > History and archaeology">H&middot;HIST</span>
-        </div>
-    </div>
+<div class="paper-meta">ark:99999/genrxiv-1904-00001 &middot; posted 1904-01-01</div>
+<h2><a href="/article/ark:99999/genrxiv-1904-00001">Fifth Supplement to Analysis Situs</a></h2>
+<div class="paper-authors">Henri Poincaré</div>
+<p class="paper-abstract">In this fifth and final supplement to my Analysis Situs (1895), I construct a closed three-dimensional manifold possessing the homology of the 3-sphere yet whose fundamental group is non-trivial, containing 120 elements. This counterexample disproves my earlier claim that homology alone suffices to characterise the sphere. I am thus compelled to ask the question that remains: is it possible for the fundamental group of V to reduce to the identity, and yet V not be simply connected? I confess this question would carry us too far, and I shall not pursue it here&hellip;</p>
+<div class="paper-tags"><span class="oecd-tag" tabindex="0" style="color:#2F5CFF;background:#E4E9FF;border-color:#2F5CFF" data-tooltip="Natural sciences > Mathematics">N&middot;MATH</span><span class="oecd-tag" tabindex="0" style="color:#2F5CFF;background:#E4E9FF;border-color:#2F5CFF" data-tooltip="Natural sciences > Physical sciences">N&middot;PHYS</span><span class="oecd-tag" tabindex="0" style="color:#16A085;background:#E0F5F1;border-color:#16A085" data-tooltip="Humanities & arts > History and archaeology">H&middot;HIST</span></div>
+</div>
 
     <h3>Submission standards</h3>
     <p>
