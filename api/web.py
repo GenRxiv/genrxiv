@@ -272,13 +272,20 @@ def _footer_html() -> str:
 def _asset_version() -> str:
     """Cache-busting version string for static assets.
 
-    Uses the mtime of this file so it changes whenever the code is
-    updated and the container is rebuilt. This forces Cloudflare and
-    browsers to fetch fresh CSS/JS instead of serving stale caches.
+    Uses the latest mtime of this file and all CSS/JS files so it
+    changes whenever any asset is updated and the container is rebuilt.
+    This forces Cloudflare and browsers to fetch fresh CSS/JS instead
+    of serving stale caches.
     """
     import os
     try:
-        return str(int(os.path.getmtime(__file__)))
+        mtimes = [os.path.getmtime(__file__)]
+        site_dir = os.path.join(os.path.dirname(__file__), "..", "site")
+        for root, _, files in os.walk(site_dir):
+            for f in files:
+                if f.endswith((".css", ".js")):
+                    mtimes.append(os.path.getmtime(os.path.join(root, f)))
+        return str(int(max(mtimes)))
     except OSError:
         return "1"
 
