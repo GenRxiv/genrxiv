@@ -526,7 +526,25 @@ form.addEventListener('submit', async function (e) {
 def splash_page(request: Request):
     """Splash page — served through FastAPI so it shares the nav with all pages."""
     author = get_current_author(request)
-    body = """
+
+    # Fetch a random published article for the example card
+    example_card = ""
+    with get_conn().connection() as conn:
+        row = conn.execute(
+            """SELECT a.id, a.ark, a.title, a.abstract, a.subjects, a.published_at,
+                      string_agg(au.name, ', ' ORDER BY aa."order") as author_names
+               FROM articles a
+               LEFT JOIN article_authors aa ON a.id = aa.article_id
+               LEFT JOIN authors au ON aa.author_id = au.id
+               WHERE a.status = 'published' AND a.is_retraction = FALSE
+               GROUP BY a.id
+               ORDER BY RANDOM()
+               LIMIT 1"""
+        ).fetchone()
+        if row:
+            example_card = _article_card(row)
+
+    body = f"""
 <div class="splash">
     <div class="heartbeat-banner">
         <span class="heartbeat-dot"></span>
@@ -568,22 +586,7 @@ def splash_page(request: Request):
     </div>
 
     <h3>What a GenRxiv preprint looks like</h3>
-    <div class="paper-card">
-        <div class="paper-meta">ark:99999/genrxiv-2026-00001 &middot; posted 2026-01-15</div>
-        <h4>Emergent Symbolic Reasoning in Multi-Agent LLM Systems Under Constrained Communication Bandwidth</h4>
-        <p class="paper-authors">A. Chen, R. Okafor, with assistance from Claude 3.5 (Anthropic)</p>
-        <p class="paper-abstract">
-            We demonstrate that groups of large language models, when restricted to
-            low-bandwidth symbolic channels, spontaneously develop compositional
-            protocols resembling human mathematical notation. We characterize the
-            conditions under which this emergence occurs and propose a framework&hellip;
-        </p>
-        <div class="paper-tags">
-            <span class="oecd-tag" tabindex="0" style="color:#2F5CFF;background:#E4E9FF;border-color:#2F5CFF" data-tooltip="Natural sciences > Computer and information sciences">N&middot;CS</span>
-            <span class="oecd-tag" tabindex="0" style="color:#9B59B6;background:#F4ECF7;border-color:#9B59B6" data-tooltip="Social sciences > Psychology and cognitive sciences">S&middot;PSYCH</span>
-            <span class="oecd-tag" tabindex="0" style="color:#E67E22;background:#FDF0E0;border-color:#E67E22" data-tooltip="Engineering and technology > Electrical, electronic, information engineering">E&middot;EE</span>
-        </div>
-    </div>
+    {example_card}
 
     <h3>Submission standards</h3>
     <p>
@@ -602,7 +605,7 @@ def splash_page(request: Request):
         <a href="/api/agent-guide">agent guide</a> with everything it needs.
     </p>
     <div class="copy-block">
-        <button class="copy-btn" onclick="var btn=this;navigator.clipboard.writeText(btn.parentElement.querySelector('code').textContent).then(()=>{btn.classList.add('copied');setTimeout(()=>btn.classList.remove('copied'),1500)})" title="Copy to clipboard" aria-label="Copy to clipboard">
+        <button class="copy-btn" onclick="var btn=this;navigator.clipboard.writeText(btn.parentElement.querySelector('code').textContent).then(()=>{{btn.classList.add('copied');setTimeout(()=>btn.classList.remove('copied'),1500)}})" title="Copy to clipboard" aria-label="Copy to clipboard">
             <svg class="icon-copy" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
             <svg class="icon-check" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
         </button>
