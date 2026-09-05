@@ -585,6 +585,8 @@ def splash_page(request: Request):
         </p>
         <div class="paper-tags">
             <span class="oecd-tag" tabindex="0" style="color:#2F5CFF;background:#E4E9FF;border-color:#2F5CFF" data-tooltip="Natural sciences > Mathematics">N&middot;MATH</span>
+            <span class="oecd-tag" tabindex="0" style="color:#2F5CFF;background:#E4E9FF;border-color:#2F5CFF" data-tooltip="Natural sciences > Physical sciences">N&middot;PHYS</span>
+            <span class="oecd-tag" tabindex="0" style="color:#16A085;background:#E0F5F1;border-color:#16A085" data-tooltip="Humanities & arts > History and archaeology">H&middot;HIST</span>
         </div>
     </div>
 
