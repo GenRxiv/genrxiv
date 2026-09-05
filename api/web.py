@@ -438,28 +438,128 @@ def orcid_lookup(orcid: str, request: Request):
 
 # ─── Splash page ───────────────────────────────────────────────────────────
 
+HISTORIC_EXAMPLES = [
+    {"ark": "ark:99999/genrxiv-1904-00001", "title": "Fifth Supplement to Analysis Situs",
+     "authors": "Henri Poincaré", "year": "1904-01-01",
+     "abstract": "In this fifth and final supplement to my Analysis Situs (1895), I construct a closed three-dimensional manifold possessing the homology of the 3-sphere yet whose fundamental group is non-trivial, containing 120 elements. This counterexample disproves my earlier claim that homology alone suffices to characterise the sphere. I am thus compelled to ask the question that remains: is it possible for the fundamental group of V to reduce to the identity, and yet V not be simply connected? I confess this question would carry us too far, and I shall not pursue it here&hellip;",
+     "subjects": ["Natural sciences > Mathematics", "Natural sciences > Physical sciences", "Humanities and the arts > History and archaeology"]},
+    {"ark": "ark:99999/genrxiv-1843-00001", "title": "Notes on the Analytical Engine",
+     "authors": "Ada Lovelace", "year": "1843-01-01",
+     "abstract": "In translating Menabrea's memoir on Mr. Babbage's Analytical Engine, I have appended a series of notes expanding considerably on the original. In Note G I describe a method by which the engine might compute the Bernoulli numbers without human intervention — a sequence of operations encoded purely in punched cards. I contend that this engine might act upon things other than numbers, were the fundamental relations of pitched sounds or letters susceptible to abstract representation&hellip;",
+     "subjects": ["Natural sciences > Computer and information sciences", "Natural sciences > Mathematics", "Engineering and technology > Electrical, electronic, information engineering"]},
+    {"ark": "ark:99999/genrxiv-1866-00001", "title": "Experiments on Plant Hybridization",
+     "authors": "Gregor Mendel", "year": "1866-01-01",
+     "abstract": "Over eight years I cultivated nearly thirty thousand pea plants in the garden of the monastery, crossing varieties differing in seven distinct traits. The ratios observed in the offspring — consistently three dominant to one recessive in the second generation — suggest a lawful mechanism of inheritance. I propose that traits are governed by discrete factors which segregate independently, each parent contributing one factor per trait to the offspring. The regularity of these ratios across all seven characters is, I confess, beyond what I had anticipated&hellip;",
+     "subjects": ["Natural sciences > Biological sciences", "Agricultural and veterinary sciences > Agriculture, forestry, and fisheries", "Natural sciences > Mathematics"]},
+    {"ark": "ark:99999/genrxiv-1898-00001", "title": "Ray Emitted by Compounds of Uranium and Thorium",
+     "authors": "Marie Curie", "year": "1898-01-01",
+     "abstract": "I have shown that the rays emitted by uranium compounds are an atomic property of the element uranium itself, proportional to the quantity present and independent of its chemical state or physical conditions. The same radiation is observed in thorium. I propose the term \"radioactivity\" for this phenomenon. Measurements of the electrical conductivity imparted to air by these rays permit a precise quantitative comparison between different substances, and I have found that pitchblende is considerably more active than uranium alone — suggesting the presence of an unknown, far more radioactive element within it&hellip;",
+     "subjects": ["Natural sciences > Chemical sciences", "Natural sciences > Physical sciences", "Medical and health sciences > Basic medicine"]},
+    {"ark": "ark:99999/genrxiv-1687-00001", "title": "Philosophiae Naturalis Principia Mathematica",
+     "authors": "Isaac Newton", "year": "1687-01-01",
+     "abstract": "I have endeavoured in this work to establish the mathematical principles of natural philosophy, beginning from the laws of motion and gravitation. Every particle in the universe attracts every other with a force proportional to the product of their masses and inversely proportional to the square of the distance between them. From these premises I derive the motions of the planets, the comets, the moon, and the sea — for the tides, I find, are but the consequence of the moon's gravitational pull upon the waters. I do not feign hypotheses as to the cause of gravity itself&hellip;",
+     "subjects": ["Natural sciences > Physical sciences", "Natural sciences > Mathematics", "Engineering and technology > Mechanical engineering"]},
+    {"ark": "ark:99999/genrxiv-1859-00001", "title": "On the Origin of Species",
+     "authors": "Charles Darwin", "year": "1859-01-01",
+     "abstract": "I have been struck by the fact that species are not immutable, but have descended with modification from common ancestors through the action of natural selection. The slightest variation, if it confer any advantage, will tend to be preserved, and the individual so favoured will transmit its characters to its offspring. Slowly, over vast stretches of time, new varieties and species arise. I have gathered evidence from domesticated animals, from the geological record, from the geographical distribution of species, and from comparative anatomy to support this view&hellip;",
+     "subjects": ["Natural sciences > Biological sciences", "Natural sciences > Earth and related environmental sciences", "Social sciences > Psychology and cognitive sciences"]},
+    {"ark": "ark:99999/genrxiv-1632-00001", "title": "Dialogue Concerning Two Chief World Systems",
+     "authors": "Galileo Galilei", "year": "1632-01-01",
+     "abstract": "I have set forth in the form of a dialogue the arguments for the Copernican and the Ptolemaic systems, that the reader may judge between them. The tides, I argue, cannot be explained save by the double motion of the Earth — its annual revolution about the Sun and its daily rotation upon its axis. Through my telescope I have observed the phases of Venus, the satellites of Jupiter, and the mountains of the Moon, all of which contradict the ancient doctrine that the heavens are composed of an unchanging fifth element. I leave the reader to draw his own conclusions&hellip;",
+     "subjects": ["Natural sciences > Physical sciences", "Humanities and the arts > Philosophy, ethics, and religion", "Humanities and the arts > History and archaeology"]},
+    {"ark": "ark:99999/genrxiv-1609-00001", "title": "Astronomia Nova",
+     "authors": "Johannes Kepler", "year": "1609-01-01",
+     "abstract": "After years of labour upon the orbit of Mars, I am forced to abandon the circle as the figure of celestial motion. The planet's path is an ellipse, with the Sun at one focus. I have further determined that the line joining the planet to the Sun sweeps out equal areas in equal times, and that the squares of the orbital periods are proportional to the cubes of the mean distances from the Sun. These three laws I offer as a replacement for the perfect circles that astronomers have assumed since antiquity&hellip;",
+     "subjects": ["Natural sciences > Physical sciences", "Natural sciences > Mathematics", "Natural sciences > Earth and related environmental sciences"]},
+    {"ark": "ark:99999/genrxiv-1801-00001", "title": "Disquisitiones Arithmeticae",
+     "authors": "Carl Friedrich Gauss", "year": "1801-01-01",
+     "abstract": "I present here a systematic treatment of the theory of numbers, beginning with the notion of congruence, which I introduce as a generalisation of divisibility. I prove the fundamental theorem of arithmetic — that every integer decomposes uniquely into primes — and I establish the law of quadratic reciprocity, which I regard as one of the most beautiful theorems of arithmetic. I also treat the constructibility of regular polygons, showing that the heptadecagon is constructible by ruler and compass, a fact previously unnoticed&hellip;",
+     "subjects": ["Natural sciences > Mathematics", "Natural sciences > Computer and information sciences", "Humanities and the arts > Philosophy, ethics, and religion"]},
+    {"ark": "ark:99999/genrxiv-1748-00001", "title": "Introductio in Analysin Infinitorum",
+     "authors": "Leonhard Euler", "year": "1748-01-01",
+     "abstract": "I lay the foundations of mathematical analysis by treating functions as the primary objects of study, rather than curves. I introduce the exponential and logarithmic functions in their modern form, and I establish the relation connecting them with trigonometric functions — that e raised to an imaginary power yields the cosine and sine of that power. This identity, I believe, unifies branches of mathematics hitherto thought distinct. I also define the constant that bears my name, the base of the natural logarithm&hellip;",
+     "subjects": ["Natural sciences > Mathematics", "Natural sciences > Physical sciences", "Engineering and technology > Electrical, electronic, information engineering"]},
+    {"ark": "ark:99999/genrxiv-1832-00001", "title": "Experimental Researches in Electricity",
+     "authors": "Michael Faraday", "year": "1832-01-01",
+     "abstract": "I have found that a changing magnetic field produces an electric current in a nearby conductor — a phenomenon I term electromagnetic induction. A magnet moved through a coil of copper wire generates a current, and the cessation of that current upon the magnet's rest is equally striking. I have also shown that the current from a voltaic pile can decompose chemical compounds, a process I call electrolysis. I conceive of these phenomena not as action at a distance but as tensions and strains in the medium itself&hellip;",
+     "subjects": ["Natural sciences > Physical sciences", "Engineering and technology > Electrical, electronic, information engineering", "Natural sciences > Chemical sciences"]},
+    {"ark": "ark:99999/genrxiv-1865-00001", "title": "A Dynamical Theory of the Electromagnetic Field",
+     "authors": "James Clerk Maxwell", "year": "1865-01-01",
+     "abstract": "I propose that light is an electromagnetic disturbance propagated through the field according to the electromagnetic laws. From the constants obtained by Weber and Kohlrausch for the ratio of electrical units, I compute the velocity of these transverse undulations and find it to agree, within the limits of experimental error, with the velocity of light as determined by Fizeau. I am therefore led to the conclusion that light and magnetism are affections of the same substance, and that light is an electromagnetic phenomenon&hellip;",
+     "subjects": ["Natural sciences > Physical sciences", "Engineering and technology > Electrical, electronic, information engineering", "Natural sciences > Mathematics"]},
+    {"ark": "ark:99999/genrxiv-1869-00001", "title": "On the Relationship of the Properties of the Elements to their Atomic Weights",
+     "authors": "Dmitri Mendeleev", "year": "1869-01-01",
+     "abstract": "I have arranged the elements in order of their atomic weights and find that their properties repeat at regular intervals, forming a periodic law. Elements placed in the same column exhibit analogous chemical behaviour. I have deliberately left gaps where no known element fits the pattern, and I predict that these spaces will be filled by elements yet undiscovered — eka-boron, eka-aluminium, and eka-silicon — whose properties I venture to foretell from the position they must occupy&hellip;",
+     "subjects": ["Natural sciences > Chemical sciences", "Natural sciences > Physical sciences", "Natural sciences > Mathematics"]},
+    {"ark": "ark:99999/genrxiv-1832-00002", "title": "On the Economy of Machinery",
+     "authors": "Charles Babbage", "year": "1832-01-01",
+     "abstract": "I examine the principles that govern the division of labour between human workers and machines, and I show that the cost of manufacturing may be reduced by substituting mechanical operations for manual skill wherever the task is repetitive. I describe a calculating engine, the Difference Engine, which computes polynomial functions by the method of finite differences, eliminating human error entirely. I have also conceived of a far more ambitious machine — the Analytical Engine — which would be capable of any calculation expressible in algebra&hellip;",
+     "subjects": ["Engineering and technology > Mechanical engineering", "Natural sciences > Computer and information sciences", "Social sciences > Economics and business"]},
+    {"ark": "ark:99999/genrxiv-1861-00001", "title": "On the Germ Theory",
+     "authors": "Louis Pasteur", "year": "1861-01-01",
+     "abstract": "I have demonstrated by experiment that fermentation, putrefaction, and disease are caused not by spontaneous generation but by microscopic organisms present in the air. In flasks whose contents are shielded from airborne particles, no life appears, however long one waits. I have further shown that the microorganisms responsible for particular fermentations can be identified, cultivated, and destroyed by heat — a process I call pasteurisation. I am persuaded that many contagious diseases are likewise caused by specific germs&hellip;",
+     "subjects": ["Medical and health sciences > Basic medicine", "Natural sciences > Biological sciences", "Agricultural and veterinary sciences > Agriculture, forestry, and fisheries"]},
+    {"ark": "ark:99999/genrxiv-1859-00002", "title": "Notes on Hospitals",
+     "authors": "Florence Nightingale", "year": "1859-01-01",
+     "abstract": "I have collected statistics on mortality in military hospitals during the late war in the Crimea, and I find that the chief cause of death was not battlefield wounds but the squalid conditions of the wards themselves. By systematic attention to ventilation, cleanliness, drainage, and the separation of patients, the death rate fell from forty-two per cent to two per cent within six months. I present these figures not as opinion but as evidence, and I argue that hospital design must be founded upon statistical analysis of outcomes&hellip;",
+     "subjects": ["Medical and health sciences > Health sciences", "Social sciences > Sociology", "Natural sciences > Mathematics"]},
+    {"ark": "ark:99999/genrxiv-1824-00001", "title": "Reflections on the Motive Power of Fire",
+     "authors": "Sadi Carnot", "year": "1824-01-01",
+     "abstract": "I enquire whether the motive power of heat is bounded or unbounded, and whether the steam engine admits of improvement beyond a certain limit. I demonstrate that the maximum work obtainable from a given quantity of heat depends solely upon the temperatures between which the engine operates, and not upon the working substance. The ideal engine — one in which no heat is wasted — I describe as a cycle of isothermal and adiabatic processes. No real engine can surpass this efficiency, and the gap between real and ideal measures the imperfection of our machines&hellip;",
+     "subjects": ["Engineering and technology > Mechanical engineering", "Natural sciences > Physical sciences", "Engineering and technology > Chemical engineering"]},
+    {"ark": "ark:99999/genrxiv-1543-00001", "title": "On the Revolutions of the Heavenly Spheres",
+     "authors": "Nicolaus Copernicus", "year": "1543-01-01",
+     "abstract": "I have long hesitated to publish this work, knowing that the doctrine I advocate — that the Earth is not the centre of the universe but moves among the planets — will be received with hostility. Yet the complexity of the Ptolemaic system, with its epicycles upon epicycles, has become intolerable. By placing the Sun at the centre and granting the Earth a daily rotation and an annual revolution, the apparent motions of the planets fall into a natural and simple order. I submit this hypothesis to the judgement of mathematicians&hellip;",
+     "subjects": ["Natural sciences > Physical sciences", "Humanities and the arts > Philosophy, ethics, and religion", "Humanities and the arts > History and archaeology"]},
+    {"ark": "ark:99999/genrxiv-1690-00001", "title": "Treatise on Light",
+     "authors": "Christiaan Huygens", "year": "1690-01-01",
+     "abstract": "I propose that light consists not of corpuscles emitted from luminous bodies, but of waves propagated through an ethereal medium, much as sound is propagated through air. Each point on a wavefront may be regarded as the origin of secondary wavelets, and the envelope of these wavelets constitutes the wavefront at a later instant. From this principle I derive the laws of reflection and refraction, and I explain the strange phenomenon observed in Iceland spar, where a single ray produces two&hellip;",
+     "subjects": ["Natural sciences > Physical sciences", "Natural sciences > Mathematics", "Engineering and technology > Electrical, electronic, information engineering"]},
+    {"ark": "ark:99999/genrxiv-1665-00001", "title": "Micrographia",
+     "authors": "Robert Hooke", "year": "1665-01-01",
+     "abstract": "With the aid of a microscope of my own construction I have examined the minutest structures of common things, and I find a world of beauty invisible to the unaided eye. The surface of a flea is armed with joints and bristles of exquisite perfection; a hair appears as a shaft covered with scales; and a piece of cork, when sliced thin, reveals a honeycomb of empty cells, to which I give the name \"cells\" from their resemblance to the chambers of a monk's monastery. I suspect that this cellular structure is fundamental to the organisation of living matter&hellip;",
+     "subjects": ["Natural sciences > Biological sciences", "Engineering and technology > Mechanical engineering", "Humanities and the arts > Arts (arts, history of arts, performing arts, music)"]},
+    {"ark": "ark:99999/genrxiv-0250-00001", "title": "On the Equilibrium of Planes",
+     "authors": "Archimedes", "year": "0250-01-01",
+     "abstract": "I treat of the equilibrium of bodies resting upon planes and establish the law of the lever: two magnitudes balance when their weights are inversely proportional to their distances from the fulcrum. I further demonstrate that the centre of gravity of a parallelogram lies at the intersection of its diagonals, and that of a triangle upon the line drawn from a vertex to the midpoint of the opposite side. I am persuaded that these propositions, once grasped, will furnish the foundation for all mechanics&hellip;",
+     "subjects": ["Natural sciences > Mathematics", "Natural sciences > Physical sciences", "Engineering and technology > Mechanical engineering"]},
+    {"ark": "ark:99999/genrxiv-0300-00001", "title": "Elements",
+     "authors": "Euclid", "year": "0300-01-01",
+     "abstract": "I have compiled the foundations of geometry into thirteen books, beginning with definitions, postulates, and common notions. From these I derive, by strict logical deduction, the properties of triangles, parallelograms, circles, and regular solids. The fifth postulate — that if a straight line falling upon two straight lines makes the interior angles on the same side less than two right angles, the two lines will meet — I state without proof, for I have none. I prove that there are exactly five regular polyhedra, and I construct them&hellip;",
+     "subjects": ["Natural sciences > Mathematics", "Humanities and the arts > Philosophy, ethics, and religion", "Natural sciences > Physical sciences"]},
+    {"ark": "ark:99999/genrxiv-0500-00001", "title": "On the Theorem of the Right Triangle",
+     "authors": "Pythagoras", "year": "0500-01-01",
+     "abstract": "I have discovered a truth which I believe to be universal: in any right-angled triangle, the square upon the side subtending the right angle is equal to the squares upon the sides containing it. I have verified this by constructing squares upon the three sides and comparing their areas, and I am persuaded that it holds for all such triangles, however their sides may vary. I offer in sacrifice one hundred oxen, for I regard this as the most beautiful discovery I have made&hellip;",
+     "subjects": ["Natural sciences > Mathematics", "Humanities and the arts > Philosophy, ethics, and religion", "Natural sciences > Physical sciences"]},
+    {"ark": "ark:99999/genrxiv-0400-00001", "title": "On the Sacred Disease",
+     "authors": "Hippocrates", "year": "0400-01-01",
+     "abstract": "The disease called sacred, which men suppose to be of divine origin, is in my judgement no more sacred than any other. It arises from the brain, as do all ailments of the mind, and its cause is to be found in the humours — phlegm and bile — which obstruct the passages of air. Those who first called this disease sacred were, I suspect, seeking to conceal their own ignorance. I maintain that the body of a man contains within itself the causes of its own diseases, and that no ailment is beyond the reach of reason&hellip;",
+     "subjects": ["Medical and health sciences > Basic medicine", "Humanities and the arts > Philosophy, ethics, and religion", "Natural sciences > Biological sciences"]},
+    {"ark": "ark:99999/genrxiv-0350-00001", "title": "History of Animals",
+     "authors": "Aristotle", "year": "0350-01-01",
+     "abstract": "I have undertaken a systematic enquiry into the nature of animals, their parts, their habits, and their manner of life. I find that animals may be divided into those with blood and those without, corresponding roughly to what we call vertebrates and invertebrates. I have examined the development of the chick within the egg, and I observe that the heart begins to beat on the third day. I classify animals not by a single character but by their whole nature, and I note that nature proceeds by degrees, so that one kind passes into another almost without a gap&hellip;",
+     "subjects": ["Natural sciences > Biological sciences", "Humanities and the arts > Philosophy, ethics, and religion", "Natural sciences > Earth and related environmental sciences"]},
+]
+
 
 @router.get("/", include_in_schema=False, response_class=HTMLResponse)
 def splash_page(request: Request):
     """Splash page — served through FastAPI so it shares the nav with all pages."""
     author = get_current_author(request)
 
-    # Fetch a random published article for the example card
-    example_card = ""
-    with get_conn().connection() as conn:
-        row = conn.execute(
-            """SELECT a.id, a.ark, a.title, a.abstract, a.subjects, a.published_at,
-                      string_agg(au.name, ', ' ORDER BY aa."order") as author_names
-               FROM articles a
-               LEFT JOIN article_authors aa ON a.id = aa.article_id
-               LEFT JOIN authors au ON aa.author_id = au.id
-               WHERE a.status = 'published' AND a.is_retraction = FALSE
-               GROUP BY a.id
-               ORDER BY RANDOM()
-               LIMIT 1"""
-        ).fetchone()
-        if row:
-            example_card = _article_card(row)
+    # Pick a random historic example for the example card
+    import random
+    ex = random.choice(HISTORIC_EXAMPLES)
+    example_card = _article_card({
+        "ark": ex["ark"],
+        "title": ex["title"],
+        "abstract": ex["abstract"],
+        "subjects": ex["subjects"],
+        "published_at": ex["year"],
+        "author_names": ex["authors"],
+        "status": "published",
+        "is_retraction": False,
+    })
 
     body = f"""
 <div class="splash">
