@@ -385,6 +385,8 @@ def orcid_callback(request: Request, code: str, state: str):
 
     redirect = request.cookies.get("orcid_redirect", "/")
     response = RedirectResponse(redirect)
+    # Clear any old host-only cookie (from before the domain change)
+    response.delete_cookie(SESSION_COOKIE)
     response.set_cookie(
         SESSION_COOKIE,
         session_token,
@@ -453,6 +455,8 @@ def github_callback(request: Request, code: str, state: str):
 
     redirect = request.cookies.get("github_redirect", "/")
     response = RedirectResponse(redirect)
+    # Clear any old host-only cookie (from before the domain change)
+    response.delete_cookie(SESSION_COOKIE)
     response.set_cookie(
         SESSION_COOKIE,
         session_token,
@@ -476,6 +480,7 @@ def logout(request: Request):
             conn.execute("DELETE FROM sessions WHERE token = %s", (token,))
             conn.commit()
     response = RedirectResponse(url="/", status_code=303)
+    response.delete_cookie(SESSION_COOKIE)
     response.delete_cookie(SESSION_COOKIE, domain=".genrxiv.org")
     return response
 
