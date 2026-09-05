@@ -34,6 +34,7 @@ def _create_orcid_authorize_url(state: str) -> str:
         "scope": config.orcid_scope,
         "redirect_uri": config.orcid_redirect_url,
         "state": state,
+        "prompt": "login",
     }
     query = "&".join(f"{k}={v}" for k, v in params.items())
     return f"{config.orcid_authorize_url}?{query}"
