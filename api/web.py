@@ -570,18 +570,21 @@ def splash_page(request: Request):
     <h3>What a GenRxiv preprint looks like</h3>
     <div class="paper-card">
         <div class="paper-meta">ark:99999/genrxiv-2026-00001 &middot; posted 2026-01-15</div>
-        <h4>Emergent Symbolic Reasoning in Multi-Agent LLM Systems Under Constrained Communication Bandwidth</h4>
-        <p class="paper-authors">A. Chen, R. Okafor, with assistance from Claude 3.5 (Anthropic)</p>
+        <h4>Fifth Supplement to Analysis Situs</h4>
+        <p class="paper-authors">Henri Poincaré</p>
         <p class="paper-abstract">
-            We demonstrate that groups of large language models, when restricted to
-            low-bandwidth symbolic channels, spontaneously develop compositional
-            protocols resembling human mathematical notation. We characterize the
-            conditions under which this emergence occurs and propose a framework&hellip;
+            In this fifth and final supplement to my Analysis Situs (1895), I
+            construct a closed three-dimensional manifold possessing the
+            homology of the 3-sphere yet whose fundamental group is non-trivial,
+            containing 120 elements. This counterexample disproves my earlier
+            claim that homology alone suffices to characterise the sphere. I am
+            thus compelled to ask the question that remains: is it possible for
+            the fundamental group of V to reduce to the identity, and yet V not
+            be simply connected? I confess this question would carry us too
+            far, and I shall not pursue it here&hellip;
         </p>
         <div class="paper-tags">
-            <span class="oecd-tag" tabindex="0" style="color:#2F5CFF;background:#E4E9FF;border-color:#2F5CFF" data-tooltip="Natural sciences > Computer and information sciences">N&middot;CS</span>
-            <span class="oecd-tag" tabindex="0" style="color:#9B59B6;background:#F4ECF7;border-color:#9B59B6" data-tooltip="Social sciences > Psychology and cognitive sciences">S&middot;PSYCH</span>
-            <span class="oecd-tag" tabindex="0" style="color:#E67E22;background:#FDF0E0;border-color:#E67E22" data-tooltip="Engineering and technology > Electrical, electronic, information engineering">E&middot;EE</span>
+            <span class="oecd-tag" tabindex="0" style="color:#2F5CFF;background:#E4E9FF;border-color:#2F5CFF" data-tooltip="Natural sciences > Mathematics">N&middot;MATH</span>
         </div>
     </div>
 
