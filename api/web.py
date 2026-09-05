@@ -443,7 +443,6 @@ SPLASH_CSS = """
 .splash .status .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); margin-right: 0.5em; animation: pulse 2s ease-in-out infinite; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 .splash p { font-size: 1.02rem; color: var(--ink); max-width: 34em; }
-.splash .paper-card p { max-width: none; }
 .splash h2 { font-family: 'Fraunces', serif; font-weight: 500; font-size: 1.3rem; margin: 2.8rem 0 0.6rem; }
 .splash h3 { font-family: 'IBM Plex Sans', sans-serif; font-weight: 600; font-size: 0.95rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin: 2.6rem 0 1rem; }
 .subjects { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1rem 0 0; }
