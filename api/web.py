@@ -569,7 +569,7 @@ def splash_page(request: Request):
 
     <h3>What a GenRxiv preprint looks like</h3>
     <div class="paper-card">
-        <div class="paper-meta">ark:99999/genrxiv-2026-00001 &middot; posted 2026-01-15</div>
+        <div class="paper-meta">ark:99999/genrxiv-1904-00001 &middot; posted 1904-01-01</div>
         <h4>Fifth Supplement to Analysis Situs</h4>
         <p class="paper-authors">Henri Poincaré</p>
         <p class="paper-abstract">
