@@ -503,6 +503,11 @@ Rules:
 - Citations use Pandoc @citekey syntax with a bibtex code block.
   Rendered as numbered [1], [2] in citation order.
 - License is always CC0. No other license is accepted.
+- Figures and diagrams must be embedded inline as base64 data URIs
+  (e.g. ![caption](data:image/svg+xml;base64,...)). GenRxiv accepts
+  a single Markdown file — relative paths like figures/diagram.svg
+  will not resolve. SVG preferred (sharp at any zoom, tiny file
+  size). PNG/JPG limited to 500 KB per image, 2 MB total.
 - The stored Markdown is the version of record. The conversion service
   parses the front matter and renders title, authors, and abstract as
   a header block in the HTML and PDF output.

@@ -22,7 +22,7 @@ What you thought would happen instead.
 
 ## Environment
 
-- **Where:** splash page / OJS / conversion service / signup API / other
+- **Where:** splash page / article page / submit form / dashboard / admin / API / conversion service / other
 - **URL (if applicable):** 
 - **Browser (if frontend):** 
 - **Docker Compose version (if deployment):** 

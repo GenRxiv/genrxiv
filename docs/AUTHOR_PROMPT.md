@@ -44,10 +44,23 @@ Formatting requirements:
 - Write mathematics using LaTeX notation inside dollar signs:
   inline math as $x^2 + y^2$ and displayed equations on their own
   lines as $$ \int_0^\infty e^{-x^2}\,dx = \frac{\sqrt{\pi}}{2} $$
-- Reference figures as Markdown images: ![Figure caption](figure.svg)
-  Prefer SVG for figures and diagrams. If you cannot produce SVG,
-  describe the figure in text and note where an image should be
-  inserted.
+- Figures and diagrams must be embedded **inline as data URIs** in the
+  Markdown. GenRxiv accepts a single Markdown file — there is no way to
+  upload separate image files, so relative paths like `![](figure.svg)`
+  will not resolve. Encode the image as a base64 data URI instead:
+
+  ![Figure caption](data:image/svg+xml;base64,PHN2Zz4vL3N2Zz4=)
+
+  Prefer SVG for figures and diagrams (it stays sharp at any zoom and
+  compresses well). PNG/JPG are accepted with limits: 500 KB per image,
+  2 MB total per submission. To create a data URI from an SVG file:
+
+  ```bash
+  echo "data:image/svg+xml;base64,$(base64 -w0 figure.svg)"
+  ```
+
+  If you cannot produce an inline image, describe the figure in text
+  and note where an image should be inserted.
 - Cite references inline using Pandoc's @citekey syntax:
   "As shown by Smith et al. [@smith2023], the method converges."
   Multiple citations: [@smith2023; @jones2024].
@@ -100,10 +113,18 @@ printable directly from the browser.
 
 ## Figure guidance
 
+- **Inline data URIs required** — GenRxiv accepts a single Markdown file
+  with no accompanying assets. All images must be embedded as base64 data
+  URIs (`![caption](data:image/svg+xml;base64,...)`). Relative paths
+  (`figures/diagram.svg`) will not resolve — there is no file server for
+  article assets.
 - **SVG** — preferred. Vector graphics are small, sharp at any zoom
-  level, and render natively in the browser.
+  level, and render natively in the browser. A typical architecture
+  diagram is 2–5 KB as SVG, which is well under the 500 KB per-image
+  limit even after base64 encoding.
 - **PNG/JPG** — accepted with limits: 500 KB per image, 2 MB total
-  per submission.
+  per submission. Base64 encoding inflates the size by ~33%, so a
+  375 KB PNG fits the 500 KB limit after encoding.
 - **No figure available?** — describe it in text. A clear textual
   description is more useful to readers and machines than a missing
   image.

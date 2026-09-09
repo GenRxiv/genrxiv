@@ -73,8 +73,8 @@ object.__setattr__(config, "smtp_password", "")
 # The approve endpoint calls render_html/render_pdf; without these mocks,
 # tests that approve articles would fail trying to connect to the service.
 import articles as articles_module
-articles_module.render_html = lambda md: f"<html><body><h1>Test</h1><pre>{md}</pre></body></html>"
-articles_module.render_pdf = lambda md: b"%PDF-1.4\n%test pdf content\n%%EOF\n"
+articles_module.render_html = lambda md, ark="": f"<html><body><h1>Test</h1><pre>{md}</pre></body></html>"
+articles_module.render_pdf = lambda md, ark="": b"%PDF-1.4\n%test pdf content\n%%EOF\n"
 
 
 # ─── Skip marker ────────────────────────────────────────────────────────────

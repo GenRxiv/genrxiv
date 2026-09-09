@@ -240,7 +240,7 @@ function showPreview(e) {
 
     // Build preview
     var authorsHtml = authors.map(function(a) {
-        return '<div class="author-line">' + a.name + ' <span class="orcid">' + a.orcid + '</span></div>';
+        return '<div class="author-line">' + a.name + ' <a href="https://orcid.org/' + a.orcid + '" target="_blank" rel="noopener" aria-label="ORCID iD"><img src="/orcid.svg" alt="ORCID iD" style="width:0.9em;height:0.9em;vertical-align:super;margin-left:0.2em"></a> <span class="orcid">' + a.orcid + '</span></div>';
     }).join('');
     var subjHtml = subjects.map(function(k) { return '<span class="subject-tag">' + k + '</span>'; }).join(' ');
 

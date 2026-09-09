@@ -583,12 +583,16 @@ def parse_ark_variant(ark: str) -> tuple[str, int | None, str | None]:
     return base, version, fmt
 
 
-def render_html(markdown: str) -> str:
+def render_html(markdown: str, ark: str = "") -> str:
     """Call conversion service to render Markdown → HTML.
 
     The conversion service parses YAML front matter (title, authors,
     abstract) from the Markdown and renders it as a header block.
+    If ``ark`` is provided, it is injected into the front matter so the
+    conversion service can render it in the header.
     """
+    if ark:
+        markdown = _inject_ark_into_front_matter(markdown, ark)
     with httpx.Client(timeout=120) as client:
         r = client.post(
             f"{config.convert_service_url}/render/html",
@@ -598,12 +602,16 @@ def render_html(markdown: str) -> str:
         return r.text
 
 
-def render_pdf(markdown: str) -> bytes:
+def render_pdf(markdown: str, ark: str = "") -> bytes:
     """Call conversion service to render Markdown → PDF.
 
     The conversion service parses YAML front matter (title, authors,
     abstract) from the Markdown and renders it as a header block.
+    If ``ark`` is provided, it is injected into the front matter so the
+    conversion service can render it in the PDF header.
     """
+    if ark:
+        markdown = _inject_ark_into_front_matter(markdown, ark)
     import time
     time.sleep(1)  # Avoid rate limit on conversion service
     with httpx.Client(timeout=120) as client:
@@ -613,6 +621,28 @@ def render_pdf(markdown: str) -> bytes:
         )
         r.raise_for_status()
         return r.content
+
+
+def _inject_ark_into_front_matter(markdown: str, ark: str) -> str:
+    """Add an ``ark`` field to the YAML front matter of a Markdown document.
+
+    Returns the original markdown unchanged if it has no front matter.
+    """
+    if not markdown.startswith("---"):
+        return markdown
+    # Find the closing --- of the front matter
+    close_idx = markdown.find("\n---\n", 3)
+    if close_idx == -1:
+        return markdown
+    # Insert ark: line before the closing ---
+    fm_end = close_idx + 4  # position after "\n---\n"
+    fm_body = markdown[:close_idx]
+    if "ark:" in fm_body:
+        # Already has an ark field — replace it
+        import re as _re
+        fm_body = _re.sub(r'^ark:.*$', f'ark: "{ark}"', fm_body, flags=_re.MULTILINE)
+        return fm_body + markdown[close_idx:]
+    return fm_body + f'\nark: "{ark}"' + markdown[close_idx:]
 
 
 def save_article_file(article_id: int, ext: str, content: bytes | str) -> str:
@@ -1154,6 +1184,19 @@ async def validate_submission(
             if "\n---\n" not in md_text[3:]:
                 hints.append("YAML front matter appears to be unclosed — add a closing --- line")
 
+        # Check for relative image paths (common mistake — GenRxiv accepts
+        # a single Markdown file, so relative paths like figures/diagram.svg
+        # cannot resolve). Data URIs and absolute https:// URLs are fine.
+        import re as _re
+        relative_imgs = _re.findall(r'!\[[^\]]*\]\((?!data:|https?://|/)([^)]+)\)', md_text)
+        if relative_imgs:
+            hints.append(
+                f"Image(s) use relative paths ({', '.join(relative_imgs[:3])}"
+                f"{'...' if len(relative_imgs) > 3 else ''}). GenRxiv accepts a single "
+                f"Markdown file — relative paths will not resolve. Embed images "
+                f"inline as base64 data URIs: ![caption](data:image/svg+xml;base64,...)"
+            )
+
         # Check for content issues: duplicates, citations, empty sections,
         # heading hierarchy, ORCID format, minimum length
         content_errors, content_hints = _check_content_issues(md_text, title, abstract)
@@ -1641,14 +1684,24 @@ def _withdrawn_gone(base_ark: str, version: int | None):
 
 
 def _serve_pdf(article: dict, base_ark: str, version: int | None, request: Request):
-    """Serve an article as PDF."""
+    """Serve an article as PDF.
+
+    If the pre-rendered PDF is missing from disk (e.g. after a cache clear),
+    render it on the fly, save it back to disk, and update the DB path so
+    subsequent requests serve from cache again.
+    """
     track_download(article["id"], "pdf", request)
     display = f"{base_ark}.v{version}" if version is not None else base_ark
     if article["pdf_path"]:
         filepath = safe_resolve_file(article["pdf_path"])
         if filepath:
             return FileResponse(filepath, media_type="application/pdf", filename=f"{display.replace('/', '_')}.pdf")
-    pdf_bytes = render_pdf(article["source_markdown"])
+    # Cache miss — render, save, and update the DB path
+    pdf_bytes = render_pdf(article["source_markdown"], ark=base_ark)
+    rel_path = save_article_file(article["id"], "pdf", pdf_bytes)
+    with get_conn().connection() as conn:
+        conn.execute("UPDATE articles SET pdf_path = %s WHERE id = %s", (rel_path, article["id"]))
+        conn.commit()
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
@@ -1918,20 +1971,114 @@ def view_article(ark: str, request: Request):
         filepath = safe_resolve_file(article["html_path"])
         if filepath:
             html = filepath.read_text(encoding="utf-8")
+            html = _migrate_orcid_icon(html)
+            html = _inject_ark_html(html, base_ark)
+            html = _inject_download_links(html, base_ark, version)
             html = _inject_meta_tags(html, article, base_ark, version)
             if version_banner:
                 html = _inject_retraction_banner(html, version_banner)
             if retraction_banner:
                 html = _inject_retraction_banner(html, retraction_banner)
             return HTMLResponse(html)
-    # Fallback: render on the fly (front matter is in the stored markdown)
-    html = render_html(article["source_markdown"])
+    # Cache miss — render, save the raw HTML (before meta-tag injection),
+    # update the DB path, then inject meta tags/banners for this response.
+    html = render_html(article["source_markdown"], ark=base_ark)
+    rel_path = save_article_file(article["id"], "html", html)
+    with get_conn().connection() as conn:
+        conn.execute("UPDATE articles SET html_path = %s WHERE id = %s", (rel_path, article["id"]))
+        conn.commit()
+    html = _inject_download_links(html, base_ark, version)
     html = _inject_meta_tags(html, article, base_ark, version)
     if version_banner:
         html = _inject_retraction_banner(html, version_banner)
     if retraction_banner:
         html = _inject_retraction_banner(html, retraction_banner)
     return HTMLResponse(html)
+
+
+def _inject_ark_html(html: str, base_ark: str) -> str:
+    """Inject the ARK identifier with logo into the paper-header of a
+    pre-rendered article HTML page, if it's not already present.
+
+    This handles articles rendered before the ARK was baked into the
+    header at render time. New renders already include it via the
+    conversion service, so this is a no-op for them.
+    """
+    if "paper-ark" in html:
+        return html  # Already has the ARK line
+    from html import escape
+    ark_line = (
+        f'<div class="paper-ark" style="font-size:0.85rem;color:var(--muted);'
+        f'margin-top:0.5rem">'
+        f'<a href="https://n2t.net/{escape(base_ark)}" '
+        f'style="color:inherit;text-decoration:none">'
+        f'<img src="/ark-logo.svg?v=4" alt="ARK" '
+        f'style="width:1.1em;height:1.1em;vertical-align:middle;margin-right:0.2em">'
+        f'{escape(base_ark)}</a>'
+        f'</div>'
+    )
+    # Insert before the closing </div> of paper-header
+    import re as _re
+    return _re.sub(
+        r'(</div>\s*<div class="paper-abstract|</div>\s*</div>\s*<div class="article-content)',
+        ark_line + r'\1',
+        html,
+        count=1,
+    )
+
+
+def _inject_download_links(html: str, base_ark: str, version: int | None) -> str:
+    """Insert a download bar (PDF, Markdown, BibTeX) right after the
+    paper-header div in a rendered article HTML page."""
+    ark_display = f"{base_ark}.v{version}" if version is not None else base_ark
+    pdf_url = f"/article/{ark_display}/pdf"
+    md_url = f"/article/{ark_display}/markdown"
+    bib_url = f"/article/{ark_display}/bibtex"
+    bar = (
+        '<div class="article-downloads" style="display:flex;gap:0.8rem;'
+        'flex-wrap:wrap;margin-bottom:2rem;padding-bottom:1rem;'
+        'border-bottom:1px solid var(--muted);font-size:0.9rem">'
+        f'<a href="{pdf_url}" style="display:inline-flex;align-items:center;'
+        'gap:0.3rem;padding:0.3rem 0.8rem;background:var(--accent);'
+        'color:#000;border-radius:4px;text-decoration:none">'
+        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" '
+        'stroke="currentColor" stroke-width="2" stroke-linecap="round" '
+        'stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>'
+        '<polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>'
+        '</svg>PDF</a>'
+        f'<a href="{md_url}" style="display:inline-flex;align-items:center;'
+        'gap:0.3rem;padding:0.3rem 0.8rem;border:1px solid var(--border);'
+        'border-radius:4px;text-decoration:none;color:var(--ink)">'
+        'Markdown</a>'
+        f'<a href="{bib_url}" style="display:inline-flex;align-items:center;'
+        'gap:0.3rem;padding:0.3rem 0.8rem;border:1px solid var(--border);'
+        'border-radius:4px;text-decoration:none;color:var(--ink)">'
+        'BibTeX</a>'
+        '</div>'
+    )
+    # Insert right after the closing </div> of paper-header
+    import re as _re
+    return _re.sub(
+        r'(</div>\s*)(<h[12])',
+        r'\1' + bar + r'\2',
+        html,
+        count=1,
+    )
+
+
+def _migrate_orcid_icon(html: str) -> str:
+    """Replace the legacy external ORCID icon URL with the self-hosted /orcid.svg
+    and fix the vertical alignment in pre-rendered article HTML. This is a no-op
+    for articles rendered after the switch to self-hosting."""
+    html = html.replace(
+        'https://orcid.org/static/vectors/orcid.icon.svg',
+        '/orcid.svg',
+    )
+    html = html.replace(
+        'vertical-align:middle;margin-left:0.2em',
+        'vertical-align:super;margin-left:0.2em',
+    )
+    return html
 
 
 def _inject_retraction_banner(html: str, banner: str) -> str:
@@ -2086,8 +2233,8 @@ def _approve_article(
         ark = assign_ark(article_id)
 
     # Render HTML and PDF
-    html = render_html(row["source_markdown"])
-    pdf = render_pdf(row["source_markdown"])
+    html = render_html(row["source_markdown"], ark=ark)
+    pdf = render_pdf(row["source_markdown"], ark=ark)
     html_path = save_article_file(article_id, "html", html)
     pdf_path = save_article_file(article_id, "pdf", pdf)
 

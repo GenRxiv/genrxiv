@@ -2952,7 +2952,7 @@ class TestReconciliation:
         # Mock render_pdf to fail so the auto-approval fails at submission time
         import articles as articles_module
         original_render_pdf = articles_module.render_pdf
-        def failing_render_pdf(md):
+        def failing_render_pdf(md, ark=""):
             raise Exception("Conversion service unavailable")
         monkeypatch.setattr(articles_module, "render_pdf", failing_render_pdf)
 

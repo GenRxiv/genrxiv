@@ -1,10 +1,13 @@
 User-agent: *
 Allow: /
-Disallow: /app/$$$call$$$
-Disallow: /app/index/admin
-Disallow: /app/index/$$$call$$$
-Disallow: /app/index/user/profile
-Disallow: /app/index/login
-Disallow: /app/index/submissions
+Disallow: /admin/
+Disallow: /api/submit
 
-Sitemap: https://genrxiv.org/app/genrxiv/sitemap
+Sitemap: https://genrxiv.org/sitemap.xml
+
+# API discovery for agents
+OpenAPI-Schema: https://genrxiv.org/api/openapi.json
+Agent-Guide: https://genrxiv.org/api/agent-guide
+FOS-Taxonomy: https://genrxiv.org/api/fos
+OAI-PMH-Endpoint: https://genrxiv.org/oai
+Atom-Feed: https://genrxiv.org/feed.xml

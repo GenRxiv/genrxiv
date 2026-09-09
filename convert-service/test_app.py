@@ -107,6 +107,53 @@ class TestRenderHtml:
         assert "orcid.org/0000-0000-0000-0000" in body
         assert "This is the abstract of the test paper." in body
 
+    def test_orcid_icon_self_hosted_in_html(self, client):
+        """The ORCID icon should reference the self-hosted /orcid.svg, not
+        the external ORCID server."""
+        content = (
+            b'---\n'
+            b'title: "Icon Test"\n'
+            b'abstract: "Test."\n'
+            b'authors:\n'
+            b'  - orcid: "0000-0000-0000-0000"\n'
+            b'    name: "Jane Doe"\n'
+            b'---\n\n'
+            b'Body.\n'
+        )
+        r = client.post(
+            "/render/html",
+            files={"file": ("test.md", content, "text/markdown")},
+        )
+        assert r.status_code == 200
+        body = r.text
+        # Self-hosted icon
+        assert 'src="/orcid.svg"' in body
+        # Must NOT reference the external ORCID icon URL
+        assert "orcid.org/static/vectors" not in body
+        # The icon should be inside a link to the ORCID profile
+        assert 'href="https://orcid.org/0000-0000-0000-0000"' in body
+
+    def test_pdf_with_orcid_icon(self, client):
+        """PDF generation should succeed when authors have ORCIDs (the
+        icon SVG is written to the job directory for Tectonic)."""
+        content = (
+            b'---\n'
+            b'title: "PDF Icon Test"\n'
+            b'abstract: "Test."\n'
+            b'authors:\n'
+            b'  - orcid: "0000-0000-0000-0000"\n'
+            b'    name: "Jane Doe"\n'
+            b'---\n\n'
+            b'Body content.\n'
+        )
+        r = client.post(
+            "/convert/markdown",
+            files={"file": ("test.md", content, "text/markdown")},
+        )
+        assert r.status_code == 200
+        assert r.headers["content-type"] == "application/pdf"
+        assert r.content[:5] == b"%PDF-"
+
     def test_no_front_matter_no_header(self, client, md_file):
         """Without front matter, no metadata header is injected."""
         r = client.post(

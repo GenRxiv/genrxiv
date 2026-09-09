@@ -24,7 +24,7 @@ BLOCKED=0
 for file in $SCAN_FILES; do
     # Skip .env.example, docs, and this hook script itself
     case "$file" in
-        *.env.example|*SETUP.md|*README.md|*CONTRIBUTING.md|*SECURITY.md|*pre-commit.sh|*.gitleaks.toml|*.pre-commit-config.yaml)
+        *.env.example|*README.md|*CONTRIBUTING.md|*SECURITY.md|*pre-commit.sh|*.gitleaks.toml|*.pre-commit-config.yaml)
             continue
             ;;
     esac

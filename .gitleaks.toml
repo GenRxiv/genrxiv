@@ -4,7 +4,6 @@ title = "GenRxiv Secret Scanning"
 description = "Known safe paths and patterns"
 paths = [
   '''deploy/.env.example''',
-  '''docs/SETUP.md''',
   '''README.md''',
   '''CONTRIBUTING.md''',
   '''SECURITY.md''',

@@ -257,8 +257,8 @@ docker compose -f deploy/docker-compose.yml --env-file .env up -d
 
 The site will be available at `http://localhost:8080`.
 
-See [docs/SETUP.md](docs/SETUP.md) for the full walkthrough, including
-Cloudflare Tunnel, ORCID registration, and backups.
+See `deploy/.env.example` for the full list of environment variables, and
+`AGENTS.md` for architecture, deployment, and maintenance instructions.
 
 ## Tests
 

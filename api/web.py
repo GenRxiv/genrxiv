@@ -26,6 +26,18 @@ from orcid_client import fetch_orcid_works_count
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+
+def _orcid_icon(orcid: str) -> str:
+    """Return an inline ORCID iD icon linked to the author's ORCID profile."""
+    from html import escape
+    return (
+        f'<a href="https://orcid.org/{escape(orcid)}" target="_blank" '
+        f'rel="noopener" aria-label="ORCID iD">'
+        f'<img src="/orcid.svg" alt="ORCID iD" '
+        f'style="width:0.9em;height:0.9em;vertical-align:super;margin-left:0.2em">'
+        f'</a>'
+    )
+
 # ─── OECD Fields of Science taxonomy ───────────────────────────────────────
 # Used for structured subject classification on submissions.
 # Authors must select 3 classifications from this taxonomy.
@@ -265,6 +277,7 @@ def _footer_html() -> str:
     return f"""<footer>
 <p>{config.site_name} &mdash; An open archive for AI-generated research.</p>
 <p><a href="/api/articles">API</a> &middot; <a href="/oai?verb=Identify">OAI-PMH</a> &middot; <a href="/feed.xml">Feed</a> &middot; <a href="/sitemap.xml">Sitemap</a> &middot; <a href="/robots.txt">robots.txt</a> &middot; <a href="/code-of-conduct">Code of Conduct</a></p>
+<p style="font-size:0.85rem;color:var(--ink-soft)">Articles are identified by <a href="https://arks.org" target="_blank" rel="noopener">ARK</a> identifiers and authors by <a href="https://orcid.org" target="_blank" rel="noopener">ORCID</a> iDs.</p>
 {reviewer_note}
 </footer>"""
 
@@ -370,6 +383,9 @@ def _article_card(article: dict) -> str:
     authors_html = ""
     if "authors" in article and article["authors"]:
         authors_html = ", ".join(
+            f'<a href="/author/{a["orcid"]}">{a["name"]}</a>{_orcid_icon(a["orcid"])}'
+            for a in article["authors"] if a.get("orcid")
+        ) or ", ".join(
             f'<a href="/author/{a["orcid"]}">{a["name"]}</a>' for a in article["authors"]
         )
     elif "author_names" in article and article["author_names"]:
@@ -383,7 +399,7 @@ def _article_card(article: dict) -> str:
         status_badge += '<span class="badge" style="background:#fdf0f0;color:#c0392b">retraction</span>'
 
     return f"""<div class="paper-card">
-<div class="paper-meta">{ark} &middot; posted {published}</div>
+<div class="paper-meta"><a href="https://n2t.net/{ark}" style="color:inherit;text-decoration:none"><img src="/ark-logo.svg?v=4" alt="ARK" style="width:1.1em;height:1.1em;vertical-align:middle;margin-right:0.2em">{ark}</a> &middot; posted {published}</div>
 <h2><a href="/article/{ark}">{title}</a></h2>
 <div class="paper-authors">{authors_html}</div>
 {f'<p class="paper-abstract">{abstract}</p>' if abstract else ''}
@@ -621,6 +637,29 @@ def splash_page(request: Request):
         site exposes a plain-text
         <a href="/api/agent-guide">agent guide</a> with everything it needs.
     </p>
+
+    <h3>Persistent identifiers</h3>
+    <p>
+        Every article is assigned an <a href="https://arks.org" target="_blank" rel="noopener">ARK (Archival Resource Key)</a>
+        identifier and every author is identified by an <a href="https://orcid.org" target="_blank" rel="noopener">ORCID</a> iD.
+        These are open, community-governed identifier standards &mdash; not proprietary
+        schemes &mdash; so citations and authorship records remain resolvable and
+        unambiguous regardless of what happens to this site.
+    </p>
+    <div style="display:flex;gap:1.5rem;flex-wrap:wrap;align-items:center;margin:1rem 0">
+        <a href="https://arks.org" target="_blank" rel="noopener" title="ARK Alliance" style="display:inline-flex;align-items:center;gap:0.4rem;padding:0.4rem 0.9rem;border:1px solid var(--border);border-radius:4px;text-decoration:none;color:var(--ink);font-size:0.9rem">
+            <img src="/ark-logo.svg?v=4" alt="ARK" style="width:20px;height:20px">
+            ARK Alliance
+        </a>
+        <a href="https://orcid.org" target="_blank" rel="noopener" title="ORCID Foundation" style="display:inline-flex;align-items:center;gap:0.4rem;padding:0.4rem 0.9rem;border:1px solid var(--border);border-radius:4px;text-decoration:none;color:var(--ink);font-size:0.9rem">
+            <img src="/orcid.svg" alt="ORCID" style="width:20px;height:20px">
+            ORCID Foundation
+        </a>
+        <a href="https://www.oecd.org/en/about/topics/oecd-fos-classification.html" target="_blank" rel="noopener" title="OECD Fields of Science" style="display:inline-flex;align-items:center;gap:0.4rem;padding:0.4rem 0.9rem;border:1px solid var(--border);border-radius:4px;text-decoration:none;color:var(--ink);font-size:0.9rem">
+            OECD FOS Taxonomy
+        </a>
+    </div>
+
     <div class="copy-block">
         <button class="copy-btn" onclick="var btn=this;navigator.clipboard.writeText(btn.parentElement.querySelector('code').textContent).then(()=>{{btn.classList.add('copied');setTimeout(()=>btn.classList.remove('copied'),1500)}})" title="Copy to clipboard" aria-label="Copy to clipboard">
             <svg class="icon-copy" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
@@ -707,6 +746,7 @@ def browse_page(
             rows = conn.execute(
                 f"""SELECT a.id, a.ark, a.title, a.abstract, a.subjects, a.published_at,
                           string_agg(au.name, ', ' ORDER BY aa."order") as author_names,
+                          json_agg(json_build_object('orcid', au.orcid, 'name', au.name) ORDER BY aa."order") FILTER (WHERE au.id IS NOT NULL) as authors,
                           COALESCE(MAX(au.orcid_works_count), 0) as max_works
                    FROM articles a
                    LEFT JOIN article_authors aa ON a.id = aa.article_id
@@ -727,6 +767,7 @@ def browse_page(
             rows = conn.execute(
                 f"""SELECT a.id, a.ark, a.title, a.abstract, a.subjects, a.published_at,
                           string_agg(au.name, ', ' ORDER BY aa."order") as author_names,
+                          json_agg(json_build_object('orcid', au.orcid, 'name', au.name) ORDER BY aa."order") FILTER (WHERE au.id IS NOT NULL) as authors,
                           COALESCE(MAX(au.orcid_works_count), 0) as max_works
                    FROM articles a
                    LEFT JOIN article_authors aa ON a.id = aa.article_id
@@ -903,7 +944,8 @@ def subject_articles(subject: str, request: Request, page: int = 1, per_page: in
     with get_conn().connection() as conn:
         rows = conn.execute(
             """SELECT a.id, a.ark, a.title, a.abstract, a.subjects, a.published_at,
-                      string_agg(au.name, ', ' ORDER BY aa."order") as author_names
+                      string_agg(au.name, ', ' ORDER BY aa."order") as author_names,
+                      json_agg(json_build_object('orcid', au.orcid, 'name', au.name) ORDER BY aa."order") FILTER (WHERE au.id IS NOT NULL) as authors
                FROM articles a
                LEFT JOIN article_authors aa ON a.id = aa.article_id
                LEFT JOIN authors au ON aa.author_id = au.id
@@ -948,7 +990,8 @@ def author_page(orcid: str, request: Request):
             raise HTTPException(404, "Author not found")
         articles = conn.execute(
             """SELECT a.id, a.ark, a.title, a.abstract, a.subjects, a.published_at,
-                      string_agg(au.name, ', ' ORDER BY aa2."order") as author_names
+                      string_agg(au.name, ', ' ORDER BY aa2."order") as author_names,
+                      json_agg(json_build_object('orcid', au.orcid, 'name', au.name) ORDER BY aa2."order") FILTER (WHERE au.id IS NOT NULL) as authors
                FROM articles a
                JOIN article_authors aa ON a.id = aa.article_id
                LEFT JOIN article_authors aa2 ON a.id = aa2.article_id
@@ -969,7 +1012,7 @@ def author_page(orcid: str, request: Request):
     <div class="author-info">
         <div>
             <div class="name">{author['name']}</div>
-            <div class="orcid"><a href="https://orcid.org/{author['orcid']}">ORCID: {author['orcid']}</a></div>
+            <div class="orcid"><a href="https://orcid.org/{author['orcid']}"><img src="/orcid.svg" alt="ORCID iD" style="width:1em;height:1em;vertical-align:super;margin-right:0.3em">ORCID: {author['orcid']}</a></div>
             {f'<div style="font-size:0.9rem;color:#555;margin-top:0.3rem">{author["affiliation"]}</div>' if author.get('affiliation') else ''}
         </div>
     </div>
@@ -1589,11 +1632,17 @@ def submit_page(request: Request):
                 <label>Markdown file (.md)</label>
                 <input type="file" name="markdown" accept=".md,.markdown" required>
                 <div class="hint">Max 25MB. The file is the version of record.</div>
-                <div class="hint" style="margin-top:0.3rem;color:var(--cobalt)">
+                <div class="hint" style="margin-top:0.3rem">
                     Metadata can be embedded as YAML front matter in the file —
                     the form will auto-fill when you upload. See
                     <a href="/api/agent-guide" target="_blank">the agent guide</a>
                     for the format.
+                </div>
+                <div class="hint" style="margin-top:0.3rem;color:#b48a00">
+                    Figures and diagrams must be embedded inline as base64 data URIs
+                    (e.g. <code>![caption](data:image/svg+xml;base64,...)</code>).
+                    Relative paths like <code>figures/diagram.svg</code> will not work —
+                    GenRxiv accepts a single Markdown file with no accompanying assets.
                 </div>
             </div>
 
@@ -1717,7 +1766,7 @@ def submit_done_page(article_id: int, request: Request, retraction: str = ""):
 
     ark = article["ark"] or "(pending)"
     authors_html = ", ".join(
-        f'{a["name"]} <span class="orcid">{a["orcid"]}</span>' for a in author_rows
+        f'{a["name"]} {_orcid_icon(a["orcid"])} <span class="orcid">{a["orcid"]}</span>' for a in author_rows
     )
     subjects = article["subjects"] or []
     from oecd_codes import classification_tag
@@ -2048,7 +2097,7 @@ def dashboard_preview_page(article_id: int, request: Request):
 
     ark = article["ark"] or "(pending)"
     authors_html = ", ".join(
-        f'{a["name"]} <span class="orcid">{a["orcid"]}</span>' for a in author_rows
+        f'{a["name"]} {_orcid_icon(a["orcid"])} <span class="orcid">{a["orcid"]}</span>' for a in author_rows
     )
     subjects = article["subjects"] or []
     from oecd_codes import classification_tag
@@ -2453,7 +2502,7 @@ def admin_page(request: Request, withdrawn: str = ""):
                     screening_html = f'<div class="meta" style="margin-top:0.5rem"><span class="status-badge status-rejected">Screening error: {screening["error"]}</span></div>'
             pending_cards.append(f"""<div class="card">
 <h2>{p['title']}</h2>
-<div class="meta">Submitted by <a href="/author/{p['submitter_orcid']}">{p['submitter_name']}</a> on {submitted}</div>
+<div class="meta">Submitted by <a href="/author/{p['submitter_orcid']}">{p['submitter_name']}</a>{_orcid_icon(p['submitter_orcid'])} on {submitted}</div>
 {screening_html}
 <div style="margin-top:1rem;display:flex;gap:0.5rem">
     <a href="/admin/submission/{p['id']}" class="btn btn-primary">Review</a>
@@ -2525,7 +2574,7 @@ def admin_submission_detail(article_id: int, request: Request):
         ).fetchone() if article.get("submitted_by") else None
 
     authors_html = "".join(
-        f"<li><a href='/author/{a['orcid']}'>{a['name']}</a> ({a['orcid']})" +
+        f"<li><a href='/author/{a['orcid']}'>{a['name']}</a>{_orcid_icon(a['orcid'])} ({a['orcid']})" +
         (f" &mdash; {a['affiliation']}" if a.get('affiliation') else "") +
         "</li>"
         for a in authors
@@ -2577,7 +2626,7 @@ def admin_submission_detail(article_id: int, request: Request):
     <div style="margin-bottom:1.5rem">
         <span class="status-badge status-{article['status']}">{article['status']}</span>
         &middot; Submitted {_format_date(article.get('submitted_at'))}
-        {f'&middot; by <a href="/author/{submitter["orcid"]}">{submitter["name"]}</a>' if submitter else ''}
+        {f'&middot; by <a href="/author/{submitter["orcid"]}">{submitter["name"]}</a>{_orcid_icon(submitter["orcid"])}' if submitter else ''}
     </div>
 
     <div class="card">
