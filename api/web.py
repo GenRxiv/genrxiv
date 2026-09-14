@@ -1881,30 +1881,25 @@ def submit_version_page(article_id: int, request: Request):
             <label>Subjects (comma-separated, optional)</label>
             <input type="text" name="subjects" placeholder="AI, machine learning, ...">
         </div>
+        <input type="hidden" name="license" value="CC0">
+        <input type="hidden" name="license_url" value="https://creativecommons.org/publicdomain/zero/1.0/">
         <div class="form-group">
-            <label>License</label>
-            <select name="license" id="license-select">
-                <option value="CC-BY-4.0">CC BY 4.0 (default)</option>
-                <option value="CC-BY-SA-4.0">CC BY-SA 4.0</option>
-                <option value="CC-BY-ND-4.0">CC BY-ND 4.0</option>
-                <option value="CC0">CC0 (Public Domain)</option>
-            </select>
-            <input type="hidden" name="license_url" id="license-url" value="https://creativecommons.org/licenses/by/4.0/">
+            <div class="confirm-checkbox">
+                <input type="checkbox" name="reviewed_agree" id="reviewed_agree" value="1" required>
+                <label for="reviewed_agree">I agree that even if this work was co-authored with AI, I have reviewed it for accuracy and integrity.</label>
+            </div>
+            <div class="confirm-checkbox">
+                <input type="checkbox" name="cc0_agree" id="cc0_agree" value="1" required>
+                <label for="cc0_agree">I dedicate this work to the public domain under <a href="https://creativecommons.org/publicdomain/zero/1.0/" target="_blank">CC0</a>.</label>
+            </div>
+            <div class="confirm-checkbox">
+                <input type="checkbox" name="coc_agree" id="coc_agree" value="1" required>
+                <label for="coc_agree">I have read and agree to the <a href="/code-of-conduct">Code of Conduct</a>.</label>
+            </div>
         </div>
         <button type="submit" class="btn btn-primary">Submit version for review</button>
     </form>
     <div style="margin-top:1.5rem"><a href="/dashboard">&larr; Back to My Submissions</a></div>
-    <script>
-    document.getElementById('license-select').addEventListener('change', function() {{
-        var urls = {{
-            'CC-BY-4.0': 'https://creativecommons.org/licenses/by/4.0/',
-            'CC-BY-SA-4.0': 'https://creativecommons.org/licenses/by-sa/4.0/',
-            'CC-BY-ND-4.0': 'https://creativecommons.org/licenses/by-nd/4.0/',
-            'CC0': 'https://creativecommons.org/publicdomain/zero/1.0/'
-        }};
-        document.getElementById('license-url').value = urls[this.value] || '';
-    }});
-    </script>
     """
     return _page("Submit New Version", body, author)
 
