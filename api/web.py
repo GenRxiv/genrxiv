@@ -1936,6 +1936,36 @@ def submit_version_page(article_id: int, request: Request):
             .catch(function(err) {{ console.error('Front matter parse failed:', err); }});
         }});
     }}
+    // Intercept form submit — post via fetch, redirect to confirmation page.
+    // Without this the browser displays the raw JSON response from /api/submit.
+    var versionForm = document.querySelector('form[action="/api/submit"]');
+    if (versionForm) {{
+        versionForm.addEventListener('submit', function(e) {{
+            e.preventDefault();
+            var btn = versionForm.querySelector('button[type="submit"]');
+            btn.disabled = true;
+            btn.textContent = 'Submitting...';
+            fetch('/api/submit', {{
+                method: 'POST',
+                body: new FormData(versionForm),
+            }})
+            .then(function(r) {{ return r.json(); }})
+            .then(function(data) {{
+                if (data.id) {{
+                    window.location.href = '/submit/done/' + data.id;
+                }} else {{
+                    alert('Submission failed: ' + (data.detail || JSON.stringify(data)));
+                    btn.disabled = false;
+                    btn.textContent = 'Submit version for review';
+                }}
+            }})
+            .catch(function(err) {{
+                alert('Submission failed: ' + err);
+                btn.disabled = false;
+                btn.textContent = 'Submit version for review';
+            }});
+        }});
+    }}
     </script>
     """
     return _page("Submit New Version", body, author)
