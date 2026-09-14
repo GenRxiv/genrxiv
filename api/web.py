@@ -1900,6 +1900,43 @@ def submit_version_page(article_id: int, request: Request):
         <button type="submit" class="btn btn-primary">Submit version for review</button>
     </form>
     <div style="margin-top:1.5rem"><a href="/dashboard">&larr; Back to My Submissions</a></div>
+    <script>
+    // Auto-fill form fields from YAML front matter when a file is selected,
+    // using the same /api/validate endpoint as the regular submit form.
+    var fileInput = document.querySelector('input[name="markdown"]');
+    if (fileInput) {{
+        fileInput.addEventListener('change', function() {{
+            if (!this.files || !this.files.length) return;
+            var formData = new FormData();
+            formData.append('markdown', this.files[0]);
+            fetch('/api/validate', {{
+                method: 'POST',
+                body: formData,
+            }})
+            .then(function(r) {{ return r.json(); }})
+            .then(function(data) {{
+                if (!data.parsed_metadata) return;
+                var meta = data.parsed_metadata;
+                if (meta.title) {{
+                    document.querySelector('input[name="title"]').value = meta.title;
+                }}
+                if (meta.abstract) {{
+                    document.querySelector('textarea[name="abstract"]').value = meta.abstract;
+                }}
+                if (meta.authors && Array.isArray(meta.authors)) {{
+                    document.querySelector('textarea[name="authors"]').value =
+                        JSON.stringify(meta.authors.map(function(a) {{
+                            return {{orcid: a.orcid, name: a.name, affiliation: a.affiliation || ''}};
+                        }}));
+                }}
+                if (meta.subjects && Array.isArray(meta.subjects)) {{
+                    document.querySelector('input[name="subjects"]').value = meta.subjects.join(', ');
+                }}
+            }})
+            .catch(function(err) {{ console.error('Front matter parse failed:', err); }});
+        }});
+    }}
+    </script>
     """
     return _page("Submit New Version", body, author)
 
