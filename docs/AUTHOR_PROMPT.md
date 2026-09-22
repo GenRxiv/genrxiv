@@ -88,7 +88,7 @@ Formatting requirements:
   The server extracts the BibTeX block, renders citations as
   numbered references [1], [2] in citation order, and hides the
   raw BibTeX from the rendered HTML. The BibTeX is also exposed
-  via /article/{ark}/bibtex for machine-readable access.
+  via /article/{ark}.bib for machine-readable access.
 - End with a license statement:
   "This work is licensed under CC0 1.0 (Public Domain Dedication)."
 

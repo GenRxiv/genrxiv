@@ -541,36 +541,14 @@ def parse_ark_variant(ark: str) -> tuple[str, int | None, str | None]:
         'ark:99999/genrxiv-2026-00001.pdf'     -> (base, None,  'pdf')
         'ark:99999/genrxiv-2026-00001.v3.pdf'  -> (base, 3,     'pdf')
 
-    Also handles legacy slash-separated suffixes for backwards compatibility:
-
-        'ark:99999/genrxiv-2026-00001/1'       -> (base, 1,     None)
-        'ark:99999/genrxiv-2026-00001/pdf'     -> (base, None,  'pdf')
-        'ark:99999/genrxiv-2026-00001/1/pdf'   -> (base, 1,     'pdf')
+    Legacy slash-separated suffixes (/N, /pdf, /N/pdf) are redirected to the
+    dot-variant form by the /article/{ark:path} route before parsing.
     """
     ark = normalize_ark(ark)
     version: int | None = None
     fmt: str | None = None
 
-    # Handle legacy slash-separated version suffix: /N
-    parts = ark.rsplit("/", 1)
-    if len(parts) == 2 and parts[1].isdigit():
-        ark = parts[0]
-        version = int(parts[1])
-        # Check for a trailing format after the version: /N/pdf
-        parts2 = ark.rsplit("/", 1)
-        if len(parts2) == 2 and parts2[1] in FORMAT_VARIANTS:
-            ark = parts2[0]
-            fmt = parts2[1]
-        return ark, version, fmt
-
-    # Handle legacy slash-separated format suffix: /pdf
-    parts = ark.rsplit("/", 1)
-    if len(parts) == 2 and parts[1] in FORMAT_VARIANTS:
-        ark = parts[0]
-        fmt = parts[1]
-        return ark, version, fmt
-
-    # Handle dot-separated variants: .vN, .pdf, .vN.pdf
+    # Dot-separated variants: .vN, .pdf, .vN.pdf
     if "." not in ark:
         return ark, version, fmt
 
@@ -1724,13 +1702,10 @@ def _stored_ark_for(base_ark: str, version: int | None) -> str | None:
     return row["ark"]
 
 
-def _canonical_ark(base_ark: str, version: int | None) -> str | None:
-    """Return the canonical stored ARK for a non-canonical request, or None.
-
-    Non-canonical forms handled:
-      - legacy placeholder NAAN (ark:99999/...) → configured NAAN
-      - hyphen-stripped or differently-cased names → stored form
-    """
+def _stored_ark_any(base_ark: str, version: int | None) -> str | None:
+    """Resolve a requested base ARK to a stored ARK, trying the canonical
+    NAAN swap for legacy-NAAN requests first. Returns None if nothing
+    matches (unknown ARK, or the requested version does not exist)."""
     candidates = []
     prefix = f"ark:{LEGACY_NAAN}/"
     if config.ark_naan != LEGACY_NAAN and base_ark.startswith(prefix):
@@ -1739,8 +1714,21 @@ def _canonical_ark(base_ark: str, version: int | None) -> str | None:
     for cand in candidates:
         stored = _stored_ark_for(cand, version)
         if stored is not None:
-            return stored if stored != base_ark else None
+            return stored
     return None
+
+
+def _canonical_ark(base_ark: str, version: int | None) -> str | None:
+    """Return the canonical stored ARK for a non-canonical request, or None.
+
+    Non-canonical forms handled:
+      - legacy placeholder NAAN (ark:99999/...) → configured NAAN
+      - hyphen-stripped or differently-cased names → stored form
+    """
+    stored = _stored_ark_any(base_ark, version)
+    if stored is None or stored == base_ark:
+        return None
+    return stored
 
 
 def _legacy_redirect(base_ark: str, version: int | None, fmt: str | None = None,
@@ -1826,64 +1814,11 @@ def _serve_bibtex(article: dict, base_ark: str, version: int | None):
                     headers={"Content-Disposition": f"inline; filename={display}.bib"})
 
 
-# ── Legacy slash-separated routes (backwards compatible) ──────────────────
-# These keep old URLs like /article/ark:NAAN/genrxiv-2026-00001/pdf working.
-# New URLs use dot-variants: /article/ark:NAAN/genrxiv-2026-00001.pdf
-
-@router.get("/article/{ark:path}/pdf")
-def download_pdf(ark: str, request: Request):
-    """Download article as PDF (legacy slash route)."""
-    base_ark, version, fmt = parse_ark_variant(unquote(ark))
-    redirect = _legacy_redirect(base_ark, version, fmt or "pdf")
-    if redirect:
-        return redirect
-    _withdrawn_gone(base_ark, version)
-    article = _lookup_article(base_ark, version)
-    if not article:
-        raise HTTPException(404, "Article not found")
-    return _serve_pdf(article, base_ark, version, request)
-
-
-@router.get("/article/{ark:path}/markdown")
-def download_markdown(ark: str, request: Request):
-    """Download original Markdown source (legacy slash route)."""
-    base_ark, version, fmt = parse_ark_variant(unquote(ark))
-    redirect = _legacy_redirect(base_ark, version, fmt or "md")
-    if redirect:
-        return redirect
-    _withdrawn_gone(base_ark, version)
-    article = _lookup_article(base_ark, version)
-    if not article:
-        raise HTTPException(404, "Article not found")
-    return _serve_markdown(article, base_ark, version, request)
-
-
-@router.get("/article/{ark:path}/jsonld")
-def article_jsonld(ark: str):
-    """Get article as JSON-LD (legacy slash route)."""
-    base_ark, version, fmt = parse_ark_variant(unquote(ark))
-    redirect = _legacy_redirect(base_ark, version, fmt or "jsonld")
-    if redirect:
-        return redirect
-    _withdrawn_gone(base_ark, version)
-    article = _lookup_article(base_ark, version)
-    if not article:
-        raise HTTPException(404, "Article not found")
-    return _serve_jsonld(article, base_ark, version)
-
-
-@router.get("/article/{ark:path}/bibtex")
-def article_bibtex(ark: str):
-    """Get article's BibTeX references (legacy slash route)."""
-    base_ark, version, fmt = parse_ark_variant(unquote(ark))
-    redirect = _legacy_redirect(base_ark, version, fmt or "bib")
-    if redirect:
-        return redirect
-    _withdrawn_gone(base_ark, version)
-    article = _lookup_article(base_ark, version)
-    if not article:
-        raise HTTPException(404, "Article not found")
-    return _serve_bibtex(article, base_ark, version)
+# ── Legacy slash-separated suffixes ────────────────────────────────────────
+# Old URLs like /article/ark:NAAN/genrxiv-2026-00001/pdf or .../1 redirect
+# (301) to the canonical dot-variant form (.../genrxiv-2026-00001.pdf,
+# .../genrxiv-2026-00001.v1.pdf). The redirect lives in the catch-all
+# /article/{ark:path} route below.
 
 
 @router.get("/api/articles/{ark:path}/references")
@@ -1986,9 +1921,31 @@ def view_article(ark: str, request: Request):
         ark:NAAN/genrxiv-2026-00001.jsonld  → current version, JSON-LD
         ark:NAAN/genrxiv-2026-00001.bib     → current version, BibTeX
 
-    Also handles legacy slash-separated suffixes for backwards compatibility.
+    Legacy slash-separated suffixes (…/1, …/pdf, …/1/pdf) redirect to the
+    canonical dot-variant form.
     """
-    base_ark, version, fmt = parse_ark_variant(unquote(ark))
+    raw = normalize_ark(unquote(ark))
+
+    # Legacy slash-separated suffix → canonical dot-variant (single hop:
+    # the target is already NAAN-canonicalized when possible). The slash
+    # routes used long names (/markdown, /bibtex); dot variants use short.
+    slash = re.match(
+        r"^(ark:[^/]+/[^/]+?)(?:/(\d+))?(?:/(pdf|md|markdown|jsonld|bib|bibtex))?$", raw
+    )
+    if slash and (slash.group(2) or slash.group(3)):
+        base_raw = slash.group(1)
+        bbase, bver, _ = parse_ark_variant(base_raw)
+        ver = int(slash.group(2)) if slash.group(2) else bver
+        sfmt = {"markdown": "md", "bibtex": "bib"}.get(slash.group(3), slash.group(3))
+        resolved = _stored_ark_any(bbase, ver)
+        if resolved is not None:
+            target = resolved + (f".v{ver}" if ver is not None else "") + (
+                f".{sfmt}" if sfmt else "")
+            return RedirectResponse(f"/article/{target}", status_code=301)
+        # Unknown ARK → fall through to the normal 404 below rather than
+        # redirecting to a nonexistent target.
+
+    base_ark, version, fmt = parse_ark_variant(raw)
 
     redirect = _legacy_redirect(base_ark, version, fmt)
     if redirect:
@@ -2147,9 +2104,9 @@ def _inject_download_links(html: str, base_ark: str, version: int | None) -> str
     """Insert a download bar (PDF, Markdown, BibTeX) right after the
     paper-header div in a rendered article HTML page."""
     ark_display = f"{base_ark}.v{version}" if version is not None else base_ark
-    pdf_url = f"/article/{ark_display}/pdf"
-    md_url = f"/article/{ark_display}/markdown"
-    bib_url = f"/article/{ark_display}/bibtex"
+    pdf_url = f"/article/{ark_display}.pdf"
+    md_url = f"/article/{ark_display}.md"
+    bib_url = f"/article/{ark_display}.bib"
     bar = (
         '<div class="article-downloads" style="display:flex;gap:0.8rem;'
         'flex-wrap:wrap;margin-bottom:2rem;padding-bottom:1rem;'

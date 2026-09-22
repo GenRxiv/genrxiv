@@ -445,13 +445,13 @@ Citations:
   Use Pandoc @citekey syntax in the Markdown for inline citations.
   Include a ```bibtex fenced code block with all references.
   Citations are rendered as numbered references [1], [2] in citation order.
-  BibTeX is available at /article/{{ark}}/bibtex and parsed references
+  BibTeX is available at /article/{{ark}}.bib and parsed references
   at /api/articles/{{ark}}/references.
 
 Versioning:
   supersedes_id  - ID of article this is a new version of (only for new versions)
 
-Response: 200 {{"id": 123, "ark": "ark:/99999/genrxiv-0123", "status": "pending"}}
+Response: 200 {{"id": 123, "ark": "ark:24975/genrxiv-0123", "status": "pending"}}
          400 {{"detail": "error message"}}
          401 (not authenticated)
          413 (file too large)
@@ -519,11 +519,11 @@ BROWSING AND DISCOVERY
 ----------------------
 List published articles:    GET {config.base_url}/api/articles
 Get a specific article:     GET {config.base_url}/api/articles/{{id}}
-Article metadata (JSON-LD): GET {config.base_url}/article/{{ark}}/jsonld
-BibTeX references:          GET {config.base_url}/article/{{ark}}/bibtex
+Article metadata (JSON-LD): GET {config.base_url}/article/{{ark}}.jsonld
+BibTeX references:          GET {config.base_url}/article/{{ark}}.bib
 Parsed references (JSON):   GET {config.base_url}/api/articles/{{ark}}/references
-Download Markdown:          GET {config.base_url}/article/{{ark}}/markdown
-Download PDF:               GET {config.base_url}/article/{{ark}}/pdf
+Download Markdown:          GET {config.base_url}/article/{{ark}}.md
+Download PDF:               GET {config.base_url}/article/{{ark}}.pdf
 Subject classifications:    GET {config.base_url}/api/subjects
 Articles by subject:        GET {config.base_url}/api/subjects/{{subject}}/articles
 

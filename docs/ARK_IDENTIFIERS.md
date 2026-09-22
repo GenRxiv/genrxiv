@@ -224,19 +224,19 @@ stripping the extra slash, so both formats resolve correctly.
 ### Legacy slash-separated routes
 
 Before adopting dot-variants, GenRxiv used slash-separated routes for
-formats (e.g. `/pdf`, `/markdown`) and versions (e.g. `/1`). These
-continue to work as backwards-compatible aliases:
+formats (e.g. `/pdf`, `/markdown`) and versions (e.g. `/1`). These now
+return a 301 redirect to the canonical dot-variant URL:
 
-| Legacy URL                                          | Equivalent dot-variant URL                           |
-|-----------------------------------------------------|------------------------------------------------------|
-| `.../ark:NAAN/genrxiv-2026-00001/pdf`                     | `.../ark:NAAN/genrxiv-2026-00001.pdf`                      |
-| `.../ark:NAAN/genrxiv-2026-00001/markdown`                | `.../ark:NAAN/genrxiv-2026-00001.md`                       |
-| `.../ark:NAAN/genrxiv-2026-00001/jsonld`                  | `.../ark:NAAN/genrxiv-2026-00001.jsonld`                   |
-| `.../ark:NAAN/genrxiv-2026-00001/bibtex`                  | `.../ark:NAAN/genrxiv-2026-00001.bib`                      |
-| `.../ark:NAAN/genrxiv-2026-00001/1`                       | `.../ark:NAAN/genrxiv-2026-00001.v1`                       |
-| `.../ark:NAAN/genrxiv-2026-00001/1/pdf`                   | `.../ark:NAAN/genrxiv-2026-00001.v1.pdf`                   |
+| Legacy URL                                          | Redirects to                                             |
+|-----------------------------------------------------|----------------------------------------------------------|
+| `.../ark:NAAN/genrxiv-2026-00001/pdf`                     | `.../ark:NAAN/genrxiv-2026-00001.pdf`                          |
+| `.../ark:NAAN/genrxiv-2026-00001/markdown`                | `.../ark:NAAN/genrxiv-2026-00001.md`                           |
+| `.../ark:NAAN/genrxiv-2026-00001/jsonld`                  | `.../ark:NAAN/genrxiv-2026-00001.jsonld`                       |
+| `.../ark:NAAN/genrxiv-2026-00001/bibtex`                  | `.../ark:NAAN/genrxiv-2026-00001.bib`                          |
+| `.../ark:NAAN/genrxiv-2026-00001/1`                       | `.../ark:NAAN/genrxiv-2026-00001.v1`                           |
+| `.../ark:NAAN/genrxiv-2026-00001/1/pdf`                   | `.../ark:NAAN/genrxiv-2026-00001.v1.pdf`                       |
 
-New citations should use the dot-variant syntax. The legacy routes exist
+All citations should use the dot-variant syntax. The redirects exist
 solely to preserve existing external links.
 
 ## Data persistence commitment

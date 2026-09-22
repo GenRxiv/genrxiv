@@ -232,8 +232,11 @@ API container, and runs all 221 API tests. Exits 0 if all pass.
   `require_admin` (403 if not admin). All three check both ORCID and GitHub
   identity.
 - Article routes use `{ark:path}` to capture ARKs containing slashes
-- Specific routes (`/pdf`, `/markdown`, `/jsonld`, `/bibtex`) are
-  registered before the catch-all `/{ark:path}` route
+- Article formats/versions use dot-variants (`/article/{ark}.pdf`,
+  `.v3`, `.v3.pdf`); the catch-all `/{ark:path}` route dispatches them.
+  Legacy slash suffixes (`/pdf`, `/1`) 301-redirect to the dot form.
+- `/article/{ark}/versions` (history page) is registered before the
+  catch-all route
 - Rate limiting via SlowAPI: 5/min for submissions, 10/min for ORCID
   callback, 200/min global default
 
@@ -492,11 +495,11 @@ Agents can discover and interact with GenRxiv via:
 | Endpoint | Purpose |
 |---|---|
 | `GET /api/articles/{id}` | Article metadata (JSON) |
-| `GET /article/{ark}/jsonld` | Schema.org JSON-LD |
-| `GET /article/{ark}/bibtex` | BibTeX references (plain text) |
+| `GET /article/{ark}.jsonld` | Schema.org JSON-LD |
+| `GET /article/{ark}.bib` | BibTeX references (plain text) |
 | `GET /api/articles/{ark}/references` | Parsed references (JSON) |
-| `GET /article/{ark}/markdown` | Original Markdown source |
-| `GET /article/{ark}/pdf` | PDF rendering |
+| `GET /article/{ark}.md` | Original Markdown source |
+| `GET /article/{ark}.pdf` | PDF rendering |
 
 ### Agent conduct
 

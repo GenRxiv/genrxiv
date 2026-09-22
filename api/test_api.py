@@ -497,7 +497,7 @@ class TestSubmissionValidation:
             f"/admin/articles/{article_id}",
             json={"action": "approve"},
         )
-        r2 = authed_client.get(f"/article/ark:/99999/genrxiv-{datetime.now().year}-{article_id:05d}/markdown")
+        r2 = authed_client.get(f"/article/ark:/99999/genrxiv-{datetime.now().year}-{article_id:05d}.md")
         assert r2.status_code == 200
         stored_md = r2.text
         assert "subjects:" in stored_md
@@ -529,7 +529,7 @@ class TestSubmissionValidation:
             f"/admin/articles/{article_id}",
             json={"action": "approve"},
         )
-        r2 = authed_client.get(f"/article/ark:/99999/genrxiv-{datetime.now().year}-{article_id:05d}/markdown")
+        r2 = authed_client.get(f"/article/ark:/99999/genrxiv-{datetime.now().year}-{article_id:05d}.md")
         assert r2.status_code == 200
         stored_md = r2.text
         # The title should be escaped in the YAML
@@ -1546,7 +1546,7 @@ class TestWithdrawal:
             data={"reason": "x"},
             follow_redirects=False,
         )
-        assert client.get(f"/article/{db['ark']}/pdf").status_code == 410
+        assert client.get(f"/article/{db['ark']}.pdf").status_code == 410
 
     @requires_db
     def test_withdrawn_markdown_returns_410(self, admin_client, client, db):
@@ -1555,7 +1555,7 @@ class TestWithdrawal:
             data={"reason": "x"},
             follow_redirects=False,
         )
-        assert client.get(f"/article/{db['ark']}/markdown").status_code == 410
+        assert client.get(f"/article/{db['ark']}.md").status_code == 410
 
     @requires_db
     def test_withdrawn_jsonld_returns_410(self, admin_client, client, db):
@@ -1564,7 +1564,7 @@ class TestWithdrawal:
             data={"reason": "x"},
             follow_redirects=False,
         )
-        assert client.get(f"/article/{db['ark']}/jsonld").status_code == 410
+        assert client.get(f"/article/{db['ark']}.jsonld").status_code == 410
 
     @requires_db
     def test_withdrawn_excluded_from_sitemap(self, admin_client, client, db):
@@ -1618,7 +1618,7 @@ class TestWithdrawal:
 class TestArticleView:
     @requires_db
     def test_article_jsonld_returns_scholarlyarticle(self, client, db):
-        r = client.get(f"/article/{db['ark']}/jsonld")
+        r = client.get(f"/article/{db['ark']}.jsonld")
         assert r.status_code == 200
         body = r.json()
         assert body["@context"] == "https://schema.org"
@@ -1634,14 +1634,14 @@ class TestArticleView:
 
     @requires_db
     def test_article_pdf_returns_pdf(self, client, db):
-        r = client.get(f"/article/{db['ark']}/pdf")
+        r = client.get(f"/article/{db['ark']}.pdf")
         assert r.status_code == 200
         assert "application/pdf" in r.headers["content-type"]
         assert r.content.startswith(b"%PDF")
 
     @requires_db
     def test_article_markdown_returns_markdown(self, client, db):
-        r = client.get(f"/article/{db['ark']}/markdown")
+        r = client.get(f"/article/{db['ark']}.md")
         assert r.status_code == 200
         assert "markdown" in r.headers["content-type"]
         assert "A Test Paper" in r.text
@@ -1699,6 +1699,36 @@ class TestArticleView:
             assert r.headers["location"] == f"/article/{new_ark}"
         finally:
             object.__setattr__(config, "ark_naan", "99999")
+
+    @requires_db
+    def test_slash_variants_redirect_to_dot(self, client, db):
+        """Legacy slash-separated ARK suffixes 301 to the canonical
+        dot-variant form."""
+        ark = db["ark"]  # ark:99999/genrxiv-2026-00001 (canonical in tests)
+        cases = [
+            (f"/article/{ark}/pdf", f"/article/{ark}.pdf"),
+            (f"/article/{ark}/markdown", f"/article/{ark}.md"),
+            (f"/article/{ark}/md", f"/article/{ark}.md"),
+            (f"/article/{ark}/jsonld", f"/article/{ark}.jsonld"),
+            (f"/article/{ark}/bibtex", f"/article/{ark}.bib"),
+            (f"/article/{ark}/bib", f"/article/{ark}.bib"),
+            (f"/article/{ark}/1", f"/article/{ark}.v1"),
+            (f"/article/{ark}/1/pdf", f"/article/{ark}.v1.pdf"),
+            (f"/article/{ark}/1/markdown", f"/article/{ark}.v1.md"),
+        ]
+        for src, dst in cases:
+            r = client.get(src, follow_redirects=False)
+            assert r.status_code == 301, f"{src} → {r.status_code}"
+            assert r.headers["location"] == dst, f"{src} → {r.headers['location']}"
+        # Canonical dot variants serve directly (.bib is excluded — the
+        # seeded article has no BibTeX block, so it legitimately 404s)
+        for suffix in (".pdf", ".md", ".jsonld", ".v1", ".v1.pdf"):
+            r = client.get(f"/article/{ark}{suffix}")
+            assert r.status_code == 200, f"{suffix} → {r.status_code}"
+        # Unknown ARKs 404 directly rather than redirecting to nowhere
+        r = client.get("/article/ark:99999/genrxiv-2026-99999/pdf",
+                       follow_redirects=False)
+        assert r.status_code == 404
 
 
 # ─── 26-27. Authors ─────────────────────────────────────────────────────────
