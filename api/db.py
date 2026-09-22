@@ -85,6 +85,7 @@ CREATE TABLE IF NOT EXISTS article_authors (
 CREATE TABLE IF NOT EXISTS downloads (
     id SERIAL PRIMARY KEY,
     article_id INTEGER REFERENCES articles(id) ON DELETE CASCADE,
+    ark TEXT,
     format TEXT NOT NULL,
     user_agent TEXT,
     is_agent BOOLEAN NOT NULL DEFAULT false,
@@ -167,6 +168,17 @@ END$$;
 
 -- Add index for supersedes_id if it doesn't exist
 CREATE INDEX IF NOT EXISTS idx_articles_supersedes_id ON articles(supersedes_id);
+
+-- Add ark column to downloads if it doesn't exist
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_name = 'downloads' AND column_name = 'ark') THEN
+        ALTER TABLE downloads ADD COLUMN ark TEXT;
+    END IF;
+END$$;
+
+CREATE INDEX IF NOT EXISTS idx_downloads_ark ON downloads(ark);
 
 -- Add cached ORCID record columns to authors
 DO $$

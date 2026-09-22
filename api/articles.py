@@ -655,15 +655,20 @@ def safe_resolve_file(relative_path: str) -> Path | None:
     return target
 
 
-def track_download(article_id: int, fmt: str, request: Request):
-    """Record a download/view."""
+def track_download(article_id: int, fmt: str, request: Request, ark: str | None = None):
+    """Record a download/view.
+
+    ``ark`` is the work's base ARK — downloads are keyed to the work, not the
+    version row, so counts persist when a new version is published.
+    ``article_id`` is kept for per-version attribution.
+    """
     ua = request.headers.get("user-agent", "")
     agent = is_agent(ua)
     client_ip = request.client.host if request.client else ""
     with get_conn().connection() as conn:
         conn.execute(
-            "INSERT INTO downloads (article_id, format, user_agent, is_agent, ip_hash) VALUES (%s, %s, %s, %s, %s)",
-            (article_id, fmt, ua[:500], agent, ip_hash(client_ip)),
+            "INSERT INTO downloads (article_id, ark, format, user_agent, is_agent, ip_hash) VALUES (%s, %s, %s, %s, %s, %s)",
+            (article_id, ark, fmt, ua[:500], agent, ip_hash(client_ip)),
         )
         conn.commit()
 
@@ -1767,7 +1772,7 @@ def _serve_pdf(article: dict, base_ark: str, version: int | None, request: Reque
     render it on the fly, save it back to disk, and update the DB path so
     subsequent requests serve from cache again.
     """
-    track_download(article["id"], "pdf", request)
+    track_download(article["id"], "pdf", request, base_ark)
     display = f"{base_ark}.v{version}" if version is not None else base_ark
     if article["pdf_path"]:
         filepath = safe_resolve_file(article["pdf_path"])
@@ -1788,7 +1793,7 @@ def _serve_pdf(article: dict, base_ark: str, version: int | None, request: Reque
 
 def _serve_markdown(article: dict, base_ark: str, version: int | None, request: Request):
     """Serve an article's Markdown source."""
-    track_download(article["id"], "markdown", request)
+    track_download(article["id"], "markdown", request, base_ark)
     display = f"{base_ark}.v{version}" if version is not None else base_ark
     return Response(
         content=article["source_markdown"].encode("utf-8"),
@@ -2013,7 +2018,7 @@ def view_article(ark: str, request: Request):
         author = get_current_author(request)
         return _page("Article withdrawn", body, author)
 
-    track_download(article["id"], "html", request)
+    track_download(article["id"], "html", request, base_ark)
 
     # Version banner: shown when viewing a specific (non-current) version.
     version_banner = ""
@@ -2583,11 +2588,25 @@ def set_maintenance_status(
 
 @router.get("/api/articles/{article_id}/stats")
 def article_stats(article_id: int, _author: dict = Depends(get_current_author)):
-    """Per-article download stats."""
+    """Per-article download stats.
+
+    ``total_downloads``/``by_format`` count this version's row only;
+    ``work_downloads`` aggregates over the whole version chain via the
+    work's ARK, so the count persists when a new version is published.
+    """
     with get_conn().connection() as conn:
-        row = conn.execute("SELECT id FROM articles WHERE id = %s", (article_id,)).fetchone()
+        row = conn.execute("SELECT id, ark FROM articles WHERE id = %s", (article_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Article not found")
+        work_ark = row["ark"]
+        if work_ark is None:
+            # Superseded/retracted rows don't hold the ARK — resolve it
+            # through the version chain.
+            r = conn.execute(
+                _CHAIN_SQL + "SELECT a.ark FROM articles a JOIN chain c ON c.id = a.id WHERE a.ark IS NOT NULL LIMIT 1",
+                (article_id,),
+            ).fetchone()
+            work_ark = r["ark"] if r else None
         total = conn.execute(
             "SELECT COUNT(*) as c FROM downloads WHERE article_id = %s", (article_id,)
         ).fetchone()["c"]
@@ -2596,8 +2615,13 @@ def article_stats(article_id: int, _author: dict = Depends(get_current_author)):
                FROM downloads WHERE article_id = %s GROUP BY format""",
             (article_id,),
         ).fetchall()
+        work_total = conn.execute(
+            "SELECT COUNT(*) as c FROM downloads WHERE ark = %s", (work_ark,)
+        ).fetchone()["c"] if work_ark else total
     return {
+        "ark": work_ark,
         "total_downloads": total,
+        "work_downloads": work_total,
         "by_format": {r["format"]: {"total": r["c"], "agent": r["agent"]} for r in by_format},
     }
 
@@ -2695,7 +2719,7 @@ def public_stats():
         top_articles = conn.execute(
             """SELECT a.id, a.ark, a.title, COUNT(d.id) as downloads
                FROM articles a
-               LEFT JOIN downloads d ON a.id = d.article_id
+               LEFT JOIN downloads d ON d.ark = a.ark
                WHERE a.status = 'published'
                GROUP BY a.id, a.ark, a.title
                ORDER BY downloads DESC LIMIT 10""",

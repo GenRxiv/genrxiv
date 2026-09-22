@@ -889,7 +889,7 @@ def stats_page(request: Request):
         }
         top = conn.execute(
             """SELECT a.ark, a.title, COUNT(d.id) as dl_count
-               FROM articles a LEFT JOIN downloads d ON d.article_id = a.id
+               FROM articles a LEFT JOIN downloads d ON d.ark = a.ark
                WHERE a.status = 'published'
                GROUP BY a.id, a.ark, a.title
                ORDER BY dl_count DESC LIMIT 10""",

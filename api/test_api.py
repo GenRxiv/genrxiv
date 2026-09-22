@@ -1927,6 +1927,59 @@ class TestVersioning:
         assert body["versions"][1]["is_current"] is False
 
     @requires_db
+    def test_download_counts_persist_across_versions(self, client, db, authed_client, admin_client):
+        """Downloads are keyed to the work's ARK, so counts survive a
+        new version replacing the row they were recorded against."""
+        import json
+        import io
+
+        ark = db["ark"]
+        v1_id = db["article_id"]
+
+        # Two downloads while v1 is current
+        assert client.get(f"/article/{ark}").status_code == 200
+        assert client.get(f"/article/{ark}.pdf").status_code == 200
+        r = client.get(f"/api/articles/{v1_id}/stats")
+        assert r.status_code == 200
+        assert r.json()["total_downloads"] == 2
+        assert r.json()["work_downloads"] == 2
+
+        # Submit + approve v2 (ARK transfers to the new row)
+        md = io.BytesIO(b"# v2\n\nUpdated.")
+        r = authed_client.post(
+            "/api/submit",
+            files={"markdown": ("test.md", md, "text/markdown")},
+            data={
+                "title": "Test Paper v2",
+                "authors": json.dumps([{"orcid": db["orcid"], "name": "Test Author"}]),
+                "abstract": "Updated abstract for v2 downloads test.",
+                "subjects": "Natural sciences > Computer and information sciences, Natural sciences > Mathematics, Social sciences > Economics and business",
+                "supersedes_id": v1_id,
+                "reviewed_agree": "1",
+                "cc0_agree": "1",
+                "coc_agree": "1",
+            },
+        )
+        assert r.status_code == 200
+        v2_id = r.json()["id"]
+        r = admin_client.patch(f"/admin/articles/{v2_id}", json={"action": "approve"})
+        assert r.status_code == 200
+
+        # The new version inherits the work's cumulative count…
+        r = client.get(f"/api/articles/{v2_id}/stats")
+        assert r.json()["work_downloads"] == 2
+        assert r.json()["total_downloads"] == 0  # v2 row itself untouched
+        # …and the superseded row reports the same work-level total
+        r = client.get(f"/api/articles/{v1_id}/stats")
+        assert r.json()["work_downloads"] == 2
+        assert r.json()["ark"] == ark
+
+        # A download of a specific version still accrues to the work
+        assert client.get(f"/article/{ark}.v1").status_code == 200
+        r = client.get(f"/api/articles/{v2_id}/stats")
+        assert r.json()["work_downloads"] == 3
+
+    @requires_db
     def test_version_history_page_returns_html(self, client, db):
         r = client.get(f"/article/{db['ark']}/versions")
         assert r.status_code == 200
