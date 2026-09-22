@@ -398,9 +398,16 @@ def _article_card(article: dict) -> str:
     if is_retraction:
         status_badge += '<span class="badge" style="background:#fdf0f0;color:#c0392b">retraction</span>'
 
+    # Fictional examples (homepage easter egg) are display-only — the ARK uses
+    # the reserved example NAAN 99999 and doesn't resolve, so don't link it.
+    unlinked = article.get("unlinked", False)
+    ark_img = '<img src="/ark-logo.svg?v=4" alt="ARK" style="width:1.1em;height:1.1em;vertical-align:middle;margin-right:0.2em">'
+    ark_html = ark_img + ark if unlinked else f'<a href="https://n2t.net/{ark}" style="color:inherit;text-decoration:none">{ark_img}{ark}</a>'
+    title_html = title if unlinked else f'<a href="/article/{ark}">{title}</a>'
+
     return f"""<div class="paper-card">
-<div class="paper-meta"><a href="https://n2t.net/{ark}" style="color:inherit;text-decoration:none"><img src="/ark-logo.svg?v=4" alt="ARK" style="width:1.1em;height:1.1em;vertical-align:middle;margin-right:0.2em">{ark}</a> &middot; posted {published}</div>
-<h2><a href="/article/{ark}">{title}</a></h2>
+<div class="paper-meta">{ark_html} &middot; posted {published}</div>
+<h2>{title_html}</h2>
 <div class="paper-authors">{authors_html}</div>
 {f'<p class="paper-abstract">{abstract}</p>' if abstract else ''}
 {f'<div class="paper-badges">{status_badge}</div>' if status_badge else ''}
@@ -575,6 +582,7 @@ def splash_page(request: Request):
         "author_names": ex["authors"],
         "status": "published",
         "is_retraction": False,
+        "unlinked": True,
     })
 
     body = f"""

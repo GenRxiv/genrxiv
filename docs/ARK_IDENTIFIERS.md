@@ -46,7 +46,7 @@ formats, which are both **variants**.
 ### GenRxiv ARK structure
 
 ```
-https://genrxiv.org/article/ark:99999/genrxiv-2026-00001.v3.pdf
+https://genrxiv.org/article/ark:24975/genrxiv-2026-00001.v3.pdf
 \___________________________/ \__/\___/ \____________/ \_____/
               |                 |    |        |          |
               |           ARK Label   |         Variant
@@ -63,14 +63,14 @@ Name Mapping Authority (NMA)         |
 |-----------------|---------------------------------|---------------------------------|
 | URL prefix      | Name Mapping Authority (NMA)    | `https://genrxiv.org/article/`  |
 | Label           | ARK label                       | `ark:`                          |
-| NAAN            | Name Assigning Authority Number | `99999` (placeholder)           |
+| NAAN            | Name Assigning Authority Number | `24975`                           |
 | Base name       | Assigned Name                   | `genrxiv-2026-00001`            |
 | Version variant | Variant                         | `.v3`                           |
 | Format variant  | Variant                         | `.pdf`                          |
 
 The NMA is the hostname that resolves the ARK. GenRxiv registers
 `https://genrxiv.org/article/${pid}` as its resolver rule with N2T, where
-`${pid}` is replaced by the full ARK string (e.g. `ark:99999/genrxiv-2026-00001`).
+`${pid}` is replaced by the full ARK string (e.g. `ark:24975/genrxiv-2026-00001`).
 
 ## Base name format
 
@@ -217,8 +217,8 @@ dot-variant syntax:
 ### Legacy ARK format (`ark:/`)
 
 GenRxiv originally generated ARKs with an extra slash after the colon:
-`ark:/99999/genrxiv-2026-00001`. This has been corrected to the standard format
-`ark:99999/genrxiv-2026-00001`. The resolver normalizes incoming ARKs by
+`ark:/24975/genrxiv-2026-00001`. This has been corrected to the standard format
+`ark:24975/genrxiv-2026-00001`. The resolver normalizes incoming ARKs by
 stripping the extra slash, so both formats resolve correctly.
 
 ### Legacy slash-separated routes
@@ -270,7 +270,7 @@ can be provided. Specifically:
 | JSON-LD builder            | `api/articles.py` — `build_jsonld()`            |
 | OAI-PMH identifiers        | `api/oai.py` — `_oai_identifier()`              |
 | NAAN configuration         | `ARK_NAAN` environment variable                 |
-| Default NAAN               | `99999` (placeholder for testing)               |
+| Default NAAN               | `24975`                                         |
 
 ## NAAN registration
 
@@ -282,7 +282,10 @@ https://arks.org. The registration includes:
 - **Base name practices:** NR (no re-assignment), LC (lowercase only)
 - **Data persistence:** Yes
 
-To update the NAAN (e.g. when transitioning from the placeholder `99999` to
-a permanent NAAN), update the `ARK_NAAN` environment variable in `.env` and
-restart the API. New articles will be minted with the new NAAN. Existing
-articles' ARKs can be updated in the database with a migration.
+GenRxiv's earliest ARKs were minted under the reserved example NAAN `99999`
+while the NAAN application was pending. When NAAN `24975` was issued, existing
+ARKs were rewritten in place by migration `012_naan_24975.sql` (the name
+portion is unchanged), and the API redirects requests for `ark:99999/*` to the
+canonical `ark:24975/*` identifier with a 301 so previously shared links keep
+working. The redirect only applies when an article actually exists under the
+canonical NAAN; other placeholder-NAAN requests still return 404.

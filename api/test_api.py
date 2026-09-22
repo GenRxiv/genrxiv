@@ -1651,6 +1651,55 @@ class TestArticleView:
         r = client.get("/article/ark:/99999/genrxiv-2026-99999")
         assert r.status_code == 404
 
+    @requires_db
+    def test_legacy_naan_redirects_to_canonical_ark(self, client, db):
+        """Requests for placeholder-NAAN (99999) ARKs redirect to the
+        configured NAAN when the article exists there."""
+        from config import config
+        from db import get_conn
+
+        new_ark = "ark:24975/genrxiv-2026-00001"
+        with get_conn().connection() as conn:
+            conn.execute("UPDATE articles SET ark = %s WHERE id = %s",
+                         (new_ark, db["article_id"]))
+            conn.commit()
+        object.__setattr__(config, "ark_naan", "24975")
+        try:
+            # HTML view
+            r = client.get("/article/ark:99999/genrxiv-2026-00001",
+                           follow_redirects=False)
+            assert r.status_code == 301
+            assert r.headers["location"] == f"/article/{new_ark}"
+            # Legacy slash format route → canonical dot-variant
+            r = client.get("/article/ark:99999/genrxiv-2026-00001/pdf",
+                           follow_redirects=False)
+            assert r.status_code == 301
+            assert r.headers["location"] == f"/article/{new_ark}.pdf"
+            # Version history
+            r = client.get("/article/ark:99999/genrxiv-2026-00001/versions",
+                           follow_redirects=False)
+            assert r.status_code == 301
+            assert r.headers["location"] == f"/article/{new_ark}/versions"
+            # Unknown legacy ARK still 404s (no redirect for nonexistent articles)
+            r = client.get("/article/ark:99999/genrxiv-2026-99999",
+                           follow_redirects=False)
+            assert r.status_code == 404
+            # Canonical ARK serves directly
+            r = client.get(f"/article/{new_ark}")
+            assert r.status_code == 200
+            # Hyphen-stripped name (as forwarded by N2T) redirects to canonical
+            r = client.get("/article/ark:24975/genrxiv202600001",
+                           follow_redirects=False)
+            assert r.status_code == 301
+            assert r.headers["location"] == f"/article/{new_ark}"
+            # Legacy NAAN + stripped hyphens
+            r = client.get("/article/ark:99999/genrxiv202600001",
+                           follow_redirects=False)
+            assert r.status_code == 301
+            assert r.headers["location"] == f"/article/{new_ark}"
+        finally:
+            object.__setattr__(config, "ark_naan", "99999")
+
 
 # ─── 26-27. Authors ─────────────────────────────────────────────────────────
 

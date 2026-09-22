@@ -49,6 +49,10 @@ os.environ["SMTP_PASSWORD"] = ""
 # Disable rate limiting in tests so we can make many requests
 os.environ["RATE_LIMIT_ENABLED"] = "false"
 
+# Keep tests on the reserved example NAAN regardless of the production setting,
+# since fixtures and assertions use ark:99999/... identifiers.
+os.environ["ARK_NAAN"] = "99999"
+
 # A throwaway files directory so rendered article artefacts never touch /app/files.
 _FILES_TMP = tempfile.mkdtemp(prefix="genrxiv_test_files_")
 os.environ.setdefault("FILES_DIR", _FILES_TMP)

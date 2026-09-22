@@ -28,7 +28,7 @@ class Config:
     session_secret: str = "dev-secret-change-me"
 
     # ARK
-    ark_naan: str = "99999"
+    ark_naan: str = "24975"
 
     # SMTP (Resend)
     smtp_host: str = ""
@@ -97,7 +97,7 @@ class Config:
             github_client_id=os.environ.get("GITHUB_CLIENT_ID", ""),
             github_client_secret=os.environ.get("GITHUB_CLIENT_SECRET", ""),
             session_secret=os.environ.get("SESSION_SECRET", "dev-secret-change-me"),
-            ark_naan=os.environ.get("ARK_NAAN", "99999"),
+            ark_naan=os.environ.get("ARK_NAAN", "24975"),
             smtp_host=os.environ.get("SMTP_HOST", ""),
             smtp_port=int(os.environ.get("SMTP_PORT", "587")),
             smtp_username=os.environ.get("SMTP_USERNAME", ""),

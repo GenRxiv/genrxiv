@@ -511,9 +511,10 @@ def normalize_ark(ark: str) -> str:
     """Normalize an ARK by stripping the extra slash after 'ark:'.
 
     Accepts both 'ark:/NAAN/...' (legacy) and 'ark:NAAN/...' (standard/N2T)
-    and returns the canonical 'ark:NAAN/...' form.
+    and returns the canonical 'ark:NAAN/...' form. The 'ark:' label is
+    case-insensitive per the ARK spec.
     """
-    if ark.startswith("ark:/"):
+    if ark[:5].lower() == "ark:/":
         return "ark:" + ark[5:]
     return ark
 
@@ -809,6 +810,20 @@ def get_article_by_ark_including_withdrawn(ark: str) -> dict | None:
     return row
 
 
+# ``supersedes_id`` links each version to its immediate predecessor (a linked
+# list — the row the author clicked "Submit new version" on). This recursive
+# CTE collects the full version chain — ancestors and descendants — starting
+# from any member row.
+_CHAIN_SQL = """
+WITH RECURSIVE chain AS (
+    SELECT id, supersedes_id FROM articles WHERE id = %s
+    UNION
+    SELECT a.id, a.supersedes_id FROM articles a
+    JOIN chain c ON c.supersedes_id = a.id OR c.id = a.supersedes_id
+)
+"""
+
+
 def get_article_version(base_ark: str, version: int, include_withdrawn: bool = False) -> dict | None:
     """Get a specific version of an article by its base ARK and version number.
 
@@ -816,25 +831,24 @@ def get_article_version(base_ark: str, version: int, include_withdrawn: bool = F
     have ``ark = NULL``. This function finds the current version by base ARK,
     then locates the requested version in the version chain.
     """
-    status_filter = ("published", "withdrawn") if include_withdrawn else ("published",)
+    status_filter = ("published", "superseded", "withdrawn") if include_withdrawn else ("published", "superseded")
     with get_conn().connection() as conn:
-        # Find the current version (which holds the ARK) to get the root id
+        # Find the current version (which holds the ARK) to seed the chain
         current = conn.execute(
-            "SELECT id, supersedes_id FROM articles WHERE ark = %s",
+            "SELECT id FROM articles WHERE ark = %s",
             (base_ark,),
         ).fetchone()
         if not current:
             return None
-        root_id = current["supersedes_id"] or current["id"]
         placeholders = ",".join(["%s"] * len(status_filter))
         row = conn.execute(
-            f"""SELECT a.*, array_agg(aa.author_id ORDER BY aa."order") AS author_ids
+            _CHAIN_SQL + f"""SELECT a.*, array_agg(aa.author_id ORDER BY aa."order") AS author_ids
                FROM articles a
                LEFT JOIN article_authors aa ON a.id = aa.article_id
-               WHERE (a.id = %s OR a.supersedes_id = %s) AND a.version = %s
+               WHERE a.id IN (SELECT id FROM chain) AND a.version = %s
                  AND a.status IN ({placeholders})
                GROUP BY a.id""",
-            (root_id, root_id, version, *status_filter),
+            (current["id"], version, *status_filter),
         ).fetchone()
     return row
 
@@ -901,13 +915,12 @@ def create_retraction(article_id: int, reason: str, author: dict) -> dict:
                 f"Only published articles can be retracted (this one is {original['status']})",
             )
 
-        # Find the latest version in the chain (the root may be the original
-        # or an earlier version; supersedes_id always points at the root).
-        root_id = article_id
+        # Find the latest version in the chain (supersedes_id links each
+        # version to its predecessor; the chain may extend in both directions).
         latest = conn.execute(
-            "SELECT version FROM articles WHERE id = %s OR supersedes_id = %s "
+            _CHAIN_SQL + "SELECT version FROM articles WHERE id IN (SELECT id FROM chain) "
             "ORDER BY version DESC LIMIT 1",
-            (root_id, root_id),
+            (article_id,),
         ).fetchone()
         version = (latest["version"] + 1) if latest else original["version"] + 1
 
@@ -955,7 +968,7 @@ def create_retraction(article_id: int, reason: str, author: dict) -> dict:
                 md_text,
                 author["id"],
                 version,
-                root_id,
+                article_id,
             ),
         ).fetchone()
         new_id = row["id"]
@@ -1400,8 +1413,9 @@ async def submit(
                 raise HTTPException(403, "You can only submit new versions of your own articles")
             # Find the latest version in the chain
             latest = conn.execute(
-                "SELECT version FROM articles WHERE id = %s OR supersedes_id = %s ORDER BY version DESC LIMIT 1",
-                (supersedes_id, supersedes_id),
+                _CHAIN_SQL + "SELECT version FROM articles WHERE id IN (SELECT id FROM chain) "
+                "ORDER BY version DESC LIMIT 1",
+                (supersedes_id,),
             ).fetchone()
             if latest:
                 version = latest["version"] + 1
@@ -1632,18 +1646,16 @@ def article_versions(article_id: int):
         if not row:
             raise HTTPException(404, "Article not found")
 
-        # Find the root of the version chain
-        root_id = row["supersedes_id"] or article_id
         ark = row["ark"]
 
         # Get all versions in the chain
         versions = conn.execute(
-            """SELECT id, version, title, status, published_at, submitted_at,
+            _CHAIN_SQL + """SELECT id, version, title, status, published_at, submitted_at,
                       supersedes_id
                FROM articles
-               WHERE id = %s OR supersedes_id = %s
+               WHERE id IN (SELECT id FROM chain)
                ORDER BY version DESC""",
-            (root_id, root_id),
+            (article_id,),
         ).fetchall()
 
     return {
@@ -1676,10 +1688,87 @@ def _lookup_article(base_ark: str, version: int | None, include_withdrawn: bool 
     return get_article_by_ark(base_ark)
 
 
+# ─── Legacy placeholder NAAN ────────────────────────────────────────────────
+# GenRxiv's first ARKs were minted under the reserved example NAAN 99999 while
+# the real NAAN application was pending. Once NAAN 24975 was issued, existing
+# ARKs were rewritten in the database (migration 012). Requests for the old
+# placeholder-NAAN ARKs are redirected (301) to the canonical ARK so links
+# shared before the transition keep working.
+LEGACY_NAAN = "99999"
+
+
+def _stored_ark_for(base_ark: str, version: int | None) -> str | None:
+    """Resolve a requested base ARK to the stored (canonical) ARK string.
+
+    Tries an exact match first, then a hyphen/case-insensitive match — the
+    ARK spec treats hyphens and letter case in names as insignificant, and
+    resolvers like N2T strip hyphens before forwarding (e.g.
+    ``genrxiv-2026-00001`` → ``genrxiv202600001``).
+    """
+    with get_conn().connection() as conn:
+        row = conn.execute(
+            "SELECT ark FROM articles WHERE ark = %s", (base_ark,)
+        ).fetchone()
+        if not row:
+            row = conn.execute(
+                """SELECT ark FROM articles
+                   WHERE LOWER(REPLACE(ark, '-', '')) = LOWER(REPLACE(%s, '-', ''))""",
+                (base_ark,),
+            ).fetchone()
+    if not row:
+        return None
+    # If a specific version was requested, only canonicalize when that
+    # version actually exists in the chain.
+    if version is not None and not _lookup_article(row["ark"], version, include_withdrawn=True):
+        return None
+    return row["ark"]
+
+
+def _canonical_ark(base_ark: str, version: int | None) -> str | None:
+    """Return the canonical stored ARK for a non-canonical request, or None.
+
+    Non-canonical forms handled:
+      - legacy placeholder NAAN (ark:99999/...) → configured NAAN
+      - hyphen-stripped or differently-cased names → stored form
+    """
+    candidates = []
+    prefix = f"ark:{LEGACY_NAAN}/"
+    if config.ark_naan != LEGACY_NAAN and base_ark.startswith(prefix):
+        candidates.append(f"ark:{config.ark_naan}/{base_ark[len(prefix):]}")
+    candidates.append(base_ark)
+    for cand in candidates:
+        stored = _stored_ark_for(cand, version)
+        if stored is not None:
+            return stored if stored != base_ark else None
+    return None
+
+
+def _legacy_redirect(base_ark: str, version: int | None, fmt: str | None = None,
+                     route: str | None = None) -> RedirectResponse | None:
+    """Return a 301 redirect if base_ark is a non-canonical form of a real ARK."""
+    canonical = _canonical_ark(base_ark, version)
+    if not canonical:
+        return None
+    if route == "versions":
+        target = f"/article/{canonical}/versions"
+    elif route == "references":
+        target = f"/api/articles/{canonical}/references"
+    else:
+        variant = f".v{version}" if version is not None else ""
+        if fmt:
+            variant += f".{fmt}"
+        target = f"/article/{canonical}{variant}"
+    return RedirectResponse(target, status_code=301)
+
+
 def _withdrawn_gone(base_ark: str, version: int | None):
-    """Raise 410 Gone if the article exists but is withdrawn."""
-    article = _lookup_article(base_ark, version, include_withdrawn=True)
-    if article and article["status"] == "withdrawn":
+    """Raise 410 Gone if the article exists but is withdrawn.
+
+    Checks the ARK-holding (current) version — a withdrawn article tombstones
+    the whole chain, so earlier versions must not serve content either.
+    """
+    holder = get_article_by_ark_including_withdrawn(base_ark)
+    if holder and holder["status"] == "withdrawn":
         raise HTTPException(410, "This article has been withdrawn and is no longer available")
 
 
@@ -1745,6 +1834,9 @@ def _serve_bibtex(article: dict, base_ark: str, version: int | None):
 def download_pdf(ark: str, request: Request):
     """Download article as PDF (legacy slash route)."""
     base_ark, version, fmt = parse_ark_variant(unquote(ark))
+    redirect = _legacy_redirect(base_ark, version, fmt or "pdf")
+    if redirect:
+        return redirect
     _withdrawn_gone(base_ark, version)
     article = _lookup_article(base_ark, version)
     if not article:
@@ -1756,6 +1848,9 @@ def download_pdf(ark: str, request: Request):
 def download_markdown(ark: str, request: Request):
     """Download original Markdown source (legacy slash route)."""
     base_ark, version, fmt = parse_ark_variant(unquote(ark))
+    redirect = _legacy_redirect(base_ark, version, fmt or "md")
+    if redirect:
+        return redirect
     _withdrawn_gone(base_ark, version)
     article = _lookup_article(base_ark, version)
     if not article:
@@ -1767,6 +1862,9 @@ def download_markdown(ark: str, request: Request):
 def article_jsonld(ark: str):
     """Get article as JSON-LD (legacy slash route)."""
     base_ark, version, fmt = parse_ark_variant(unquote(ark))
+    redirect = _legacy_redirect(base_ark, version, fmt or "jsonld")
+    if redirect:
+        return redirect
     _withdrawn_gone(base_ark, version)
     article = _lookup_article(base_ark, version)
     if not article:
@@ -1778,6 +1876,9 @@ def article_jsonld(ark: str):
 def article_bibtex(ark: str):
     """Get article's BibTeX references (legacy slash route)."""
     base_ark, version, fmt = parse_ark_variant(unquote(ark))
+    redirect = _legacy_redirect(base_ark, version, fmt or "bib")
+    if redirect:
+        return redirect
     _withdrawn_gone(base_ark, version)
     article = _lookup_article(base_ark, version)
     if not article:
@@ -1793,6 +1894,9 @@ def article_references(ark: str):
     title, year, and other fields. Useful for agents and harvesting.
     """
     base_ark, version, fmt = parse_ark_variant(unquote(ark))
+    redirect = _legacy_redirect(base_ark, version, route="references")
+    if redirect:
+        return redirect
     _withdrawn_gone(base_ark, version)
     article = _lookup_article(base_ark, version)
     if not article:
@@ -1810,17 +1914,19 @@ def article_versions_page(ark: str, request: Request):
     from urllib.parse import unquote as _unquote
     from web import _page, _format_date
     base_ark, _, _ = parse_ark_variant(_unquote(ark))
+    redirect = _legacy_redirect(base_ark, None, route="versions")
+    if redirect:
+        return redirect
     article = get_article_by_ark(base_ark)
     if not article:
         raise HTTPException(404, "Article not found")
     with get_conn().connection() as conn:
-        root_id = article["supersedes_id"] or article["id"]
         versions = conn.execute(
-            """SELECT id, version, title, status, ark, is_retraction, published_at, submitted_at
+            _CHAIN_SQL + """SELECT id, version, title, status, ark, is_retraction, published_at, submitted_at
                FROM articles
-               WHERE id = %s OR supersedes_id = %s
+               WHERE id IN (SELECT id FROM chain)
                ORDER BY version DESC""",
-            (root_id, root_id),
+            (article["id"],),
         ).fetchall()
     from auth import get_current_author
     author = get_current_author(request)
@@ -1830,7 +1936,10 @@ def article_versions_page(ark: str, request: Request):
         status_class = f"status-{v['status']}"
         published = _format_date(v.get("published_at"))
         submitted = _format_date(v.get("submitted_at"))
-        link = f'<a href="/article/{v["ark"]}">v{v["version"]}</a>' if v.get("ark") else f"v{v['version']}"
+        link = (
+            f'<a href="/article/{base_ark}.v{v["version"]}">v{v["version"]}</a>'
+            if v["status"] in ("published", "superseded") else f"v{v['version']}"
+        )
         retraction_badge = ' <span class="status-badge" style="background:#fdf0f0;color:#c0392b;border:1px solid #c0392b">retraction</span>' if v.get("is_retraction") else ""
         version_rows.append(f"""<tr>
 <td><strong>{link}</strong>{' <span class="status-badge status-published">current</span>' if is_current else ''}{retraction_badge}</td>
@@ -1881,6 +1990,10 @@ def view_article(ark: str, request: Request):
     """
     base_ark, version, fmt = parse_ark_variant(unquote(ark))
 
+    redirect = _legacy_redirect(base_ark, version, fmt)
+    if redirect:
+        return redirect
+
     # Dispatch non-HTML formats to their handlers.
     if fmt == "pdf":
         _withdrawn_gone(base_ark, version)
@@ -1914,16 +2027,19 @@ def view_article(ark: str, request: Request):
         raise HTTPException(404, "Article not found")
 
     # Withdrawn articles: render a tombstone page instead of the content.
-    if article["status"] == "withdrawn":
+    # Check the ARK-holding (current) version — a withdrawn article tombstones
+    # the whole chain, so earlier versions show the notice too.
+    holder = article if version is None else (get_article_by_ark_including_withdrawn(base_ark) or article)
+    if holder["status"] == "withdrawn":
         from web import _page, _format_date
         from auth import get_current_author
-        withdrawn_at = _format_date(article.get("withdrawn_at"))
-        reason = article.get("withdrawal_reason") or ""
+        withdrawn_at = _format_date(holder.get("withdrawn_at"))
+        reason = holder.get("withdrawal_reason") or ""
         display_ark = f"{base_ark}.v{version}" if version is not None else base_ark
         body = f"""
         <div class="card" style="border-left:4px solid #c0392b;background:#fdf0f0">
             <h1 style="color:#c0392b">Article withdrawn</h1>
-            <p>This article (<strong>{article['title']}</strong>) has been
+            <p>This article (<strong>{holder['title']}</strong>) has been
             withdrawn from GenRxiv and is no longer available.</p>
             <p style="margin-top:0.5rem">
                 <strong>ARK:</strong> {display_ark}<br>
@@ -2213,19 +2329,22 @@ def _approve_article(
     Returns (ark, version). Caller is responsible for committing the
     transaction and sending notifications.
     """
-    # If this is a new version, transfer the ARK from the previous version
+    # If this is a new version, transfer the ARK from whichever version in
+    # the chain currently holds it (the published version).
     existing = conn.execute(
         "SELECT ark, supersedes_id FROM articles WHERE id = %s", (article_id,)
     ).fetchone()
     if existing and existing["supersedes_id"]:
         prev = conn.execute(
-            "SELECT ark FROM articles WHERE id = %s", (existing["supersedes_id"],)
+            _CHAIN_SQL + "SELECT id, ark FROM articles "
+            "WHERE id IN (SELECT id FROM chain) AND ark IS NOT NULL LIMIT 1",
+            (existing["supersedes_id"],),
         ).fetchone()
         if prev and prev["ark"]:
             ark = prev["ark"]
             conn.execute(
                 "UPDATE articles SET status = 'superseded', ark = NULL WHERE id = %s",
-                (existing["supersedes_id"],),
+                (prev["id"],),
             )
         else:
             ark = assign_ark(article_id)
